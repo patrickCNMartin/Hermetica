@@ -1,6 +1,6 @@
 {
     description = "Protocol Version Control and composition";
-    input = {
+    inputs = {
         nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
         flake-utils.url = "github:numtide/flake-utils";
     };
@@ -32,7 +32,7 @@
                     shellHook = ''
                         echo "WETWARE SHELL READY"
 
-                    ''
+                    '';
                 };
             }
             

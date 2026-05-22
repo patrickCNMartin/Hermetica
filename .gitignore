@@ -1,17 +1,21 @@
-# --- GLOBAL LOCKDOWN ---
+# Selective Git
 *
 !*/
 !.gitignore
+!.pre-commit-config.yaml
+!.secrets.baseline
 
-# --- WHITELIST LIGHTWEIGHT ASSETS ---
-!*.md
-!*.sh
-!*.nix
-!*.yaml
-!*.json
-!*.txt
-!*.pdf
-!*.docx
-!*.csv
-!*.tsv
+# Black List - Make sure that variation on .env will be excluded no matter what 
+.env
+.env.*
+security/.env
+security/.env.*
+env/.env
+env/.env.*
 
+# Whitelisted Assets #
+## Nix Files ##
+!flake.lock
+!flake.nix
+## Python ##
+!*.py
