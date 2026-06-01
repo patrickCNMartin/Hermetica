@@ -1,5 +1,5 @@
 {
-    description = "Protocol Version Control and composition";
+    description = "Protocol Version Control and composition - WETWARE";
     inputs = {
         nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
         flake-utils.url = "github:numtide/flake-utils";
