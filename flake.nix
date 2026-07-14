@@ -1,5 +1,5 @@
 {
-    description = "Protocol Version Control and composition - WETWARE";
+    description = "Protocol Version Control and composition - HERMETICA";
     inputs = {
         nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
         flake-utils.url = "github:numtide/flake-utils";
@@ -15,23 +15,38 @@
                         pkg-config
                         which
                         pre-commit
-                        git;
+                        git
+                        uv;
                 };
-                python_deps = pkgs.python313.withPackages (packages: with packages; [
-                    requests
-                    django
-                    detect-secrets
-                    ruff
-                    python-dotenv
-                    python-dateutil
-
-                ]);
+                python_base = pkgs.python313;
+                oci_deps = [
+                    python_base
+                    pkgs.uv
+                    pkgs.cacert # Essential for HTTPS requests within python/uv
+                    pkgs.bashInteractive
+                    pkgs.coreutils
+                ];
+    
             in {
                 devShells.default = pkgs.mkShell {
-                    buildInputs = system_deps ++ [python_deps];
+                    buildInputs = system_deps ++ [python_base];
                     shellHook = ''
-                        echo "WETWARE SHELL READY"
+                        echo "====> HERMETICA - Preparing DEV SHELL <===="
 
+                        export UV_PYTHON="${python_base}/bin/python3"
+                        export VIRTUAL_ENV=".venv"
+
+                        if [ ! -d ".venv" ]; then
+                            echo "====> Creating uv venv <===="
+                            uv venv .venv --python "${python_base}/bin/python3"
+                        fi
+
+                        source .venv/bin/activate
+
+                        if [ -f "pyproject.toml" ]; then
+                            echo "====> Syncing deps from pyproject.toml <===="
+                            uv sync
+                        fi                        
                     '';
                 };
             }

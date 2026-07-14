@@ -1,3 +1,4 @@
+default_stages: [pre-push]
 repos:
   # Ruff - linting and formatting
   - repo: https://github.com/astral-sh/ruff-pre-commit

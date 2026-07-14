@@ -1,16 +1,18 @@
 # -----------------------------------------------------------------------------#
 # IMPORT LIBS
 # -----------------------------------------------------------------------------#
-import os
 import argparse
 import json
+import os
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # -----------------------------------------------------------------------------#
 # IMPORT GENERIC UTILS
 # -----------------------------------------------------------------------------#
-from utils.request_utils import get_protocol_list
+from hermetica.chronos.utils.request_utils import get_protocol_list
+
 # -----------------------------------------------------------------------------#
 # SET ENV VARS
 # -----------------------------------------------------------------------------#
@@ -29,9 +31,7 @@ CLIENT_SECRET = os.getenv("CLIENT_SECRET", "")
 # -----------------------------------------------------------------------------#
 # DEFINE ILAB HEADERS
 # -----------------------------------------------------------------------------#
-HEADERS = {
-    "Authorization":f"Bearer {API_KEY}"
-}
+HEADERS = {"Authorization": f"Bearer {API_KEY}"}
 
 
 # -----------------------------------------------------------------------------#
@@ -52,11 +52,8 @@ examples:
         type=str,
         help="Pleace holder for the future",
     )
-    
 
     return parser.parse_args()
-
-
 
 
 # -----------------------------------------------------------------------------#
@@ -65,6 +62,6 @@ examples:
 if __name__ == "__main__":
     args = parse_args()
     # import pdb;pdb.set_trace()
-    protocols = get_protocol_list(BASE_URL,HEADERS)
-    with open('protocol_list.json','w') as f:
-        json.dump(protocols,f)
+    protocols = get_protocol_list(BASE_URL, HEADERS)
+    with open("protocol_list.json", "w") as f:
+        json.dump(protocols, f)
