@@ -17,5 +17,8 @@ env/.env.*
 ## Nix Files ##
 !flake.lock
 !flake.nix
+# uv files
+!pyproject.toml
+!uv.lock
 ## Python ##
 !*.py
