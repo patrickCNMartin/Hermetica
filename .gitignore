@@ -3,7 +3,7 @@
 !*/
 !.gitignore
 !.pre-commit-config.yaml
-!security/.secrets.baseline
+!security/.baseline.security
 
 # Black List - Make sure that variation on .env will be excluded no matter what 
 .env
