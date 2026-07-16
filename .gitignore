@@ -22,3 +22,8 @@ env/.env.*
 !uv.lock
 ## Python ##
 !*.py
+
+## Data base ##
+# Should be tracked but I don't want to export the actual data base on github.
+# Open the data base folder but not the actual db
+!db/

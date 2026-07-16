@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 # -----------------------------------------------------------------------------#
 # IMPORT GENERIC UTILS
 # -----------------------------------------------------------------------------#
-from hermetica.chronos.utils.request_utils import get_protocol_list
+from chronos.utils.request_utils import (get_protocol_list,blob_protocol)
 
 # -----------------------------------------------------------------------------#
 # SET ENV VARS
@@ -27,13 +27,11 @@ BASE_URL = os.getenv("BASE_URL", "")
 CLIENT_ID = os.getenv("CLIENT_ID", "")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET", "")
 
-
+DB_OUT = os.getenv("DB","db")
 # -----------------------------------------------------------------------------#
 # DEFINE ILAB HEADERS
 # -----------------------------------------------------------------------------#
 HEADERS = {"Authorization": f"Bearer {API_KEY}"}
-
-
 # -----------------------------------------------------------------------------#
 # DEFINE ARGUMENTS
 # -----------------------------------------------------------------------------#
@@ -61,7 +59,15 @@ examples:
 # -----------------------------------------------------------------------------#
 if __name__ == "__main__":
     args = parse_args()
-    # import pdb;pdb.set_trace()
+    # this function allows for some param parsing but
+    # don't think it will be that necessary
+    # I am taking everything anyway?? The filtering has to happen after
     protocols = get_protocol_list(BASE_URL, HEADERS)
-    with open("protocol_list.json", "w") as f:
+    for p in protocols:
+        b = blob_protocol(p)
+        guid = p["guid"]
+        print(f"Blob: {b} & GUID: {guid}")
+    print(len(protocols))
+    #stipped_protocols = strip_protocols(protocols)
+    with open(f"{DB_OUT}/protocol_list.json", "w") as f:
         json.dump(protocols, f)
