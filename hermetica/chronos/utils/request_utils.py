@@ -40,11 +40,33 @@ def get_protocol_list(
             break
     return all_protocols
 
+def process_protocols(protocols: list) -> dict:
+    stripped = [strip_protocol(p, None) for p in protocols]
+    blobbed = [blob_protocol(p) for p in stripped]
+    return get_unique_protocols(stripped, blobbed)
+
+def strip_protocol(protocol:dict,exclude_fields:list|None):
+    # stripping fields that are not relevant to internal versioning
+    # For example, it doesn't matter for the core if the protocol 
+    # has been published or not (most are not) or peer-reviewed.
+    # Stats is essentially "protocol traffic" metrices which are also 
+    # kind of useless
+    if not exclude_fields:
+        exclude_fields = ["stats","published_on","public","peer_reviewed"]
+    protocol = {k:v for k,v in protocol.items() if k not in exclude_fields}
+    return 0
+
+
+# blob it after striping so we don't hash variable fields like number of views
 def blob_protocol(protocol:dict):
     blob = json.dumps(protocol, sort_keys = True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
     blob = hashlib.sha256(blob).hexdigest()
     return blob
 
 
-def strip_protocols(protocols):
-    return 0
+def get_unique_protocols(stripped_protocols: list, blobbed_protocols: list) -> dict:
+    unique = {}
+    for p, h in zip(stripped_protocols, blobbed_protocols):
+        if h not in unique:
+            unique[h] = p
+    return unique

@@ -11,7 +11,8 @@ from dotenv import load_dotenv
 # -----------------------------------------------------------------------------#
 # IMPORT GENERIC UTILS
 # -----------------------------------------------------------------------------#
-from chronos.utils.request_utils import (get_protocol_list,blob_protocol)
+from chronos.utils.request_utils import (get_protocol_list,process_protocols)
+from chronos.utils.db import (initialize_db)
 
 # -----------------------------------------------------------------------------#
 # SET ENV VARS
@@ -33,41 +34,19 @@ DB_OUT = os.getenv("DB","db")
 # -----------------------------------------------------------------------------#
 HEADERS = {"Authorization": f"Bearer {API_KEY}"}
 # -----------------------------------------------------------------------------#
-# DEFINE ARGUMENTS
-# -----------------------------------------------------------------------------#
-def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Protocols.io API client",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-examples:
-  python protocols_api.py --outfile file_out.md
-        """,
-    )
-    parser.add_argument(
-        "--tell_me",
-        required=False,
-        type=str,
-        help="Pleace holder for the future",
-    )
-
-    return parser.parse_args()
-
-
-# -----------------------------------------------------------------------------#
 # ENTRY
 # -----------------------------------------------------------------------------#
 if __name__ == "__main__":
-    args = parse_args()
-    # this function allows for some param parsing but
-    # don't think it will be that necessary
-    # I am taking everything anyway?? The filtering has to happen after
+    # Initialize data base and create if does not exist.
+    db_name = f"{DB_OUT}/protocol_version_control.db"
+    initialize_db(db_name, BASE_URL, HEADERS)
+
+    #
     protocols = get_protocol_list(BASE_URL, HEADERS)
-    for p in protocols:
-        b = blob_protocol(p)
-        guid = p["guid"]
-        print(f"Blob: {b} & GUID: {guid}")
-    print(len(protocols))
+    # Strip, hash protocols and return only unqiue protocols and hashes
+    processed_protocols = process_protocols(protocols)
+    # Create db
+    
     #stipped_protocols = strip_protocols(protocols)
     with open(f"{DB_OUT}/protocol_list.json", "w") as f:
-        json.dump(protocols, f)
+        json.dump(processed_protocols, f)
