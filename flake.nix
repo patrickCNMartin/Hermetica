@@ -7,14 +7,21 @@
     outputs = {self, nixpkgs,flake-utils}:
         flake-utils.lib.eachDefaultSystem(system:
             let pkgs = import nixpkgs {inherit system;};
+                # THIS LIST IS FOR NON-PYTHON SYSTEM DEPENDENCIES ONLY.
+                # Every Python package and every Python-based tool (pytest,
+                # ruff, pre-commit, detect-secrets) belongs in pyproject.toml,
+                # which is the single declaration shared by the uv / nix / pixi
+                # paths. Adding a Python application here re-creates the
+                # PYTHONPATH shadowing bug: Nix propagates its whole closure
+                # (e.g. its own pytest) into the shell, where it overrides the
+                # uv venv on sys.path.
+                #
+                # No native build toolchain (gcc/gfortran/cmake/pkg-config)
+                # either — current deps are pure-Python wheels. This is
+                # deliberately just the toolchain needed to bootstrap the venv.
                 system_deps = builtins.attrValues {
                     inherit (pkgs)
-                        gcc
-                        gfortran
-                        cmake
-                        pkg-config
                         which
-                        pre-commit
                         git
                         uv;
                 };
@@ -44,9 +51,9 @@
                         source .venv/bin/activate
 
                         if [ -f "pyproject.toml" ]; then
-                            echo "====> Syncing deps from pyproject.toml <===="
-                            uv sync
-                        fi                        
+                            echo "====> Syncing deps (incl. dev tooling) <===="
+                            uv sync --extra dev
+                        fi
                     '';
                 };
             }

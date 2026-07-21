@@ -47,14 +47,22 @@ def process_protocols(protocols: list) -> dict:
 
 def strip_protocol(protocol:dict,exclude_fields:list|None):
     # stripping fields that are not relevant to internal versioning
-    # For example, it doesn't matter for the core if the protocol 
+    # For example, it doesn't matter for the core if the protocol
     # has been published or not (most are not) or peer-reviewed.
-    # Stats is essentially "protocol traffic" metrices which are also 
-    # kind of useless
+    # Stats is essentially "protocol traffic" metrices which are also
+    # kind of useless.
+    #
+    # CRITICAL for content-addressable hashing: `image` and `versions` carry
+    # AWS signed URLs (a `?Policy=...` token) that protocols.io regenerates on
+    # EVERY request. Left in, the hash changes on every pull even when the
+    # protocol content is identical, so a daily sync would fabricate a phantom
+    # new version each night. Stripping them makes the hash a pure function of
+    # the semantic protocol content.
     if not exclude_fields:
-        exclude_fields = ["stats","published_on","public","peer_reviewed"]
+        exclude_fields = ["stats","published_on","public","peer_reviewed",
+                          "image","versions"]
     protocol = {k:v for k,v in protocol.items() if k not in exclude_fields}
-    return 0
+    return protocol
 
 
 # blob it after striping so we don't hash variable fields like number of views

@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 # IMPORT GENERIC UTILS
 # -----------------------------------------------------------------------------#
 from chronos.utils.request_utils import (get_protocol_list,process_protocols)
-from chronos.utils.db import (initialize_db)
+from chronos.utils.db import (initialize_db, to_rows, insert_protocols)
 
 # -----------------------------------------------------------------------------#
 # SET ENV VARS
@@ -37,16 +37,19 @@ HEADERS = {"Authorization": f"Bearer {API_KEY}"}
 # ENTRY
 # -----------------------------------------------------------------------------#
 if __name__ == "__main__":
-    # Initialize data base and create if does not exist.
+    # Initialize data base and create if does not exist (schema only).
     db_name = f"{DB_OUT}/protocol_version_control.db"
-    initialize_db(db_name, BASE_URL, HEADERS)
+    initialize_db(db_name)
 
-    #
+    # Pull protocols from the API.
     protocols = get_protocol_list(BASE_URL, HEADERS)
-    # Strip, hash protocols and return only unqiue protocols and hashes
+    # Strip, hash protocols and return only unique protocols keyed by hash.
     processed_protocols = process_protocols(protocols)
-    # Create db
-    
-    #stipped_protocols = strip_protocols(protocols)
-    with open(f"{DB_OUT}/protocol_list.json", "w") as f:
-        json.dump(processed_protocols, f)
+    # Map to table rows and batch-insert (idempotent: existing hashes skipped).
+    rows = to_rows(processed_protocols)
+    n_new = insert_protocols(db_name, rows)
+    print(f"Inserted {n_new} new protocol version(s).")
+
+    # Optional JSON snapshot of the processed pull alongside the DB.
+    # with open(f"{DB_OUT}/protocol_list.json", "w") as f:
+    #     json.dump(processed_protocols, f)

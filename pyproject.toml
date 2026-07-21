@@ -5,21 +5,23 @@ description = "Protocol Version Control and Composition with Hermetica"
 requires-python = ">=3.13"
 
 dependencies = [
-    # Utilities
+    # HTTP client for the protocols.io API pull
     "requests",
-    "python-dateutil",
-    "dotenv"
+    # Loads config/secrets from env/.env
+    "python-dotenv",
 ]
 
 [project.optional-dependencies]
+# ALL Python tooling lives here — including Python-based CLIs like pre-commit.
+# Only non-Python system tools (git, uv) belong in flake.nix; putting a Python
+# app in Nix leaks its closure onto PYTHONPATH and shadows this venv.
 dev = [
-    "gibberish-detector",
     "ruff",
     "detect-secrets",
     "pre-commit",
     "pytest",
     "pytest-cov",
-    "responses"
+    "responses",
 ]
 
 [build-system]
