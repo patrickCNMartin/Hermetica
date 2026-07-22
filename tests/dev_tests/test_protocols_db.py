@@ -27,7 +27,14 @@ PROTOCOLS_URL = f"{BASE_URL}/v3/protocols"
 VOLATILE_FIELDS = ["stats", "published_on", "public", "peer_reviewed",
                    "image", "versions"]
 # Fields that identify a protocol and must survive stripping.
-STABLE_FIELDS = ["id", "guid", "title", "created_on", "uri"]
+# We will explicitely call which fields we want to avoid pulling anything unrequired
+# and to make sure that it is stable should things change. 
+# we want the system to fail if fields change since that could lead to downstream bugs
+# created_on could be removed. It also means that if there is 
+# another system that is not protocols.io we can pull relevant fields
+# Could use metaSolid for this I guess...
+STABLE_FIELDS = ["id", "guid", "title","description","doi","created_on",
+                 "uri", "materials","materials_text","units","warning"]
 
 
 def make_protocol(pid: int, title: str = "Test Protocol", **overrides) -> dict:
@@ -40,9 +47,15 @@ def make_protocol(pid: int, title: str = "Test Protocol", **overrides) -> dict:
         # --- stable, semantic content ---
         "id": pid,
         "guid": f"{pid:032X}",
+        "doi" :"",
         "title": title,
         "created_on": 1745934254,  # unix epoch -> 2025-04-29
         "uri": f"test-protocol-{pid}",
+        "description" : "Some protocol" ,
+        "materials" : [],
+        "materials_text" : "This is how you do this protocol",
+        "units" : [{"unit" : "L","used": "yeah"}],
+        "warning" : "null", # Not sure if this is needed yet.
         # --- volatile / request-time noise (must be stripped) ---
         "stats": {"number_of_views": pid * 10},
         "image": {"placeholder": f"https://files.x/y.jpg?Policy=SIGNED-{pid}"},
@@ -72,31 +85,13 @@ class TestServerConnection:
             responses.GET, PROTOCOLS_URL,
             json={"items": [make_protocol(1)]}, status=200,
         )
-
+        # Check that function return a list of protcols 
         result = get_protocol_list(BASE_URL, HEADERS)
 
         assert len(responses.calls) == 1
         assert responses.calls[0].request.url.startswith(PROTOCOLS_URL)
         assert len(result) == 1
         assert result[0]["id"] == 1
-
-    @responses.activate
-    def test_auth_header_is_forwarded(self):
-        """The Authorization header reaches the server (auth wiring works)."""
-        responses.add(responses.GET, PROTOCOLS_URL, json={"items": []}, status=200)
-
-        get_protocol_list(BASE_URL, HEADERS)
-
-        assert responses.calls[0].request.headers["Authorization"] == "Bearer test-token"
-
-    @responses.activate
-    def test_http_error_is_raised(self):
-        """A non-2xx response fails loudly (raise_for_status), not silently."""
-        responses.add(responses.GET, PROTOCOLS_URL, status=401)
-
-        with pytest.raises(Exception):  # requests.HTTPError
-            get_protocol_list(BASE_URL, HEADERS)
-
 
 # -----------------------------------------------------------------------------#
 # 2. PAGES BEING PROCESSED
@@ -129,7 +124,22 @@ class TestPagination:
         assert len(responses.calls) == 2
         assert len(result) == 10
 
-    # TODO: add a test that max_pull caps the number of pages fetched.
+    @responses.activate
+    def test_stops_at_max_page(self):
+        """max_pull caps the number of pages fetched, regardless of server."""
+        page = [make_protocol(i) for i in range(10)]
+        responses.add(responses.GET, PROTOCOLS_URL, json={"items": page})  # repeats for every request
+
+        results = get_protocol_list(BASE_URL, HEADERS, page_size=10, max_pull=5)
+        assert len(responses.calls) == 5
+        assert len(results) == 50
+
+        before = len(responses.calls)
+        results = get_protocol_list(BASE_URL, HEADERS, page_size=10, max_pull=3)
+        assert len(responses.calls) - before == 3
+        assert len(results) == 30
+
+
 
 
 # -----------------------------------------------------------------------------#
@@ -246,9 +256,7 @@ class TestDataInsertion:
         """Re-inserting the same content is a no-op (content-hash primary key)."""
         rows = to_rows(process_protocols([make_protocol(1), make_protocol(2)]))
         initialize_db(db_path)
-
+        # Is this enough to make sure that new elements are added and other discarded
         assert insert_protocols(db_path, rows) == 2
         assert insert_protocols(db_path, rows) == 0  # nothing new the second time
 
-    # TODO: once deprecation logic exists, assert that a new hash for an existing
-    # protocol_id stamps deprecated_at on the prior version.

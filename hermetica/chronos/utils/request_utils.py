@@ -25,6 +25,9 @@ def get_protocol_list(
     }
     while True:
         print(f"Processing Page: {current_page}")
+        # break if you are going beyond max pull
+        if current_page == max_pull + 1:
+                    break
         protocol_list = requests.get(url=request_url, headers=headers, params=params)
         protocol_list.raise_for_status()
         local_list = protocol_list.json()
@@ -36,8 +39,8 @@ def get_protocol_list(
             break
         current_page += 1
         params["page_id"] = current_page
-        if current_page == max_pull:
-            break
+        
+        
     return all_protocols
 
 def process_protocols(protocols: list) -> dict:
