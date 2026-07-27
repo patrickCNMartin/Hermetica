@@ -21,6 +21,7 @@ load_dotenv(dotenv_path=dotenv_path)
 
 API_KEY = os.getenv("API_KEY", "")
 BASE_URL = os.getenv("BASE_URL", "")
+PROTOCOL_URL = os.getenv("PROTOCOL_URL", f"{BASE_URL}/v3/protocols")
 
 
 CLIENT_ID = os.getenv("CLIENT_ID", "")
@@ -31,6 +32,22 @@ DB_OUT = os.getenv("DB","db")
 # DEFINE ILAB HEADERS
 # -----------------------------------------------------------------------------#
 HEADERS = {"Authorization": f"Bearer {API_KEY}"}
+
+# -----------------------------------------------------------------------------#
+# PULL SCOPE
+# -----------------------------------------------------------------------------#
+# order_field MUST be a unique key. Sorting by `date` (or `name`) lets the
+# server's page window shift between requests, so pages overlap and later
+# protocols are never reached — a measured 51 -> 29 loss. `key` is required by
+# the API; an empty value returns 400.
+PULL_PARAMS = {
+    "filter": "shared_with_user",
+    "key": " ",
+    "order_field": "id",
+    "peer_reviewed": 0,
+}
+PAGE_SIZE = 10
+MAX_PULL = None  # no ceiling: pull every page so nothing is silently truncated
 # -----------------------------------------------------------------------------#
 # ENTRY
 # -----------------------------------------------------------------------------#
@@ -40,7 +57,13 @@ if __name__ == "__main__":
     initialize_db(db_name)
 
     # Pull protocols from the API.
-    protocols = get_protocol_list(BASE_URL, HEADERS)
+    protocols = get_protocol_list(
+        PROTOCOL_URL,
+        HEADERS,
+        page_size=PAGE_SIZE,
+        max_pull=MAX_PULL,
+        **PULL_PARAMS,
+    )
     # Strip, hash protocols and return only unique protocols keyed by hash.
     processed_protocols = process_protocols(protocols)
     # Map to table rows and batch-insert (idempotent: existing hashes skipped).

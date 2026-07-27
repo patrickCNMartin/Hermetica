@@ -37,3 +37,7 @@ line-length = 88
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
+
+# The three modules live under hermetica/ and import as top-level packages.
+[tool.ruff.lint.isort]
+known-first-party = ["chronos", "seal", "transmute"]

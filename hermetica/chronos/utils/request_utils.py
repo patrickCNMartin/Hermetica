@@ -1,83 +1,127 @@
 # -----------------------------------------------------------------------------#
 # IMPORT LIBS
 # -----------------------------------------------------------------------------#
+from collections.abc import Sequence
+
 import requests
-import hashlib
-import json
+
+from seal.contract import protocol_hash, select_protocol
+
+# protocols.io numbers pages from zero: page_id=0 returns pagination.current_page 1.
+# Starting at 1 silently skips the first page.
+FIRST_PAGE = 0
+
+
+class IncompletePullError(RuntimeError):
+    """A pull collected fewer records than the server reported available."""
+
+
+# -----------------------------------------------------------------------------#
+# PULL
+# -----------------------------------------------------------------------------#
+def _walk_pages(
+    protocol_url: str,
+    headers: dict,
+    params: dict,
+    start_page: int,
+    page_size: int,
+    max_pull: int | None,
+) -> tuple[list[dict], int | None]:
+    """Fetch pages until the server says stop. Returns (items, total_results).
+
+    Prefers the response's own `pagination.next_page`; falls back to the
+    empty/short-page heuristic for endpoints that publish no pagination block.
+    """
+    items: list[dict] = []
+    total: int | None = None
+    page = start_page
+
+    while max_pull is None or (page - start_page) < max_pull:
+        print(f"Processing Page: {page}")
+        response = requests.get(
+            url=protocol_url, headers=headers, params={**params, "page_id": page}
+        )
+        response.raise_for_status()
+        payload = response.json()
+        batch = payload.get("items", [])
+        pagination = payload.get("pagination")
+
+        if total is None and pagination:
+            total = pagination.get("total_results")
+        if not batch:
+            break
+        items.extend(batch)
+
+        if pagination:
+            if not pagination.get("next_page"):
+                break
+        elif len(batch) < page_size:
+            break
+        page += 1
+
+    return items, total
+
 
 def get_protocol_list(
-    base_url, headers, user_access: str = "shared_with_user", search_key: str = " ",
-    page_size : int = 10, max_pull:int = 20
+    protocol_url: str,
+    headers: dict,
+    page_size: int = 10,
+    max_pull: int | None = None,
+    **params,
+) -> list[dict]:
+    """Walk a paginated protocol endpoint until it runs out.
+
+    Caller supplies the URL and query params. `max_pull=None` reads every page;
+    pass an int to cap it.
+
+    When the server reports `total_results` and the walk was not deliberately
+    capped, the collected count is checked against it. A mismatch retries the
+    whole pull once, then raises — an incomplete pull must never be mistaken for
+    protocols having been deleted upstream.
+    """
+    start_page = int(params.pop("page_id", FIRST_PAGE))
+    params["page_size"] = page_size
+
+    walk = (protocol_url, headers, params, start_page, page_size, max_pull)
+    protocols, total = _walk_pages(*walk)
+
+    # A capped or resumed walk is expected to be partial; nothing to verify.
+    if total is None or max_pull is not None or start_page != FIRST_PAGE:
+        return protocols
+    if len(protocols) == total:
+        return protocols
+
+    print(
+        f"Incomplete pull: got {len(protocols)} of {total} reported. Retrying once."
+    )
+    protocols, total = _walk_pages(*walk)
+    if total is not None and len(protocols) != total:
+        raise IncompletePullError(
+            f"pulled {len(protocols)} protocols but the server reports "
+            f"{total}; refusing to write a partial pull"
+        )
+    return protocols
+
+
+# -----------------------------------------------------------------------------#
+# SELECT / HASH / DEDUPE
+# -----------------------------------------------------------------------------#
+def process_protocols(
+    protocols: list,
+    include_fields: Sequence[str] | None = None,
+    metadata_fields: Sequence[str] | None = None,
 ) -> dict:
-    """Get a list of protocols from the protocols.io API."""
-    request_url = f"{base_url}/v3/protocols"
-
-    all_protocols = []
-    current_page = 1
-
-    params = {
-        "filter" : user_access,
-        "key" : search_key,
-        "order_field" : "date",
-        "peer_reviewed" : 0,
-        "page_size" : page_size,
-        "page_id" : current_page
-    }
-    while True:
-        print(f"Processing Page: {current_page}")
-        # break if you are going beyond max pull
-        if current_page == max_pull + 1:
-                    break
-        protocol_list = requests.get(url=request_url, headers=headers, params=params)
-        protocol_list.raise_for_status()
-        local_list = protocol_list.json()
-        protocols = local_list.get("items",[])
-        if not protocols:
-            break
-        all_protocols.extend(protocols)
-        if len(protocols) < page_size:
-            break
-        current_page += 1
-        params["page_id"] = current_page
-        
-        
-    return all_protocols
-
-def process_protocols(protocols: list) -> dict:
-    stripped = [strip_protocol(p, None) for p in protocols]
-    blobbed = [blob_protocol(p) for p in stripped]
-    return get_unique_protocols(stripped, blobbed)
-
-def strip_protocol(protocol:dict,exclude_fields:list|None):
-    # stripping fields that are not relevant to internal versioning
-    # For example, it doesn't matter for the core if the protocol
-    # has been published or not (most are not) or peer-reviewed.
-    # Stats is essentially "protocol traffic" metrices which are also
-    # kind of useless.
-    #
-    # CRITICAL for content-addressable hashing: `image` and `versions` carry
-    # AWS signed URLs (a `?Policy=...` token) that protocols.io regenerates on
-    # EVERY request. Left in, the hash changes on every pull even when the
-    # protocol content is identical, so a daily sync would fabricate a phantom
-    # new version each night. Stripping them makes the hash a pure function of
-    # the semantic protocol content.
-    if not exclude_fields:
-        exclude_fields = ["stats","published_on","public","peer_reviewed",
-                          "image","versions"]
-    protocol = {k:v for k,v in protocol.items() if k not in exclude_fields}
-    return protocol
+    """Apply the content contract, hash, and collapse duplicates by hash."""
+    selected = [
+        select_protocol(p, include_fields, metadata_fields) for p in protocols
+    ]
+    blobbed = [protocol_hash(p, include_fields) for p in selected]
+    return get_unique_protocols(selected, blobbed)
 
 
-# blob it after striping so we don't hash variable fields like number of views
-def blob_protocol(protocol:dict):
-    blob = json.dumps(protocol, sort_keys = True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
-    blob = hashlib.sha256(blob).hexdigest()
-    return blob
-
-
-def get_unique_protocols(stripped_protocols: list, blobbed_protocols: list) -> dict:
+def get_unique_protocols(selected_protocols: list, blobbed_protocols: list) -> dict:
     unique = {}
-    for p, h in zip(stripped_protocols, blobbed_protocols):
+    for p, h in zip(selected_protocols, blobbed_protocols):
         if h not in unique:
             unique[h] = p
     return unique
