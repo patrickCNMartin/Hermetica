@@ -5,7 +5,7 @@ import unicodedata
 
 import pytest
 
-from seal.canonical import canonical_json, content_hash
+from seal.contract import canonical_json, content_hash
 
 # Frozen vector. If this changes, every hash in every DB and lock file is
 # invalidated — the test exists so that can never happen silently.

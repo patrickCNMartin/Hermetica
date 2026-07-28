@@ -10,7 +10,7 @@ from seal.dates import (
     as_iso,
     end_of_day,
     from_epoch,
-    now_epoch,
+    get_timestamp,
     to_epoch,
 )
 
@@ -83,6 +83,6 @@ class TestEndOfDay:
 
 class TestNow:
     def test_now_is_an_int_and_plausible(self):
-        n = now_epoch()
+        n = get_timestamp()
         assert isinstance(n, int)
         assert n > 1_700_000_000

@@ -9,8 +9,9 @@ from dotenv import load_dotenv
 # -----------------------------------------------------------------------------#
 # IMPORT GENERIC UTILS
 # -----------------------------------------------------------------------------#
-from chronos.utils.request_utils import (get_protocol_list,process_protocols)
-from chronos.utils.db import (initialize_db, to_rows, insert_protocols)
+from chronos.utils.request_utils import get_protocol_list, process_protocols
+from seal.dates import get_timestamp
+from seal.store import initialize_db, format_entry, write_pull
 
 # -----------------------------------------------------------------------------#
 # SET ENV VARS
@@ -27,7 +28,7 @@ PROTOCOL_URL = os.getenv("PROTOCOL_URL", f"{BASE_URL}/v3/protocols")
 CLIENT_ID = os.getenv("CLIENT_ID", "")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET", "")
 
-DB_OUT = os.getenv("DB","db")
+DB_OUT = os.getenv("DB", "db")
 # -----------------------------------------------------------------------------#
 # DEFINE ILAB HEADERS
 # -----------------------------------------------------------------------------#
@@ -53,7 +54,7 @@ MAX_PULL = None  # no ceiling: pull every page so nothing is silently truncated
 # -----------------------------------------------------------------------------#
 if __name__ == "__main__":
     # Initialize data base and create if does not exist (schema only).
-    db_name = f"{DB_OUT}/protocol_version_control.db"
+    db_name = f"{DB_OUT}/chronos.db"
     initialize_db(db_name)
 
     # Pull protocols from the API.
@@ -66,11 +67,13 @@ if __name__ == "__main__":
     )
     # Strip, hash protocols and return only unique protocols keyed by hash.
     processed_protocols = process_protocols(protocols)
-    # Map to table rows and batch-insert (idempotent: existing hashes skipped).
-    rows = to_rows(processed_protocols)
-    n_new = insert_protocols(db_name, rows)
-    print(f"Inserted {n_new} new protocol version(s).")
 
-    # Optional JSON snapshot of the processed pull alongside the DB.
-    # with open(f"{DB_OUT}/protocol_list.json", "w") as f:
-    #     json.dump(processed_protocols, f)
+    # One pull, one timestamp: it dates both the new intervals and the closures.
+    pulled_at = get_timestamp()
+    rows = format_entry(processed_protocols, pulled_at)
+    diff = write_pull(db_name, rows, pulled_at)
+
+    print(
+        f"new={len(diff['new'])} changed={len(diff['changed'])} "
+        f"unchanged={len(diff['unchanged'])} deprecated={len(diff['absent'])}"
+    )

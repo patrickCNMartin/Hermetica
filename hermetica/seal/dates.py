@@ -11,11 +11,12 @@ from datetime import date, datetime, timedelta, timezone
 DAY = 86_400
 
 
-def now_epoch() -> int:
+def get_timestamp() -> int:
     """Current UTC time as epoch seconds."""
     return int(datetime.now(timezone.utc).timestamp())
 
-
+# Using this approach since it is consistent with the way protocols.io does
+# the whole time stamping thing. Their created_on label use epochs
 def to_epoch(value: int | float | str | date | datetime) -> int:
     """Coerce a date, datetime or ISO-8601 string to epoch seconds (UTC).
 
