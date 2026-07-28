@@ -8,8 +8,6 @@ import unicodedata
 from typing import Any
 from collections.abc import Sequence
 
-from seal.canonical import canonical_json, hash_bytes
-
 # -----------------------------------------------------------------------------#
 # CONTENT CONTRACT
 # -----------------------------------------------------------------------------#
@@ -30,12 +28,11 @@ STABLE_FIELDS: tuple[str, ...] = (
 
 # Retained and stored, never hashed. Optional: absence must not abort a pull.
 METADATA_FIELDS: tuple[str, ...] = ("created_on", "authors", "creator")
-
-
+# -----------------------------------------------------------------------------#
+# ERRRO HANDLING
+# -----------------------------------------------------------------------------#
 class MissingStableFieldsError(ValueError):
     """An upstream record lacks a field STABLE_FIELDS requires."""
-
-
 # -----------------------------------------------------------------------------#
 # SIGNED-URL SCRUB
 # -----------------------------------------------------------------------------#
@@ -121,7 +118,7 @@ def content_hash(obj: Any) -> str:
 
 
 # -----------------------------------------------------------------------------#
-# SELECT / HASH
+# SELECT
 # -----------------------------------------------------------------------------#
 def select_protocol(
     protocol: dict,

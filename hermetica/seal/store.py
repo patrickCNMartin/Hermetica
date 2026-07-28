@@ -242,7 +242,7 @@ def write_pull(
     history at all, not merely no live version: a protocol that disappears and
     comes back must open at the pull that found it again.
     """
-    pulled_at = pulled_at if pulled_at is not None else now_epoch()
+    pulled_at = pulled_at if pulled_at is not None else get_timestamp()
 
     seen = {row.protocol_id for row in rows}
     if len(seen) != len(rows):

@@ -2,6 +2,7 @@
 # IMPORT LIBS
 # -----------------------------------------------------------------------------#
 import os
+import json
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -54,19 +55,33 @@ MAX_PULL = None  # no ceiling: pull every page so nothing is silently truncated
 # -----------------------------------------------------------------------------#
 if __name__ == "__main__":
     # Initialize data base and create if does not exist (schema only).
-    db_name = f"{DB_OUT}/chronos.db"
+    db_name = f"{DB_OUT}/chronos_dummy.db"
     initialize_db(db_name)
 
     # Pull protocols from the API.
-    protocols = get_protocol_list(
+    # protocols = get_protocol_list(
+    #     PROTOCOL_URL,
+    #     HEADERS,
+    #     page_size=PAGE_SIZE,
+    #     max_pull=MAX_PULL,
+    #     **PULL_PARAMS,
+    # )
+    # with open(f"{DB_OUT}/chronos_list.json","w") as f:
+    #         json.dump(protocols, f)
+    # test pulls with dummy protocols
+    dummy_params = PULL_PARAMS.copy()
+    dummy_params["filter"] = "user_private"
+    dummy_protocols = get_protocol_list(
         PROTOCOL_URL,
         HEADERS,
         page_size=PAGE_SIZE,
         max_pull=MAX_PULL,
-        **PULL_PARAMS,
+        **dummy_params,
     )
+    with open(f"{DB_OUT}/chronos_dummy_list.json","w") as f:
+           json.dump(dummy_protocols, f)
     # Strip, hash protocols and return only unique protocols keyed by hash.
-    processed_protocols = process_protocols(protocols)
+    processed_protocols = process_protocols(dummy_protocols)
 
     # One pull, one timestamp: it dates both the new intervals and the closures.
     pulled_at = get_timestamp()

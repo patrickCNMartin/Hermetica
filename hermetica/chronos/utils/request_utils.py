@@ -7,15 +7,17 @@ import requests
 
 from seal.contract import protocol_hash, select_protocol
 
-# protocols.io numbers pages from zero: page_id=0 returns pagination.current_page 1.
-# Starting at 1 silently skips the first page.
+# -----------------------------------------------------------------------------#
+# CONSTANTS
+# -----------------------------------------------------------------------------#
+# Protocols.io follows a 0 index pages system
 FIRST_PAGE = 0
 
-
+# -----------------------------------------------------------------------------#
+# ERROR HANDLING
+# -----------------------------------------------------------------------------#
 class IncompletePullError(RuntimeError):
     """A pull collected fewer records than the server reported available."""
-
-
 # -----------------------------------------------------------------------------#
 # PULL
 # -----------------------------------------------------------------------------#
