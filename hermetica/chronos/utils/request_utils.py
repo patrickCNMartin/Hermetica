@@ -2,7 +2,7 @@
 # IMPORT LIBS
 # -----------------------------------------------------------------------------#
 from collections.abc import Sequence
-
+from time import sleep
 import requests
 
 from seal.contract import protocol_hash, select_protocol
@@ -64,47 +64,76 @@ def _walk_pages(
     return items, total
 
 
-def get_protocol_list(
-    protocol_url: str,
+def get_protocol_ids(
+    proto_list_url: str,
     headers: dict,
     page_size: int = 10,
     max_pull: int | None = None,
     **params,
 ) -> list[dict]:
-    """Walk a paginated protocol endpoint until it runs out.
-
-    Caller supplies the URL and query params. `max_pull=None` reads every page;
-    pass an int to cap it.
-
-    When the server reports `total_results` and the walk was not deliberately
-    capped, the collected count is checked against it. A mismatch retries the
-    whole pull once, then raises — an incomplete pull must never be mistaken for
-    protocols having been deleted upstream.
-    """
     start_page = int(params.pop("page_id", FIRST_PAGE))
     params["page_size"] = page_size
 
-    walk = (protocol_url, headers, params, start_page, page_size, max_pull)
-    protocols, total = _walk_pages(*walk)
+    
+    protocols, total = _walk_pages(proto_list_url,
+                                   headers,
+                                   params,
+                                   start_page,
+                                   page_size,
+                                   max_pull)
 
     # A capped or resumed walk is expected to be partial; nothing to verify.
     if total is None or max_pull is not None or start_page != FIRST_PAGE:
-        return protocols
+        return [i["id"] for i in protocols]
     if len(protocols) == total:
-        return protocols
+        return [i["id"] for i in protocols]
 
     print(
         f"Incomplete pull: got {len(protocols)} of {total} reported. Retrying once."
     )
-    protocols, total = _walk_pages(*walk)
+    protocols, total = _walk_pages(proto_list_url,
+                                   headers,
+                                   params,
+                                   start_page,
+                                   page_size,
+                                   max_pull)
+    
     if total is not None and len(protocols) != total:
         raise IncompletePullError(
             f"pulled {len(protocols)} protocols but the server reports "
             f"{total}; refusing to write a partial pull"
         )
-    return protocols
+    # Pull out ids
+    return [i["id"] for i in protocols]
 
-
+def get_protocol_list(protocol_ids: list,
+    protocol_url : str,
+    headers : dict
+) -> list:
+    # this feels a little bit hard coded but at the moment we do 
+    # a little something stupid to avoid hit rate limits
+    # we will pause so we don't hit the rate limit
+    rate_limit = 90
+    counter = 0
+    protocol_list = []
+    # prepare payload
+    for p in protocol_ids:
+        # simple prog check to see if this shit works
+        if counter % 10 == 0:
+            print(f"Processed {counter} protocols")
+        response = requests.get(
+                    url=f"{protocol_url}{p}", headers=headers)
+        response.raise_for_status()
+        payload = response.json()
+        batch = payload.get("payload", [])
+        counter += 1
+        protocol_list.append(batch)
+        
+        # sleep to avoid rate limited
+        if counter % rate_limit == 0:
+            print("Waiting for rate limit to refresh...")
+            sleep(60)   
+    return protocol_list
 # -----------------------------------------------------------------------------#
 # SELECT / HASH / DEDUPE
 # -----------------------------------------------------------------------------#
