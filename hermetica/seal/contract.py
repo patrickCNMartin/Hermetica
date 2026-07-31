@@ -5,36 +5,83 @@ import re
 import hashlib
 import json
 import unicodedata
+from dataclasses import asdict, dataclass
 from typing import Any
-from collections.abc import Sequence
 
 # -----------------------------------------------------------------------------#
 # CONTENT CONTRACT
 # -----------------------------------------------------------------------------#
-# The only fields hashed. Changing this re-hashes every protocol version.
-STABLE_FIELDS: tuple[str, ...] = (
-    "id",
-    "guid",
-    "title",
-    "description",
-    "doi",
-    "uri",
-    "guidelines",
-    "materials",
-    "materials_text",
-    "units",
-    "warning",
-)
+# Specify the fields that are going to hashed and version controlled
+# Essentially my whitelisted .gitignroe contract
+HASH_FIELDS: tuple[str,...] = ("doi",
+                               "reserved_doi",
+                               "id",
+                               "guid",
+                               "title",
+                               "description",
+                               "disclaimer",
+                               "warning",
+                               "materials",
+                               "steps",
+                               "chain",
+                               "uri",
+                               "version_class",
+                               "version_code")
+# Specify other in
+METADATA_FIELDS: tuple[str, ...] = ("created_on",
+                                    "creator",
+                                    "authors",
+                                    "last_modified_on")
 
-# Retained and stored, never hashed. Optional: absence must not abort a pull.
-METADATA_FIELDS: tuple[str, ...] = ("created_on", "authors", "creator")
+
+# Protocols pulled from protocols.io will go through reformatting to create this
+# The reason is that we have nested API requests to pull all the 
+# relevant information so creating a "template" to hold that info is usefull.
+PROTOCOL_FIELDS: tuple[str, ...] = HASH_FIELDS + METADATA_FIELDS
+
+
+# The template itself. Frozen: an artefact is a snapshot of upstream content,
+# not a working buffer — mutating one after hashing would desync blob and hash.
+@dataclass(frozen=True, slots=True)
+class ProtocolArtefact:
+    # --- hashed (HASH_FIELDS) ---------------------------------------------- #
+    id: int
+    guid: str
+    title: str
+    description: str
+    disclaimer: str
+    warning: str
+    materials: str        
+    steps: list[dict]             
+    chain: list[int]               
+    uri: str
+    doi: str
+    reserved_doi: str
+    version_class: int             
+    version_code: str              
+    # --- retained, never hashed (METADATA_FIELDS) -------------------------- #
+    created_on: int
+    last_modified_on: int
+    authors: list[dict] | None = None
+    creator: dict | None = None
+
+    def to_dict(self) -> dict:
+        """Full artefact as a plain dict — the stored/metadata-bearing form."""
+        return asdict(self)
+
+    def hashable(self) -> dict:
+        """Only the fields HASH_FIELDS declares — the form that gets hashed."""
+        return {field: getattr(self, field) for field in HASH_FIELDS}
+
+    def metadata(self) ->dict:
+        """Get meta data fields"""
+        return {field: getattr(self,field) for field in METADATA_FIELDS}
+
+# Hashing algortihm
+HASH_ALGORITHM = "sha256"
+
 # -----------------------------------------------------------------------------#
-# ERRRO HANDLING
-# -----------------------------------------------------------------------------#
-class MissingStableFieldsError(ValueError):
-    """An upstream record lacks a field STABLE_FIELDS requires."""
-# -----------------------------------------------------------------------------#
-# SIGNED-URL SCRUB
+# SANITY CHECKS - take raw pull and check if fields are present
 # -----------------------------------------------------------------------------#
 # Rich-text fields (materials_text, guidelines, ...) embed attachments as URLs
 # carrying AWS/CloudFront signing params that are regenerated on every request.
@@ -78,6 +125,57 @@ def scrub_signed_urls(value):
 # -----------------------------------------------------------------------------#
 # DATA PREPARATION
 # -----------------------------------------------------------------------------#
+def get_steps(protocol:dict)->dict:
+    # `or []` not a default: upstream sends steps=null, not a missing key.
+    steps = protocol.get("steps") or []
+    # trim the step response to only include fields we really need.
+    # Content only — ordering lives in the chain.
+    step_fields = ["id","guid","section","step","critical"]
+    steps_trimmed = [{k: v for k, v in st.items() if k in step_fields} for st in steps]
+    return  steps_trimmed
+
+def get_step_chain(steps: list[dict]) -> list:
+    """Step ids in execution order. Takes the raw steps — `number` is trimmed."""
+    return [st["id"] for st in sorted(steps, key=lambda st: st["number"])]
+
+def get_version(protocol: dict) -> dict:
+    """The versions entry this pull describes; {} when upstream lists none."""
+    versions = protocol.get("versions") or []
+    if not versions:
+        return {}
+    return max(versions, key=lambda v: v.get("modified_on") or 0)
+
+def build_protocol_artefact(protocol: dict) -> ProtocolArtefact:
+    # Scrubbed once, up front: the artefact is frozen, so nothing can be
+    # rewritten after construction.
+    protocol = scrub_signed_urls(protocol)
+    steps = get_steps(protocol)
+    chain = get_step_chain(protocol.get("steps") or [])
+    version = get_version(protocol)
+
+    # doi/version_code/modified_on live only in the versions entry, and upstream
+    # leaves that list empty for some protocols — no version record means no
+    # recorded modification, so creation is the effective last edit.
+    return ProtocolArtefact(
+        id=protocol["id"],
+        guid=protocol["guid"],
+        title=protocol["title"],
+        description=protocol["description"],
+        disclaimer=protocol["disclaimer"],
+        warning=protocol["warning"],
+        materials=protocol["materials_text"],
+        steps=steps,
+        chain=chain,
+        uri=protocol["uri"],
+        doi=version.get("doi") or "",
+        reserved_doi=protocol["reserved_doi"],
+        version_class=protocol["version_class"],
+        version_code=version.get("version_code") or "",
+        created_on=protocol["created_on"],
+        last_modified_on=version.get("modified_on") or protocol["created_on"],
+        authors=protocol["authors"],
+        creator=protocol["creator"],
+    )
 
 def _normalize(obj: Any) -> Any:
     """Recursively NFC-normalize every string, key or value."""
@@ -109,65 +207,19 @@ def canonical_json(obj: Any) -> bytes:
 # -----------------------------------------------------------------------------#
 def hash_bytes(blob: bytes) -> str:
     """SHA256 hexdigest of already-canonical bytes."""
-    return hashlib.sha256(blob).hexdigest()
+    return f"{HASH_ALGORITHM}:{hashlib.sha256(blob).hexdigest()}"
 
-
-def content_hash(obj: Any) -> str:
-    """SHA256 hexdigest of the canonical serialization."""
-    return hash_bytes(canonical_json(obj))
-
-
-# -----------------------------------------------------------------------------#
-# SELECT
-# -----------------------------------------------------------------------------#
-def select_protocol(
-    protocol: dict,
-    include_fields: Sequence[str] | None = None,
-    metadata_fields: Sequence[str] | None = None,
-) -> dict:
-    """Keep the hashed fields (required) plus the metadata fields (optional)."""
-    if include_fields is None:
-        include_fields = STABLE_FIELDS
-    if metadata_fields is None:
-        metadata_fields = METADATA_FIELDS
-
-    missing = [field for field in include_fields if field not in protocol]
-    if missing:
-        identity = protocol.get("id", protocol.get("guid", "<unidentified>"))
-        raise MissingStableFieldsError(
-            f"protocol {identity!r} is missing required field(s): "
-            f"{', '.join(missing)}"
-        )
-
-    selected = {field: protocol[field] for field in include_fields}
-    selected.update(
-        {field: protocol[field] for field in metadata_fields if field in protocol}
-    )
-    return selected
-
-
-def hashable_content(
-    selected: dict, include_fields: Sequence[str] | None = None
-) -> dict:
-    """Drop metadata and scrub signing params, leaving only stable identity."""
-    if include_fields is None:
-        include_fields = STABLE_FIELDS
-    return {
-        field: scrub_signed_urls(selected[field])
-        for field in include_fields
-        if field in selected
-    }
-
-
+# actual protocol that is going to be stored
 def protocol_blob(
-    selected: dict, include_fields: Sequence[str] | None = None
+    artefact: ProtocolArtefact
 ) -> bytes:
-    """Canonical bytes of a protocol's identity fields — the form that is stored."""
-    return canonical_json(hashable_content(selected, include_fields))
+    """Prepare protocol blob from protocol artefact"""
+    protocol = artefact.hashable()
+    return canonical_json(protocol)
 
-
+# Hash fingerprint for thhat protocol
 def protocol_hash(
-    selected: dict, include_fields: Sequence[str] | None = None
+    artefact: ProtocolArtefact,
 ) -> str:
     """Content hash of a selected protocol, metadata excluded."""
-    return hash_bytes(protocol_blob(selected, include_fields))
+    return hash_bytes(protocol_blob(artefact))

@@ -2,17 +2,19 @@
 # IMPORT LIBS
 # -----------------------------------------------------------------------------#
 from collections.abc import Sequence
-from time import sleep
+import backoff
 import requests
+from ratelimit import limits, sleep_and_retry
 
-from seal.contract import protocol_hash, select_protocol
+from seal.contract import protocol_hash
 
 # -----------------------------------------------------------------------------#
-# CONSTANTS
+# CONSTANTS & STORES
 # -----------------------------------------------------------------------------#
 # Protocols.io follows a 0 index pages system
 FIRST_PAGE = 0
-
+# Unconfirmed placeholder — verify against protocols.io docs/response headers.
+CALLS_PER_MINUTE = 100
 # -----------------------------------------------------------------------------#
 # ERROR HANDLING
 # -----------------------------------------------------------------------------#
@@ -21,6 +23,24 @@ class IncompletePullError(RuntimeError):
 # -----------------------------------------------------------------------------#
 # PULL
 # -----------------------------------------------------------------------------#
+@sleep_and_retry
+@limits(calls=CALLS_PER_MINUTE, period=60)
+@backoff.on_exception(
+    backoff.expo,
+    requests.exceptions.HTTPError,
+    max_tries=5,
+    giveup=lambda e: (
+        e.response is not None
+        and e.response.status_code < 500
+        and e.response.status_code != 429
+    ),
+)
+def _call_api(url: str, headers: dict, params: dict | None = None) -> requests.Response:
+    """Throttled, backoff-retried GET shared by every protocols.io call site."""
+    response = requests.get(url=url, headers=headers, params=params)
+    response.raise_for_status()
+    return response
+
 def _walk_pages(
     protocol_url: str,
     headers: dict,
@@ -40,10 +60,7 @@ def _walk_pages(
 
     while max_pull is None or (page - start_page) < max_pull:
         print(f"Processing Page: {page}")
-        response = requests.get(
-            url=protocol_url, headers=headers, params={**params, "page_id": page}
-        )
-        response.raise_for_status()
+        response = _call_api(protocol_url, headers, {**params, "page_id": page})
         payload = response.json()
         batch = payload.get("items", [])
         pagination = payload.get("pagination")
@@ -64,13 +81,18 @@ def _walk_pages(
     return items, total
 
 
-def get_protocol_ids(
+def fetch_protocol_list(
     proto_list_url: str,
     headers: dict,
     page_size: int = 10,
     max_pull: int | None = None,
     **params,
 ) -> list[dict]:
+    """ This function does a first call through the API to get protocol IDs.
+        We are only interested in IDs as a first pass since the protocol list
+        does actually contain all the information we need to build verifiable 
+        protocol versions.
+    """
     start_page = int(params.pop("page_id", FIRST_PAGE))
     params["page_size"] = page_size
 
@@ -103,56 +125,17 @@ def get_protocol_ids(
             f"pulled {len(protocols)} protocols but the server reports "
             f"{total}; refusing to write a partial pull"
         )
-    # Pull out ids
+    # Pull out protocol ids
     return [i["id"] for i in protocols]
 
-def get_protocol_list(protocol_ids: list,
+def fetch_protocol(protocol_id:int,
     protocol_url : str,
     headers : dict
-) -> list:
-    # this feels a little bit hard coded but at the moment we do 
-    # a little something stupid to avoid hit rate limits
-    # we will pause so we don't hit the rate limit
-    rate_limit = 90
-    counter = 0
-    protocol_list = []
-    # prepare payload
-    for p in protocol_ids:
-        # simple prog check to see if this shit works
-        if counter % 10 == 0:
-            print(f"Processed {counter} protocols")
-        response = requests.get(
-                    url=f"{protocol_url}{p}", headers=headers)
-        response.raise_for_status()
-        payload = response.json()
-        batch = payload.get("payload", [])
-        counter += 1
-        protocol_list.append(batch)
-        
-        # sleep to avoid rate limited
-        if counter % rate_limit == 0:
-            print("Waiting for rate limit to refresh...")
-            sleep(60)   
-    return protocol_list
-# -----------------------------------------------------------------------------#
-# SELECT / HASH / DEDUPE
-# -----------------------------------------------------------------------------#
-def process_protocols(
-    protocols: list,
-    include_fields: Sequence[str] | None = None,
-    metadata_fields: Sequence[str] | None = None,
-) -> dict:
-    """Apply the content contract, hash, and collapse duplicates by hash."""
-    selected = [
-        select_protocol(p, include_fields, metadata_fields) for p in protocols
-    ]
-    blobbed = [protocol_hash(p, include_fields) for p in selected]
-    return get_unique_protocols(selected, blobbed)
+) -> dict :
+    print(f"Processing Protocol: {protocol_id}")
+    response = _call_api(f"{protocol_url}{protocol_id}", headers)
+    protocol = response.json()
+    return protocol.get("payload", [])
 
 
-def get_unique_protocols(selected_protocols: list, blobbed_protocols: list) -> dict:
-    unique = {}
-    for p, h in zip(selected_protocols, blobbed_protocols):
-        if h not in unique:
-            unique[h] = p
-    return unique
+

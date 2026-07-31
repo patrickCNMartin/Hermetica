@@ -10,10 +10,10 @@ from dotenv import load_dotenv
 # -----------------------------------------------------------------------------#
 # IMPORT GENERIC UTILS
 # -----------------------------------------------------------------------------#
-from chronos.utils.request_utils import get_protocol_list, process_protocols,get_protocol_ids
+from chronos.utils.request_utils import fetch_protocol_list,fetch_protocol
 from seal.dates import get_timestamp
 from seal.store import initialize_db, format_entry, write_pull
-
+from seal.contract import build_protocol_artefact
 # -----------------------------------------------------------------------------#
 # SET ENV VARS
 # -----------------------------------------------------------------------------#
@@ -56,34 +56,33 @@ MAX_PULL = None  # no ceiling: pull every page so nothing is silently truncated
 # -----------------------------------------------------------------------------#
 if __name__ == "__main__":
     # Initialize data base and create if does not exist (schema only).
-    db_name = f"{DB_OUT}/chronos_dummy.db"
+    db_name = f"{DB_OUT}/chronos_database.db"
     initialize_db(db_name)
 
+    # One timestamp for the whole pull: every row opens its interval at the
+    # instant the pull started, not at a per-row clock read.
+    pulled_at = get_timestamp()
+
     # first we pull protocol ids from list
-    ids = get_protocol_ids(
+    ids = fetch_protocol_list(
         PROTOCOL_LIST_URL,
         HEADERS,
         page_size=PAGE_SIZE,
         max_pull=MAX_PULL,
         **PULL_PARAMS,
     )
-    
-    protocols = get_protocol_list(
-        ids,
-        PROTOCOL_URL,
-        HEADERS
-    )
-    with open(f"{DB_OUT}/chronos_protocol_list.json","w") as f:
-           json.dump(protocols, f)
-    # Strip, hash protocols and return only unique protocols keyed by hash.
-    # processed_protocols = process_protocols(protocols)
+    # Next we process each id to pull the actual protocol
+    # Note that to avoid hitting API rate limit, we added 
+    # ratelimit/backoff decorators to the api call function
+    protocols = [fetch_protocol(p,PROTOCOL_URL, HEADERS) for p in ids]
+    with open(f"{DB_OUT}/chronos_protocols.json", "w") as f:
+        json.dump(protocols,f)
+    # prepare cleaned dataclass of protocols
+    protocols = [build_protocol_artefact(p) for p in protocols]
 
-    # # One pull, one timestamp: it dates both the new intervals and the closures.
-    # pulled_at = get_timestamp()
-    # rows = format_entry(processed_protocols, pulled_at)
-    # diff = write_pull(db_name, rows, pulled_at)
-
-    # print(
-    #     f"new={len(diff['new'])} changed={len(diff['changed'])} "
-    #     f"unchanged={len(diff['unchanged'])} deprecated={len(diff['absent'])}"
-    # )
+    # format_entry hashes the exact bytes it stores, so blob and hash stay bound
+    # to their row instead of to a list index.
+    rows = format_entry(protocols, pulled_at)
+    diff = write_pull(db_name, rows, pulled_at)
+    for state, affected in diff.items():
+        print(f"{state}: {len(affected)}")

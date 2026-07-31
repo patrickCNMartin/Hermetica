@@ -5,10 +5,10 @@ description = "Protocol Version Control and Composition with Hermetica"
 requires-python = ">=3.13"
 
 dependencies = [
-    # HTTP client for the protocols.io API pull
     "requests",
-    # Loads config/secrets from env/.env
     "python-dotenv",
+    "ratelimit",
+    "backoff",
 ]
 
 [project.optional-dependencies]

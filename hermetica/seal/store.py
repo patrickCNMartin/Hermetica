@@ -4,9 +4,15 @@
 import sqlite3
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
-from seal.contract import (protocol_blob,canonical_json, hash_bytes)
+from seal.contract import (
+    METADATA_FIELDS,
+    ProtocolArtefact,
+    canonical_json,
+    hash_bytes,
+    protocol_blob,
+)
 from seal.dates import get_timestamp, to_epoch
 
 
@@ -43,14 +49,15 @@ def connect(db: str, read_only: bool = False) -> Iterator[sqlite3.Connection]:
 SCHEMA: tuple[str, ...] = (
     """
     CREATE TABLE IF NOT EXISTS protocol_content (
-        hash          TEXT PRIMARY KEY,
-        protocol_id   TEXT NOT NULL,
-        protocol_guid TEXT NOT NULL,
-        protocol_name TEXT NOT NULL,
-        protocol      TEXT NOT NULL,
-        created_on    INTEGER,
-        authors       TEXT,
-        creator       TEXT
+        hash             TEXT PRIMARY KEY,
+        protocol_id      TEXT NOT NULL,
+        protocol_guid    TEXT NOT NULL,
+        title            TEXT NOT NULL,
+        protocol         TEXT NOT NULL,
+        created_on       INTEGER,
+        creator          TEXT,
+        authors          TEXT,
+        last_modified_on INTEGER
     )
     """,
     """
@@ -88,30 +95,44 @@ def initialize_db(db: str) -> None:
 # FORMATTING DB ENTRIES
 # -----------------------------------------------------------------------------#
 class ProtocolRow(NamedTuple):
-    """One pulled protocol, spanning protocol_content and protocol_history."""
+    """One pulled protocol, spanning protocol_content and protocol_history.
+
+    Field names match protocol_content's columns — the insert binds by name.
+    """
 
     hash: str
     protocol_id: str
     protocol_guid: str
-    protocol_name: str
-    blob: str
+    title: str
+    protocol: str
     created_on: int | None
-    authors: str | None
     creator: str | None
+    authors: str | None
+    last_modified_on: int | None
     valid_from: int
 
 
-# The first N fields are protocol_content's columns, in column order.
-_CONTENT_FIELDS = 8
+# Derived, not restated: METADATA_FIELDS drives the metadata columns, so a field
+# added there cannot silently misalign the insert.
+_CONTENT_COLUMNS: tuple[str, ...] = (
+    "hash",
+    "protocol_id",
+    "protocol_guid",
+    "title",
+    "protocol",
+) + METADATA_FIELDS
 
 
-def _metadata_json(protocol: dict, field: str) -> str | None:
-    """Structured metadata stored as canonical JSON; absent stays NULL."""
-    value = protocol.get(field)
-    return None if value is None else canonical_json(value).decode("ascii")
+def _as_column(value: Any) -> Any:
+    """Scalars bind directly; structured metadata is stored as canonical JSON."""
+    if value is None or isinstance(value, (int, float, str)):
+        return value
+    return canonical_json(value).decode("ascii")
 
 
-def build_row(protocol: dict, pulled_at: int | None = None) -> ProtocolRow:
+def build_row(
+    artefact: ProtocolArtefact, pulled_at: int | None = None
+) -> ProtocolRow:
     """Build one row, hashing the exact bytes that get stored.
 
     valid_from backdates to the protocol's own created_on so a protocol authored
@@ -119,28 +140,26 @@ def build_row(protocol: dict, pulled_at: int | None = None) -> ProtocolRow:
     overrides this for a protocol_id that already has history — see there.
     """
     pulled_at = pulled_at if pulled_at is not None else get_timestamp()
-    blob = protocol_blob(protocol)
-    created_on = protocol.get("created_on")
+    blob = protocol_blob(artefact)
+    metadata = {k: _as_column(v) for k, v in artefact.metadata().items()}
+    created_on = metadata["created_on"]
     return ProtocolRow(
-        hash_bytes(blob),
-        str(protocol["id"]),
-        str(protocol["guid"]),
-        str(protocol["title"]),
-        blob.decode("ascii"),
-        created_on,
-        _metadata_json(protocol, "authors"),
-        _metadata_json(protocol, "creator"),
-        to_epoch(created_on) if created_on else pulled_at,
+        hash=hash_bytes(blob),
+        protocol_id=str(artefact.id),
+        protocol_guid=str(artefact.guid),
+        title=artefact.title,
+        protocol=blob.decode("ascii"),
+        valid_from=to_epoch(created_on) if created_on else pulled_at,
+        **metadata,
     )
 
 
 def format_entry(
-    processed: dict | list, pulled_at: int | None = None
+    artefacts: Iterable[ProtocolArtefact], pulled_at: int | None = None
 ) -> list[ProtocolRow]:
-    """Map selected protocols to rows, sharing one pull timestamp."""
-    protocols = processed.values() if isinstance(processed, dict) else processed
+    """Map protocol artefacts to rows, sharing one pull timestamp."""
     pulled_at = pulled_at if pulled_at is not None else get_timestamp()
-    return [build_row(p, pulled_at) for p in protocols]
+    return [build_row(artefact, pulled_at) for artefact in artefacts]
 
 
 # -----------------------------------------------------------------------------#
@@ -211,12 +230,10 @@ def diff_pull(db: str, rows: Iterable[ProtocolRow]) -> dict[str, list[str]]:
 # -----------------------------------------------------------------------------#
 # WRITE PATH
 # -----------------------------------------------------------------------------#
-_INSERT_CONTENT = """
-    INSERT OR IGNORE INTO protocol_content
-        (hash, protocol_id, protocol_guid, protocol_name, protocol,
-         created_on, authors, creator)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-"""
+_INSERT_CONTENT = (
+    f"INSERT OR IGNORE INTO protocol_content ({', '.join(_CONTENT_COLUMNS)}) "
+    f"VALUES ({', '.join(':' + column for column in _CONTENT_COLUMNS)})"
+)
 
 _CLOSE_INTERVAL = """
     UPDATE protocol_history SET deprecated_at = ?
@@ -258,7 +275,8 @@ def write_pull(
         closing = set(diff["changed"]) | set(diff["absent"])
         fresh = [row for row in rows if row.protocol_id in opening]
 
-        conn.executemany(_INSERT_CONTENT, [row[:_CONTENT_FIELDS] for row in fresh])
+        # Bound by name, so valid_from riding along unreferenced is harmless.
+        conn.executemany(_INSERT_CONTENT, [row._asdict() for row in fresh])
         conn.executemany(
             _CLOSE_INTERVAL, [(pulled_at, pid) for pid in sorted(closing)]
         )
