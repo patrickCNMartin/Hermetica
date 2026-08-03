@@ -22,9 +22,22 @@ from tests.conftest import ARCHETYPES
 # Restated as a literal on purpose: this is the spec. HASH_FIELDS defines protocol
 # identity, so an unreviewed edit re-hashes every version in the store — changing
 # the contract must require changing this test too.
-SPEC_HASH_FIELDS = ("doi", "reserved_doi", "id", "guid", "title", "description",
-                    "disclaimer", "warning", "materials", "steps", "chain", "uri",
-                    "version_class", "version_code")
+SPEC_HASH_FIELDS = (
+    "doi",
+    "reserved_doi",
+    "id",
+    "guid",
+    "title",
+    "description",
+    "disclaimer",
+    "warning",
+    "materials",
+    "steps",
+    "chain",
+    "uri",
+    "version_class",
+    "version_code",
+)
 SPEC_METADATA_FIELDS = ("created_on", "creator", "authors", "last_modified_on")
 
 STEP_CONTENT_FIELDS = {"id", "guid", "section", "step", "critical"}
@@ -96,11 +109,13 @@ class TestFieldSourcing:
 
     def test_get_version_picks_the_latest_modified(self):
         """All real records carry 0 or 1 versions, so this needs a built one."""
-        protocol = {"versions": [
-            {"version_code": "old", "modified_on": 100},
-            {"version_code": "new", "modified_on": 300},
-            {"version_code": "mid", "modified_on": 200},
-        ]}
+        protocol = {
+            "versions": [
+                {"version_code": "old", "modified_on": 100},
+                {"version_code": "new", "modified_on": 300},
+                {"version_code": "mid", "modified_on": 200},
+            ]
+        }
         assert get_version(protocol)["version_code"] == "new"
 
     def test_get_version_is_empty_when_upstream_lists_none(self):
@@ -174,11 +189,18 @@ class TestChainOrdering:
         assert numbers.index("2") < numbers.index("10")
 
     def test_substeps_sit_inside_their_parent(self):
-        steps = [{"id": n, "number": v} for n, v in
-                 enumerate(["8", "7", "7.10", "7.2", "10", "2"])]
+        steps = [
+            {"id": n, "number": v}
+            for n, v in enumerate(["8", "7", "7.10", "7.2", "10", "2"])
+        ]
         numbers = {s["id"]: s["number"] for s in steps}
         assert [numbers[i] for i in get_step_chain(steps)] == [
-            "2", "7", "7.2", "7.10", "8", "10"
+            "2",
+            "7",
+            "7.2",
+            "7.10",
+            "8",
+            "10",
         ]
 
     def test_a_malformed_number_raises(self):
@@ -272,8 +294,7 @@ class TestDeterminism:
 
     def test_every_archetype_hashes_distinctly(self, by_id_records):
         hashes = {
-            protocol_hash(build_protocol_artefact(r))
-            for r in by_id_records.values()
+            protocol_hash(build_protocol_artefact(r)) for r in by_id_records.values()
         }
         assert len(hashes) == len(by_id_records)
 

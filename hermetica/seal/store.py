@@ -143,9 +143,7 @@ def _as_column(value: Any) -> Any:
     return canonical_json(value).decode("ascii")
 
 
-def build_row(
-    artefact: ProtocolArtefact, pulled_at: int | None = None
-) -> ProtocolRow:
+def build_row(artefact: ProtocolArtefact, pulled_at: int | None = None) -> ProtocolRow:
     """Build one row, hashing the exact bytes that get stored.
 
     valid_from backdates to the protocol's own created_on so a protocol authored
@@ -189,8 +187,7 @@ def active_hashes(conn: sqlite3.Connection) -> dict[str, str]:
     """
     return dict(
         conn.execute(
-            "SELECT protocol_id, hash FROM protocol_history "
-            "WHERE deprecated_at IS NULL"
+            "SELECT protocol_id, hash FROM protocol_history WHERE deprecated_at IS NULL"
         ).fetchall()
     )
 
@@ -344,9 +341,7 @@ def write_pull(
 
         # Bound by name, so valid_from riding along unreferenced is harmless.
         conn.executemany(_INSERT_CONTENT, [row._asdict() for row in fresh])
-        conn.executemany(
-            _CLOSE_INTERVAL, [(pulled_at, pid) for pid in sorted(closing)]
-        )
+        conn.executemany(_CLOSE_INTERVAL, [(pulled_at, pid) for pid in sorted(closing)])
         conn.executemany(
             _OPEN_INTERVAL,
             [

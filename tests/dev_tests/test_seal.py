@@ -82,8 +82,9 @@ class TestGenerate:
         """Two locks over the same pins are the same manifest, whoever made them."""
         db, hashes = store
         a = generate_protocol_lock(hashes, db, provenance={"who": "alice"})
-        b = generate_protocol_lock(hashes, db, provenance={"who": "bob"},
-                                   as_of=LAST_YEAR)
+        b = generate_protocol_lock(
+            hashes, db, provenance={"who": "bob"}, as_of=LAST_YEAR
+        )
         assert a["manifest_hash"] == b["manifest_hash"]
         assert a["provenance"] != b["provenance"]
 
@@ -163,6 +164,7 @@ class TestExport:
 
     def test_a_body_is_the_stored_blob(self, lock):
         from seal.contract import canonical_json, hash_bytes
+
         for stored_hash, body in lock["bodies"].items():
             assert hash_bytes(canonical_json(body)) == stored_hash
 
@@ -219,8 +221,13 @@ class TestVerify:
         export_lock(lock, path)
         document = json.loads(open(path, encoding="utf-8").read())
 
-        rewritten = rewrite(str(tmp_path / "reformatted.json"), document,
-                            indent=8, sort_keys=False, separators=(",", ": "))
+        rewritten = rewrite(
+            str(tmp_path / "reformatted.json"),
+            document,
+            indent=8,
+            sort_keys=False,
+            separators=(",", ": "),
+        )
         assert is_verified(verify_lock(rewritten))
 
     def test_provenance_and_timestamps_are_outside_the_hash(self, lock, tmp_path):

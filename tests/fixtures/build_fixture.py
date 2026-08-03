@@ -26,12 +26,12 @@ SEED = 20260803
 # Chosen for structure, not content. The archetype name is what tests ask for.
 ARCHETYPES: dict[str, int] = {
     "empty_versions_null_steps": 115010,  # both version-sourced fallbacks fire
-    "signed_urls": 114262,                # & in rich text, bare & in documents
-    "baseline": 318392,                   # one version, one step
-    "empty_versions_with_steps": 91505,   # doi/version_code fall back, steps hash
-    "reserved_doi": 230286,               # doi must fall back to "", not to this
-    "version_class_differs": 113752,      # the only record where it != id
-    "dotted_steps": 233447,               # 54 steps, sub-numbering, 10 before 2
+    "signed_urls": 114262,  # & in rich text, bare & in documents
+    "baseline": 318392,  # one version, one step
+    "empty_versions_with_steps": 91505,  # doi/version_code fall back, steps hash
+    "reserved_doi": 230286,  # doi must fall back to "", not to this
+    "version_class_differs": 113752,  # the only record where it != id
+    "dotted_steps": 233447,  # 54 steps, sub-numbering, 10 before 2
 }
 
 # Epoch shift: synthetic timestamps that keep every ordering relation intact, so
@@ -75,21 +75,47 @@ def cap_steps(record: dict, keep: int | None) -> dict:
         return record
     return record | {"steps": sorted(steps, key=_step_order)[:keep]}
 
+
 # -----------------------------------------------------------------------------#
 # SYNTHETIC VALUE POOLS
 # -----------------------------------------------------------------------------#
 # Unicode is deliberate: the NFC normalization tests need composed characters to
 # work on, and `®`/`µ`/`≥` are the shapes the real corpus actually carries.
 WORDS = (
-    "buffer", "aliquot", "incubate", "centrifuge", "supernatant", "pellet",
-    "vortex", "reagent", "sample", "gradient", "eluate", "cartridge", "plate",
-    "resuspend", "digest", "peptide", "lysate", "column", "wash", "elution",
-    "café", "≥5 µL", "Bench Mixer ®", "20 °C", "filtrate", "overnight",
+    "buffer",
+    "aliquot",
+    "incubate",
+    "centrifuge",
+    "supernatant",
+    "pellet",
+    "vortex",
+    "reagent",
+    "sample",
+    "gradient",
+    "eluate",
+    "cartridge",
+    "plate",
+    "resuspend",
+    "digest",
+    "peptide",
+    "lysate",
+    "column",
+    "wash",
+    "elution",
+    "café",
+    "≥5 µL",
+    "Bench Mixer ®",
+    "20 °C",
+    "filtrate",
+    "overnight",
 )
 FIRST_NAMES = ("John", "Jane", "Ada", "Rodney", "Mira", "Otto", "Ines", "Pablo")
 LAST_NAMES = ("Doe", "Roe", "Sample", "Personman", "Example", "Testcase")
-AFFILIATIONS = ("Institute of Examples", "Synthetic Research Centre",
-                "Department of Placeholders")
+AFFILIATIONS = (
+    "Institute of Examples",
+    "Synthetic Research Centre",
+    "Department of Placeholders",
+)
 DOMAIN = "provider.com"
 
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
@@ -98,6 +124,7 @@ _TEXT_RUN = re.compile(r'(\\?"text\\?":\\?")((?:[^"\\]|\\.)*?)(\\?")')
 # characters &, so the pattern has to keep walking through them.
 _URL = re.compile(r"https?://(?:[^\s\"'<>\\]|\\u0026)+")
 _SEPARATOR = re.compile(r"(\\u0026|&)")
+
 
 # -----------------------------------------------------------------------------#
 # DETERMINISTIC MAPPING
@@ -122,21 +149,25 @@ class Synth:
 
     def guid(self, value: str) -> str:
         return self._get(
-            "guid", value,
+            "guid",
+            value,
             lambda: "".join(self.rng.choices("0123456789ABCDEF", k=len(value))),
         )
 
     def person(self, value: str) -> str:
         return self._get(
-            "person", value,
+            "person",
+            value,
             lambda: f"{self.rng.choice(FIRST_NAMES)} {self.rng.choice(LAST_NAMES)}",
         )
 
     def username(self, value: str) -> str:
         return self._get(
-            "user", value,
-            lambda: f"{self.rng.choice(FIRST_NAMES)}.{self.rng.choice(LAST_NAMES)}"
-                    .lower(),
+            "user",
+            value,
+            lambda: (
+                f"{self.rng.choice(FIRST_NAMES)}.{self.rng.choice(LAST_NAMES)}".lower()
+            ),
         )
 
     def affiliation(self, value: str) -> str:
@@ -144,26 +175,30 @@ class Synth:
 
     def email(self, value: str) -> str:
         return self._get(
-            "email", value,
-            lambda: f"{self.rng.choice(FIRST_NAMES)}.{self.rng.choice(LAST_NAMES)}"
-                    .lower() + f"@{DOMAIN}",
+            "email",
+            value,
+            lambda: (
+                f"{self.rng.choice(FIRST_NAMES)}.{self.rng.choice(LAST_NAMES)}".lower()
+                + f"@{DOMAIN}"
+            ),
         )
 
     def slug(self, value: str) -> str:
         return self._get(
-            "slug", value,
-            lambda: "".join(self.rng.choices("abcdefghijklmnopqrstuvwxyz0123456789",
-                                             k=len(value))),
+            "slug",
+            value,
+            lambda: "".join(
+                self.rng.choices("abcdefghijklmnopqrstuvwxyz0123456789", k=len(value))
+            ),
         )
 
     def host(self, value: str) -> str:
-        return self._get(
-            "host", value, lambda: f"{self.slug('abcdefg')}.example.org"
-        )
+        return self._get("host", value, lambda: f"{self.slug('abcdefg')}.example.org")
 
     def hexish(self, value: str) -> str:
         return self._get(
-            "hex", value,
+            "hex",
+            value,
             lambda: "".join(self.rng.choices("0123456789abcdef", k=len(value))),
         )
 
@@ -193,9 +228,7 @@ def synth_url(url: str, s: Synth) -> str:
         if not segment:
             continue
         stem, dot, extension = segment.rpartition(".")
-        segments.append(
-            f"{s.slug(stem)}{dot}{extension}" if dot else s.slug(segment)
-        )
+        segments.append(f"{s.slug(stem)}{dot}{extension}" if dot else s.slug(segment))
     tail = "/" + "/".join(segments) if segments else ""
     rebuilt = f"{scheme}://{s.host(host)}{tail}"
     if not mark:
@@ -242,9 +275,9 @@ def rich_text(value: str, s: Synth, blocks: int = BLOCK_CAP) -> str:
     except (json.JSONDecodeError, TypeError):
         return scrub_string(
             _TEXT_RUN.sub(
-                lambda m: m.group(1)
-                + (s.prose(6) if m.group(2).strip() else "")
-                + m.group(3),
+                lambda m: (
+                    m.group(1) + (s.prose(6) if m.group(2).strip() else "") + m.group(3)
+                ),
                 value,
             ),
             s,
@@ -271,17 +304,45 @@ def rich_text(value: str, s: Synth, blocks: int = BLOCK_CAP) -> str:
 # -----------------------------------------------------------------------------#
 # STRUCTURAL WALK
 # -----------------------------------------------------------------------------#
-IDENTITY_KEYS = {"id", "protocol_id", "version_class", "fork_id", "original_id",
-                 "previous_id", "item_id", "space_id", "version_id"}
+IDENTITY_KEYS = {
+    "id",
+    "protocol_id",
+    "version_class",
+    "fork_id",
+    "original_id",
+    "previous_id",
+    "item_id",
+    "space_id",
+    "version_id",
+}
 GUID_KEYS = {"guid", "previous_guid", "original_guid"}
 # Values kept verbatim because they are enums or presentation, not content.
 # Everything NOT listed here is synthesized — an allowlist, for the same reason
 # HASH_FIELDS is one: a denylist silently admits the field nobody thought of.
-STRUCTURAL_KEYS = {"mime", "number", "status", "key", "align", "textAlignment",
-                   "direction", "style", "mutability"}
-RICH_KEYS = {"description", "warning", "disclaimer", "guidelines", "materials_text",
-             "before_start", "protocol_references", "step", "acknowledgements",
-             "ethics_statement", "manuscript_citation"}
+STRUCTURAL_KEYS = {
+    "mime",
+    "number",
+    "status",
+    "key",
+    "align",
+    "textAlignment",
+    "direction",
+    "style",
+    "mutability",
+}
+RICH_KEYS = {
+    "description",
+    "warning",
+    "disclaimer",
+    "guidelines",
+    "materials_text",
+    "before_start",
+    "protocol_references",
+    "step",
+    "acknowledgements",
+    "ethics_statement",
+    "manuscript_citation",
+}
 EPOCH_KEYS = {"created_on", "modified_on", "published_on", "changed_on"}
 PERSON_KEYS = {"name", "full_name"}
 NAME_PART_KEYS = {"first_name", "last_name"}
@@ -310,7 +371,7 @@ def transcribe(value, s: Synth, key: str | None = None):
 
     if not value:
         return value
-    if key in STRUCTURAL_KEYS:   # includes `number` — execution order, verbatim
+    if key in STRUCTURAL_KEYS:  # includes `number` — execution order, verbatim
         return value
     # Rich text nests: a block's `data` can hold another serialized document.
     if value.lstrip().startswith('{"blocks"') or '\\"blocks\\"' in value[:24]:
@@ -344,8 +405,15 @@ def transcribe(value, s: Synth, key: str | None = None):
         return s.slug(value) if len(value) > 4 else value
     if key in {"ofn", "filename", "file_name"}:
         return f"{s.slug('abcdefgh')}.pdf"
-    if key in {"url", "link", "source", "placeholder", "thumb_url",
-               "affiliation_url", "image_url"}:
+    if key in {
+        "url",
+        "link",
+        "source",
+        "placeholder",
+        "thumb_url",
+        "affiliation_url",
+        "image_url",
+    }:
         return scrub_string(value, s)
     if key in {"doi", "reserved_doi"}:
         return f"10.99999/example.org.{s.slug('abcdefghijkl')}/v1"
@@ -380,9 +448,11 @@ def main() -> None:
     print(f"{TARGET}: {len(fixture)} records, {size // 1024} kB")
     for name, record in sorted(fixture.items()):
         steps = record.get("steps")
-        print(f"  {name:26} id={record['id']:<8} "
-              f"versions={len(record.get('versions') or [])} "
-              f"steps={'null' if steps is None else len(steps)}")
+        print(
+            f"  {name:26} id={record['id']:<8} "
+            f"versions={len(record.get('versions') or [])} "
+            f"steps={'null' if steps is None else len(steps)}"
+        )
 
 
 if __name__ == "__main__":

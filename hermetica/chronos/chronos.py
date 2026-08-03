@@ -48,7 +48,7 @@ PULL_PARAMS = {
     "key": " ",
     "order_field": "id",
     "peer_reviewed": 0,
-    "fields" : "id"
+    "fields": "id",
 }
 PAGE_SIZE = 10
 MAX_PULL = None  # no ceiling: pull every page so nothing is silently truncated
@@ -73,11 +73,11 @@ if __name__ == "__main__":
         **PULL_PARAMS,
     )
     # Next we process each id to pull the actual protocol
-    # Note that to avoid hitting API rate limit, we added 
+    # Note that to avoid hitting API rate limit, we added
     # ratelimit/backoff decorators to the api call function
-    protocols = [fetch_protocol(p,PROTOCOL_URL, HEADERS) for p in ids]
+    protocols = [fetch_protocol(p, PROTOCOL_URL, HEADERS) for p in ids]
     with open(f"{DB_OUT}/chronos_protocols.json", "w") as f:
-        json.dump(protocols,f)
+        json.dump(protocols, f)
     # prepare cleaned dataclass of protocols
     protocols = [build_protocol_artefact(p) for p in protocols]
 

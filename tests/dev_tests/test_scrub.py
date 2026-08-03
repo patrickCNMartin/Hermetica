@@ -55,8 +55,8 @@ class TestRotatingSignatures:
         document = signed["documents"][0]
         scrubbed = scrub_signed_urls(document["url"])
         host = document["url"].split("?")[0]
-        assert host in scrubbed          # URL and filename still hashed
-        assert "X-Amz-Signature=" in scrubbed   # param kept, value blanked
+        assert host in scrubbed  # URL and filename still hashed
+        assert "X-Amz-Signature=" in scrubbed  # param kept, value blanked
 
     def test_swapping_the_attached_file_is_a_version_change(self, record):
         """The URL stays in the hash, so a different file is different content.
@@ -99,7 +99,7 @@ class TestSeparatorForms:
         signed = record("signed_urls")
         scrubbed = scrub_signed_urls(signed["materials_text"])
         assert not re.search(r"X-Amz-Signature=[0-9a-f]", scrubbed)
-        assert "\\u0026X-Amz-Signature=" in scrubbed   # structure survives
+        assert "\\u0026X-Amz-Signature=" in scrubbed  # structure survives
 
     def test_bare_separator_is_scrubbed(self, record):
         signed = record("signed_urls")

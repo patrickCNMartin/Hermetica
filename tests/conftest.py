@@ -30,6 +30,7 @@ ARCHETYPES = (
 # -----------------------------------------------------------------------------#
 def _rate_limiter():
     """The RateLimitDecorator guarding _call_api, reached through its closure."""
+
     def find(function, depth: int = 0):
         for cell in getattr(function, "__closure__", None) or []:
             candidate = cell.cell_contents
@@ -40,6 +41,7 @@ def _rate_limiter():
                 if found is not None:
                     return found
         return None
+
     return find(_call_api)
 
 
@@ -68,8 +70,10 @@ def by_id_records() -> dict[str, dict]:
 @pytest.fixture
 def record(by_id_records):
     """A deep copy of one archetype, so a mutating test cannot leak into another."""
+
     def _record(archetype: str) -> dict:
         return copy.deepcopy(by_id_records[archetype])
+
     return _record
 
 
@@ -86,6 +90,8 @@ def list_items():
     Deliberately not the by-ID fixture — conflating the two shapes is what let the
     old suite drift away from the contract it was meant to be testing.
     """
+
     def _items(count: int, start: int = 1) -> list[dict]:
         return [{"id": start + n} for n in range(count)]
+
     return _items

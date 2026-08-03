@@ -17,9 +17,7 @@ def content_hash(obj) -> str:
 # invalidated — the test exists so that can never happen silently.
 FROZEN_INPUT = {"b": 1, "a": [2, {"d": None, "c": True}], "e": "café"}
 FROZEN_JSON = b'{"a":[2,{"c":true,"d":null}],"b":1,"e":"caf\\u00e9"}'
-FROZEN_HASH = (
-    "sha256:1554fedf9a439a5ddd6a772f9e112ef427d431c484c78cbd4d0a029985733377"
-)
+FROZEN_HASH = "sha256:1554fedf9a439a5ddd6a772f9e112ef427d431c484c78cbd4d0a029985733377"
 
 
 # -----------------------------------------------------------------------------#

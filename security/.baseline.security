@@ -91,6 +91,10 @@
       "path": "detect_secrets.filters.allowlist.is_line_allowlisted"
     },
     {
+      "path": "detect_secrets.filters.common.is_baseline_file",
+      "filename": "security/.baseline.security"
+    },
+    {
       "path": "detect_secrets.filters.common.is_ignored_due_to_verification_policies",
       "min_level": 2
     },
@@ -126,6 +130,494 @@
       "path": "detect_secrets.filters.heuristic.is_templated_secret"
     }
   ],
-  "results": {},
-  "generated_at": "2026-05-22T08:14:53Z"
+  "results": {
+    "tests/dev_tests/test_fixture.py": [
+      {
+        "type": "AWS Access Key",
+        "filename": "tests/dev_tests/test_fixture.py",
+        "hashed_secret": "11044df729b628b5dc843178546749b0eaaa223c",
+        "is_verified": false,
+        "line_number": 33
+      }
+    ],
+    "tests/fixtures/protocols_by_id.json": [
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "9d09a437ac0f6754b6602239fa7b79cc30fa7437",
+        "is_verified": false,
+        "line_number": 65
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "a5de10a15fbe51f28abfce63a42e40c5254dbde0",
+        "is_verified": false,
+        "line_number": 92
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "00d8d422b92d294fc8dde44620d48c42163c765b",
+        "is_verified": false,
+        "line_number": 138
+      },
+      {
+        "type": "Base64 High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "a6b6ea805c673c86112be5b22d66e33688ec4d3b",
+        "is_verified": false,
+        "line_number": 196
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "2bf7ce5f7aa7953c113533099f4039e4cf56c5cd",
+        "is_verified": false,
+        "line_number": 291
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "681be83e7df69743dfbdecb6cab2b6bfd2871583",
+        "is_verified": false,
+        "line_number": 341
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "8453bca34b3773c95e95ab5486f70fad413be337",
+        "is_verified": false,
+        "line_number": 366
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "1cd300c4faec1d0f5e0ee751be1a672bd19f24ea",
+        "is_verified": false,
+        "line_number": 425
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "1ce4c3c4fbe4e274b8049134c184c11f336ba9d3",
+        "is_verified": false,
+        "line_number": 452
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "067a16b5998d4813e9cc331ecd417abe01f30ba9",
+        "is_verified": false,
+        "line_number": 498
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "00fe6a141b11902364531bddcf485ee594547337",
+        "is_verified": false,
+        "line_number": 518
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "32c57c8fd4162c330d467edee0df46b6a98faabb",
+        "is_verified": false,
+        "line_number": 538
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "945e8cad9b09e5f342de6fc01bf1263104303483",
+        "is_verified": false,
+        "line_number": 558
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "3621fe1949209fe66f2d29b3ec57deeabffee1ca",
+        "is_verified": false,
+        "line_number": 578
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "ee4f63979c9deff38ac7423ecd7cc2e9b4446891",
+        "is_verified": false,
+        "line_number": 598
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "ba3c6ce0f5f68110399436ea6e34a641ce5b41a8",
+        "is_verified": false,
+        "line_number": 618
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "2ce52cc52a65dbe33eb5467d8e25b8d1f61fdd68",
+        "is_verified": false,
+        "line_number": 638
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "2bedd2dad1b57ddd0817ba12d10d392cc9ec82c6",
+        "is_verified": false,
+        "line_number": 658
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "2073cd96281d0fc79d5238f71a478a7af78e93c0",
+        "is_verified": false,
+        "line_number": 678
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "2e77203625eeb94eb19dbd816683c0fafb8932dd",
+        "is_verified": false,
+        "line_number": 698
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "db409935886fd0643ae197bf03d64d621afff508",
+        "is_verified": false,
+        "line_number": 718
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "a845bff9a9388f8ca4c8d8430894bbccba6a2d62",
+        "is_verified": false,
+        "line_number": 738
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "a6189ed5573d76ce9e0b25a81fef32930330212b",
+        "is_verified": false,
+        "line_number": 758
+      },
+      {
+        "type": "Base64 High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "7da4f0d0aaf65a6a68cc44363eb488569f89c84f",
+        "is_verified": false,
+        "line_number": 831
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "469a809903bc19ac7a20938ef97cbc9e807656e3",
+        "is_verified": false,
+        "line_number": 954
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "c6331598de393282bfee76938f7d21b1e0457d12",
+        "is_verified": false,
+        "line_number": 1143
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "7c8de7c52c9d3781ca7fa3a14ee91cb243c57bad",
+        "is_verified": false,
+        "line_number": 1154
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "010bec53ac26d2c99f5c71a9ceb94daca6ce7ead",
+        "is_verified": false,
+        "line_number": 1197
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "5bff04c0d5dc6a13a0c6c5bb7966eb27ef440bc2",
+        "is_verified": false,
+        "line_number": 1270
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "8d995934c1dd71be2134501d037ddbcebadc22a6",
+        "is_verified": false,
+        "line_number": 1290
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "3727227571ac909194b149ea06617b7ace10a854",
+        "is_verified": false,
+        "line_number": 1310
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "f0cc24f6dae53f346b671cd23c19b88f78fa3299",
+        "is_verified": false,
+        "line_number": 1330
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "19017ecd835747d3d89dbf6b1b556e7350c3e323",
+        "is_verified": false,
+        "line_number": 1350
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "da67ace6d52bee7992eb93c740980ad3c17b56e9",
+        "is_verified": false,
+        "line_number": 1370
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "df19d75d064a475d42f4567caf89189274723a8f",
+        "is_verified": false,
+        "line_number": 1558
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "6783b6f263048e7270333d1ce478cea59970c6a7",
+        "is_verified": false,
+        "line_number": 1569
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "2a73dcba5a182468fafae1cc28d0d8736148b285",
+        "is_verified": false,
+        "line_number": 1694
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "7696df3123fc71042e6bc133de0ac9bf0be47491",
+        "is_verified": false,
+        "line_number": 1721
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "d90cfdf3e0f29d25cbeb3e643c97ac7e8e121704",
+        "is_verified": false,
+        "line_number": 1767
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "7d9f19d3ca7671d42ef6fdb2751b6f985b96f785",
+        "is_verified": false,
+        "line_number": 1787
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "c5e0fc4b89d182de6bc5113663b302fc0598a466",
+        "is_verified": false,
+        "line_number": 1807
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "bea22be34e6870c5ac22a9bb9c199d98d29f7e5e",
+        "is_verified": false,
+        "line_number": 1827
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "51752ea1dc894e2471d70a2559ccac612953086d",
+        "is_verified": false,
+        "line_number": 1847
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "53f7a7587f2179e5cf9916a3bd11e80b30581cdd",
+        "is_verified": false,
+        "line_number": 1867
+      },
+      {
+        "type": "Base64 High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "89135b405729f5117cb2dad24a055a7ef1816dc4",
+        "is_verified": false,
+        "line_number": 1935
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "e86249cfda74f0b7a17edfb516c3a00cfc209208",
+        "is_verified": false,
+        "line_number": 2106
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "a251c06932a0a511e9d9c50624e1af3a0e52a84e",
+        "is_verified": false,
+        "line_number": 2127
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "c34f98d1fad1512f11519f6ab83a090f8ec3408a",
+        "is_verified": false,
+        "line_number": 2154
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "fa7ce6920c009d38efd383401dc02c71665c55b5",
+        "is_verified": false,
+        "line_number": 2200
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "7e9381a7954fe12fe614eecf2479622674ddd4d6",
+        "is_verified": false,
+        "line_number": 2220
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "e2a8510ba3da8fd253b6a4dd6c4163efb50bf0fd",
+        "is_verified": false,
+        "line_number": 2225
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "a38d9e35dc5be88ab3bb249d8361557e61b91efb",
+        "is_verified": false,
+        "line_number": 2240
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "efef2ddf01f577a024043c827b0fa2804b6f2ba3",
+        "is_verified": false,
+        "line_number": 2245
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "ae341089ef7c23a3d4553644c64ab8d72b9fc7b1",
+        "is_verified": false,
+        "line_number": 2260
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "2487f7ede67b32493f5f58f7b03a5e0a34ebb73e",
+        "is_verified": false,
+        "line_number": 2280
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "51b65f9cffc66070b54a3accc359f7d4493db341",
+        "is_verified": false,
+        "line_number": 2320
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "2bbe06613de1cd5e4dd228e8dbc8304a536c6f61",
+        "is_verified": false,
+        "line_number": 2340
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "6a7f66fd3fda88edc195cfb1046eb485b71a5006",
+        "is_verified": false,
+        "line_number": 2345
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "0100a40dbb7a0088223f5c9bea68c45679afe415",
+        "is_verified": false,
+        "line_number": 2380
+      },
+      {
+        "type": "Base64 High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "de0826907067b3ef7b8c18c30f2af6b855854101",
+        "is_verified": false,
+        "line_number": 2469
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "e6afa3cf84ef5e4bb53ea3427d0ff9a8c3bff5e8",
+        "is_verified": false,
+        "line_number": 2601
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "54ae2ef02d4d696812d08c862f0feb6cdd47b793",
+        "is_verified": false,
+        "line_number": 2674
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "53132226e319688c43711869028c5176afc8bb7e",
+        "is_verified": false,
+        "line_number": 2694
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "187b347cf24f8cdace5f0c7aa7b000988e5dc7a6",
+        "is_verified": false,
+        "line_number": 2714
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "c0ac745b961061e88135394f6eb7c30d49e03f40",
+        "is_verified": false,
+        "line_number": 2734
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "c89cb23d9a2dd20155eff683f676359c938bea37",
+        "is_verified": false,
+        "line_number": 2754
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "f07e78d7a953af2e192b56d2327cf15c40d96b7d",
+        "is_verified": false,
+        "line_number": 2774
+      },
+      {
+        "type": "Base64 High Entropy String",
+        "filename": "tests/fixtures/protocols_by_id.json",
+        "hashed_secret": "8c536f0b388816ab996ca400f32adf67fc4b0ed7",
+        "is_verified": false,
+        "line_number": 2847
+      }
+    ]
+  },
+  "generated_at": "2026-08-03T13:32:22Z"
 }

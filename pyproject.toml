@@ -17,7 +17,9 @@ dependencies = [
 # app in Nix leaks its closure onto PYTHONPATH and shadows this venv.
 dev = [
     "ruff",
-    "detect-secrets",
+    # [gibberish] is required, not optional: security/.baseline.security records
+    # the gibberish filter, so loading the baseline imports gibberish_detector.
+    "detect-secrets[gibberish]",
     "pre-commit",
     "pytest",
     "pytest-cov",

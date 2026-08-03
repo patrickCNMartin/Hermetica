@@ -13,29 +13,33 @@ from typing import Any
 # -----------------------------------------------------------------------------#
 # Specify the fields that are going to hashed and version controlled
 # Essentially my whitelisted .gitignroe contract
-HASH_FIELDS: tuple[str,...] = ("doi",
-                               "reserved_doi",
-                               "id",
-                               "guid",
-                               "title",
-                               "description",
-                               "disclaimer",
-                               "warning",
-                               "materials",
-                               "steps",
-                               "chain",
-                               "uri",
-                               "version_class",
-                               "version_code")
+HASH_FIELDS: tuple[str, ...] = (
+    "doi",
+    "reserved_doi",
+    "id",
+    "guid",
+    "title",
+    "description",
+    "disclaimer",
+    "warning",
+    "materials",
+    "steps",
+    "chain",
+    "uri",
+    "version_class",
+    "version_code",
+)
 # Specify other in
-METADATA_FIELDS: tuple[str, ...] = ("created_on",
-                                    "creator",
-                                    "authors",
-                                    "last_modified_on")
+METADATA_FIELDS: tuple[str, ...] = (
+    "created_on",
+    "creator",
+    "authors",
+    "last_modified_on",
+)
 
 
 # Protocols pulled from protocols.io will go through reformatting to create this
-# The reason is that we have nested API requests to pull all the 
+# The reason is that we have nested API requests to pull all the
 # relevant information so creating a "template" to hold that info is usefull.
 PROTOCOL_FIELDS: tuple[str, ...] = HASH_FIELDS + METADATA_FIELDS
 
@@ -51,14 +55,14 @@ class ProtocolArtefact:
     description: str
     disclaimer: str
     warning: str
-    materials: str        
-    steps: list[dict]             
-    chain: list[int]               
+    materials: str
+    steps: list[dict]
+    chain: list[int]
     uri: str
     doi: str
     reserved_doi: str
-    version_class: int             
-    version_code: str              
+    version_class: int
+    version_code: str
     # --- retained, never hashed (METADATA_FIELDS) -------------------------- #
     created_on: int
     last_modified_on: int
@@ -73,9 +77,10 @@ class ProtocolArtefact:
         """Only the fields HASH_FIELDS declares — the form that gets hashed."""
         return {field: getattr(self, field) for field in HASH_FIELDS}
 
-    def metadata(self) ->dict:
+    def metadata(self) -> dict:
         """Get meta data fields"""
-        return {field: getattr(self,field) for field in METADATA_FIELDS}
+        return {field: getattr(self, field) for field in METADATA_FIELDS}
+
 
 # Hashing algortihm
 HASH_ALGORITHM = "sha256"
@@ -122,25 +127,29 @@ def scrub_signed_urls(value):
         return [scrub_signed_urls(v) for v in value]
     return value
 
+
 # -----------------------------------------------------------------------------#
 # DATA PREPARATION
 # -----------------------------------------------------------------------------#
-def get_steps(protocol:dict)->dict:
+def get_steps(protocol: dict) -> dict:
     # `or []` not a default: upstream sends steps=null, not a missing key.
     steps = protocol.get("steps") or []
     # trim the step response to only include fields we really need.
     # Content only — ordering lives in the chain.
-    step_fields = ["id","guid","section","step","critical"]
+    step_fields = ["id", "guid", "section", "step", "critical"]
     steps_trimmed = [{k: v for k, v in st.items() if k in step_fields} for st in steps]
-    return  steps_trimmed
+    return steps_trimmed
+
 
 def _step_order(step: dict) -> tuple[int, ...]:
     # `number` is a dotted string ("7.1"). Sorting it as text puts 10 before 2.
     return tuple(int(part) for part in step["number"].split("."))
 
+
 def get_step_chain(steps: list[dict]) -> list:
     """Step ids in execution order. Takes the raw steps — `number` is trimmed."""
     return [st["id"] for st in sorted(steps, key=_step_order)]
+
 
 def get_version(protocol: dict) -> dict:
     """The versions entry this pull describes; {} when upstream lists none."""
@@ -148,6 +157,7 @@ def get_version(protocol: dict) -> dict:
     if not versions:
         return {}
     return max(versions, key=lambda v: v.get("modified_on") or 0)
+
 
 def build_protocol_artefact(protocol: dict) -> ProtocolArtefact:
     # Scrubbed once, up front: the artefact is frozen, so nothing can be
@@ -181,6 +191,7 @@ def build_protocol_artefact(protocol: dict) -> ProtocolArtefact:
         creator=protocol["creator"],
     )
 
+
 def _normalize(obj: Any) -> Any:
     """Recursively NFC-normalize every string, key or value."""
     if isinstance(obj, str):
@@ -213,13 +224,13 @@ def hash_bytes(blob: bytes) -> str:
     """SHA256 hexdigest of already-canonical bytes."""
     return f"{HASH_ALGORITHM}:{hashlib.sha256(blob).hexdigest()}"
 
+
 # actual protocol that is going to be stored
-def protocol_blob(
-    artefact: ProtocolArtefact
-) -> bytes:
+def protocol_blob(artefact: ProtocolArtefact) -> bytes:
     """Prepare protocol blob from protocol artefact"""
     protocol = artefact.hashable()
     return canonical_json(protocol)
+
 
 # Hash fingerprint for thhat protocol
 def protocol_hash(

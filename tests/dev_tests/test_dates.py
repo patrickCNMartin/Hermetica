@@ -14,19 +14,22 @@ from seal.dates import (
     to_epoch,
 )
 
-EPOCH = 1745934254                    # 2025-04-29T13:44:14Z
-DAY_START = 1745884800                # 2025-04-29T00:00:00Z
-DAY_END = 1745971199                  # 2025-04-29T23:59:59Z
+EPOCH = 1745934254  # 2025-04-29T13:44:14Z
+DAY_START = 1745884800  # 2025-04-29T00:00:00Z
+DAY_END = 1745971199  # 2025-04-29T23:59:59Z
 
 
 class TestToEpoch:
-    @pytest.mark.parametrize("value", [
-        EPOCH,
-        float(EPOCH),
-        "2025-04-29T13:44:14+00:00",
-        "2025-04-29T13:44:14Z",
-        datetime(2025, 4, 29, 13, 44, 14, tzinfo=timezone.utc),
-    ])
+    @pytest.mark.parametrize(
+        "value",
+        [
+            EPOCH,
+            float(EPOCH),
+            "2025-04-29T13:44:14+00:00",
+            "2025-04-29T13:44:14Z",
+            datetime(2025, 4, 29, 13, 44, 14, tzinfo=timezone.utc),
+        ],
+    )
     def test_equivalent_forms_agree(self, value):
         assert to_epoch(value) == EPOCH
 

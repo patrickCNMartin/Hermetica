@@ -15,6 +15,7 @@ def get_timestamp() -> int:
     """Current UTC time as epoch seconds."""
     return int(datetime.now(timezone.utc).timestamp())
 
+
 # Using this approach since it is consistent with the way protocols.io does
 # the whole time stamping thing. Their created_on label use epochs
 def to_epoch(value: int | float | str | date | datetime) -> int:
@@ -34,8 +35,9 @@ def to_epoch(value: int | float | str | date | datetime) -> int:
         return int(value.timestamp())
     if isinstance(value, date):
         return int(
-            datetime(value.year, value.month, value.day, tzinfo=timezone.utc)
-            .timestamp()
+            datetime(
+                value.year, value.month, value.day, tzinfo=timezone.utc
+            ).timestamp()
         )
     raise TypeError(f"cannot convert {type(value).__name__} to epoch")
 

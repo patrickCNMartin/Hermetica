@@ -12,11 +12,15 @@ from ratelimit import limits, sleep_and_retry
 FIRST_PAGE = 0
 # Unconfirmed placeholder — verify against protocols.io docs/response headers.
 CALLS_PER_MINUTE = 100
+
+
 # -----------------------------------------------------------------------------#
 # ERROR HANDLING
 # -----------------------------------------------------------------------------#
 class IncompletePullError(RuntimeError):
     """A pull collected fewer records than the server reported available."""
+
+
 # -----------------------------------------------------------------------------#
 # PULL
 # -----------------------------------------------------------------------------#
@@ -37,6 +41,7 @@ def _call_api(url: str, headers: dict, params: dict | None = None) -> requests.R
     response = requests.get(url=url, headers=headers, params=params)
     response.raise_for_status()
     return response
+
 
 def _walk_pages(
     protocol_url: str,
@@ -85,21 +90,17 @@ def fetch_protocol_list(
     max_pull: int | None = None,
     **params,
 ) -> list[dict]:
-    """ This function does a first call through the API to get protocol IDs.
-        We are only interested in IDs as a first pass since the protocol list
-        does actually contain all the information we need to build verifiable 
-        protocol versions.
+    """This function does a first call through the API to get protocol IDs.
+    We are only interested in IDs as a first pass since the protocol list
+    does actually contain all the information we need to build verifiable
+    protocol versions.
     """
     start_page = int(params.pop("page_id", FIRST_PAGE))
     params["page_size"] = page_size
 
-    
-    protocols, total = _walk_pages(proto_list_url,
-                                   headers,
-                                   params,
-                                   start_page,
-                                   page_size,
-                                   max_pull)
+    protocols, total = _walk_pages(
+        proto_list_url, headers, params, start_page, page_size, max_pull
+    )
 
     # A capped or resumed walk is expected to be partial; nothing to verify.
     if total is None or max_pull is not None or start_page != FIRST_PAGE:
@@ -107,16 +108,11 @@ def fetch_protocol_list(
     if len(protocols) == total:
         return [i["id"] for i in protocols]
 
-    print(
-        f"Incomplete pull: got {len(protocols)} of {total} reported. Retrying once."
+    print(f"Incomplete pull: got {len(protocols)} of {total} reported. Retrying once.")
+    protocols, total = _walk_pages(
+        proto_list_url, headers, params, start_page, page_size, max_pull
     )
-    protocols, total = _walk_pages(proto_list_url,
-                                   headers,
-                                   params,
-                                   start_page,
-                                   page_size,
-                                   max_pull)
-    
+
     if total is not None and len(protocols) != total:
         raise IncompletePullError(
             f"pulled {len(protocols)} protocols but the server reports "
@@ -125,14 +121,9 @@ def fetch_protocol_list(
     # Pull out protocol ids
     return [i["id"] for i in protocols]
 
-def fetch_protocol(protocol_id:int,
-    protocol_url : str,
-    headers : dict
-) -> dict :
+
+def fetch_protocol(protocol_id: int, protocol_url: str, headers: dict) -> dict:
     print(f"Processing Protocol: {protocol_id}")
     response = _call_api(f"{protocol_url}{protocol_id}", headers)
     protocol = response.json()
     return protocol.get("payload", [])
-
-
-

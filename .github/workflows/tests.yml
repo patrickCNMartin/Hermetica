@@ -1,0 +1,73 @@
+name: tests
+
+# The uv jobs are the contract: three commands, no Nix knowledge required.
+# The nix job is a health check on the flake, not a tool anyone must install.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: "3.13"
+
+      # --locked fails if uv.lock no longer matches pyproject.toml, so a
+      # dependency change that was never re-locked cannot pass CI.
+      - run: uv sync --extra dev --locked
+
+      - run: uv run pytest tests/dev_tests --cov=chronos --cov=seal --cov-report=term-missing
+
+  lint:
+    name: ruff + detect-secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: "3.13"
+
+      - run: uv sync --extra dev --locked
+
+      - name: ruff check
+        run: uv run ruff check .
+
+      - name: ruff format
+        run: uv run ruff format --check .
+
+      # Tracked files only — the same set the pre-push hook would see. The
+      # baseline is excluded from its own scan: it stores hashed secrets, so
+      # scanning it re-reports every entry it was written to suppress.
+      - name: detect-secrets
+        run: |
+          git ls-files -z ':!:security/.baseline.security' \
+            | xargs -0 uv run detect-secrets-hook --baseline security/.baseline.security
+
+  nix:
+    name: flake health
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: DeterminateSystems/nix-installer-action@v22
+
+      # Runs the suite through the dev shell: proves flake.nix + flake.lock
+      # still bootstrap a working venv, which the uv jobs never exercise.
+      - run: nix develop --command uv run pytest tests/dev_tests -q

@@ -153,6 +153,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/4e/5e/4f5fe4b89fde1dc3ed0eb51bd4ce4c0bca406246673d370ea2ad0c58d747/detect_secrets-1.5.0-py3-none-any.whl", hash = "sha256:e24e7b9b5a35048c313e983f76c4bd09dad89f045ff059e354f9943bf45aa060", size = 120341, upload-time = "2024-05-06T17:46:16.628Z" },
 ]
 
+[package.optional-dependencies]
+gibberish = [
+    { name = "gibberish-detector" },
+]
+
 [[package]]
 name = "distlib"
 version = "0.4.3"
@@ -172,6 +177,15 @@ wheels = [
 ]
 
 [[package]]
+name = "gibberish-detector"
+version = "0.1.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f6/24/a5c518032bdb704128ee96f26ac20d9bc60ac32bb71bf3af0424ab287ac1/gibberish_detector-0.1.1.tar.gz", hash = "sha256:26264782f6d16f90ef03b209e255ec50ef6de6d258404b4b4cd468ebc069758c", size = 6564, upload-time = "2021-03-04T15:05:58.968Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3a/70/2ba30513075aac4df46849a086037ce36e1e7ca1f87f84840c8bc40825e6/gibberish_detector-0.1.1-py3-none-any.whl", hash = "sha256:520dd48533c4bd30b2a6051c26131369d946c147288c5f7fce4e125a0e5d341d", size = 10966, upload-time = "2021-03-04T15:05:57.826Z" },
+]
+
+[[package]]
 name = "hermetica"
 version = "0.1.0"
 source = { editable = "." }
@@ -184,7 +198,7 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
-    { name = "detect-secrets" },
+    { name = "detect-secrets", extra = ["gibberish"] },
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -195,7 +209,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "backoff" },
-    { name = "detect-secrets", marker = "extra == 'dev'" },
+    { name = "detect-secrets", extras = ["gibberish"], marker = "extra == 'dev'" },
     { name = "pre-commit", marker = "extra == 'dev'" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pytest-cov", marker = "extra == 'dev'" },

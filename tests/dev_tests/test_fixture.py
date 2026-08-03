@@ -20,9 +20,17 @@ RAW = FIXTURE.read_text(encoding="utf-8")
 
 # Real values from the source corpus. None of these may ever appear again.
 FORBIDDEN = (
-    "Karolinska", "SciLifeLab", "scilifelab", "clinicalgenomics",
-    "protocols.io", "amazonaws", "Covaris", "covaris", "cryoPREP",
-    "tissueTUBE", "AKIAWFTFYUBUZ2U2JGOS",
+    "Karolinska",
+    "SciLifeLab",
+    "scilifelab",
+    "clinicalgenomics",
+    "protocols.io",
+    "amazonaws",
+    "Covaris",
+    "covaris",
+    "cryoPREP",
+    "tissueTUBE",
+    "AKIAWFTFYUBUZ2U2JGOS",
 )
 
 
