@@ -4,6 +4,7 @@
 !.gitignore
 !.pre-commit-config.yaml
 !security/.baseline.security
+!README
 
 # Black List - Make sure that variation on .env will be excluded no matter what 
 .env
