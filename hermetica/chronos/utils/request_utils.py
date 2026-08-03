@@ -1,12 +1,9 @@
 # -----------------------------------------------------------------------------#
 # IMPORT LIBS
 # -----------------------------------------------------------------------------#
-from collections.abc import Sequence
 import backoff
 import requests
 from ratelimit import limits, sleep_and_retry
-
-from seal.contract import protocol_hash
 
 # -----------------------------------------------------------------------------#
 # CONSTANTS & STORES

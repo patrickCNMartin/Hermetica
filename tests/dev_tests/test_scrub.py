@@ -1,87 +1,132 @@
 # -----------------------------------------------------------------------------#
 # TESTS — signed-URL scrubbing before hashing
 # -----------------------------------------------------------------------------#
-from seal.contract import (
-    hashable_content,
-    protocol_hash,
-    scrub_signed_urls,
-)
+"""The regression these guard: attachments carry AWS/CloudFront signing params
+that upstream regenerates on every request. Left in, an untouched protocol forks
+a new version on every nightly pull — measured at two hashes 34 s apart."""
 
-# Real payload from protocol 114262 (an image attached inside materials_text).
-# Two consecutive pulls 34 seconds apart; only X-Amz-Date and X-Amz-Signature
-# differ. Verbatim so a regex change that stops matching this is caught.
-REAL_A = (
-    "https://protocols-files.s3.amazonaws.com/files/ssyscbbv7.png"
-    "?X-Amz-Algorithm=AWS4-HMAC-SHA256"
-    "\\u0026X-Amz-Credential=AKIAWFTFYUBUZ2U2JGOS%2F20260727%2Fus-east-1%2Fs3%2F"
-    "aws4_request"
-    "\\u0026X-Amz-Date=20260727T133635Z"
-    "\\u0026X-Amz-Expires=604800"
-    "\\u0026X-Amz-SignedHeaders=host"
-    "\\u0026X-Amz-Signature="
-    "4f6ce7d185d98044d8d95ad37a2756b5a07bd355cc361f21b9fcb596df2c24bc"
-    '","name":"Cp02.Png"'
-)
-REAL_B = REAL_A.replace("20260727T133635Z", "20260727T133709Z").replace(
-    "4f6ce7d185d98044d8d95ad37a2756b5a07bd355cc361f21b9fcb596df2c24bc",
-    "716127447edf47fd0c9bfb9f88d22515eb79fb8b19f91b4b59044e7820c564eb",
+import json
+import re
+
+from seal.contract import build_protocol_artefact, protocol_hash, scrub_signed_urls
+
+# Rotate the values a real re-request would change, leaving everything else alone.
+_ROTATE = re.compile(
+    r"((?:X-Amz-Signature|X-Amz-Date|X-Amz-Credential|Policy|Signature)=)"
+    r"([0-9a-zA-Z%/_-]+)",
+    re.IGNORECASE,
 )
 
 
-def protocol(materials_text):
-    return {"id": 1, "guid": "G", "title": "T", "description": "",
-            "doi": "", "uri": "u", "guidelines": None, "materials": [],
-            "materials_text": materials_text, "units": [], "warning": None}
+def rotate(value):
+    """Simulate a second pull: same content, freshly minted signatures."""
+    if isinstance(value, str):
+        return _ROTATE.sub(lambda m: m.group(1) + "f" * len(m.group(2)), value)
+    if isinstance(value, dict):
+        return {k: rotate(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [rotate(v) for v in value]
+    return value
 
 
 # -----------------------------------------------------------------------------#
 # 1. THE REGRESSION THAT MOTIVATED THIS
 # -----------------------------------------------------------------------------#
-class TestRealPayload:
-    def test_rotating_signature_collapses_to_one_hash(self):
+class TestRotatingSignatures:
+    def test_rotating_signature_collapses_to_one_hash(self, record):
         """Two pulls of an unedited protocol must be ONE version."""
-        assert REAL_A != REAL_B
-        assert protocol_hash(protocol(REAL_A)) == protocol_hash(protocol(REAL_B))
+        signed = record("signed_urls")
+        rotated = rotate(signed)
+        assert rotated != signed  # the payloads genuinely differ
+        assert protocol_hash(build_protocol_artefact(signed)) == protocol_hash(
+            build_protocol_artefact(rotated)
+        )
 
-    def test_signature_value_is_gone(self):
-        scrubbed = scrub_signed_urls(REAL_A)
-        assert "4f6ce7d185d98044" not in scrubbed
-        assert "20260727T133635Z" not in scrubbed
-        assert "AKIAWFTFYUBUZ2U2JGOS" not in scrubbed
+    def test_signature_values_are_gone(self, record):
+        signed = record("signed_urls")
+        scrubbed = json.dumps(scrub_signed_urls(signed))
+        assert not re.search(r"X-Amz-Signature=[^\"&\\\s]", scrubbed)
+        assert not re.search(r"X-Amz-Date=[^\"&\\\s]", scrubbed)
+        assert not re.search(r"X-Amz-Credential=[^\"&\\\s]", scrubbed)
 
-    def test_the_file_identity_survives(self):
+    def test_the_file_identity_survives(self, record):
         """Scrub the credentials, keep the thing they point at."""
-        scrubbed = scrub_signed_urls(REAL_A)
-        assert "protocols-files.s3.amazonaws.com/files/ssyscbbv7.png" in scrubbed
-        assert "Cp02.Png" in scrubbed
+        signed = record("signed_urls")
+        document = signed["documents"][0]
+        scrubbed = scrub_signed_urls(document["url"])
+        host = document["url"].split("?")[0]
+        assert host in scrubbed          # URL and filename still hashed
         assert "X-Amz-Signature=" in scrubbed   # param kept, value blanked
 
+    def test_swapping_the_attached_file_is_a_version_change(self, record):
+        """The URL stays in the hash, so a different file is different content.
+
+        The hashed attachments are the ones embedded in rich text; the top-level
+        `documents` array is outside HASH_FIELDS and deliberately invisible.
+        """
+        signed = record("signed_urls")
+        before = protocol_hash(build_protocol_artefact(signed))
+        signed["materials_text"] = signed["materials_text"].replace(
+            ".example.org/", ".example.org/renamed-"
+        )
+        assert protocol_hash(build_protocol_artefact(signed)) != before
+
+    def test_the_documents_array_is_outside_the_hash(self, record):
+        """It is not in HASH_FIELDS — editing it must be invisible to versioning."""
+        signed = record("signed_urls")
+        before = protocol_hash(build_protocol_artefact(signed))
+        signed["documents"][0]["url"] = "https://elsewhere.example.org/x.pdf"
+        assert protocol_hash(build_protocol_artefact(signed)) == before
+
 
 # -----------------------------------------------------------------------------#
-# 2. STABILITY
+# 2. BOTH EMBEDDING FORMS — the fixture must keep carrying them
+# -----------------------------------------------------------------------------#
+class TestSeparatorForms:
+    def test_rich_text_uses_the_escaped_separator(self, record):
+        """Inside a double-encoded document the separator is the literal \\u0026."""
+        signed = record("signed_urls")
+        assert "\\u0026" in signed["materials_text"]
+        assert "X-Amz-Signature" in signed["materials_text"]
+
+    def test_documents_use_a_bare_separator(self, record):
+        """A plain URL field escapes nothing — the regex must match both."""
+        signed = record("signed_urls")
+        url = signed["documents"][0]["url"]
+        assert "&X-Amz" in url and "\\u0026" not in url
+
+    def test_escaped_separator_is_scrubbed(self, record):
+        signed = record("signed_urls")
+        scrubbed = scrub_signed_urls(signed["materials_text"])
+        assert not re.search(r"X-Amz-Signature=[0-9a-f]", scrubbed)
+        assert "\\u0026X-Amz-Signature=" in scrubbed   # structure survives
+
+    def test_bare_separator_is_scrubbed(self, record):
+        signed = record("signed_urls")
+        scrubbed = scrub_signed_urls(signed["documents"][0]["url"])
+        assert not re.search(r"X-Amz-Signature=[0-9a-f]", scrubbed)
+        assert "&X-Amz-Signature=" in scrubbed
+
+
+# -----------------------------------------------------------------------------#
+# 3. STABILITY
 # -----------------------------------------------------------------------------#
 class TestStability:
-    def test_idempotent(self):
-        once = scrub_signed_urls(REAL_A)
+    def test_idempotent(self, record):
+        signed = record("signed_urls")
+        once = scrub_signed_urls(signed["materials_text"])
         assert scrub_signed_urls(once) == once
 
     def test_reaches_nested_structures(self):
-        nested = {"a": [{"b": REAL_A}]}
-        assert protocol_hash(protocol(nested)) == protocol_hash(
-            protocol({"a": [{"b": REAL_B}]})
-        )
-
-    def test_applies_through_hashable_content(self):
-        """The blob that gets stored is the scrubbed one."""
-        content = hashable_content(protocol(REAL_A))
-        assert "4f6ce7d185d98044" not in content["materials_text"]
-
-    def test_bare_ampersand_separator_also_works(self):
-        """Not every embedding escapes the separator."""
-        a = "http://x/f.png?X-Amz-Date=111&X-Amz-Signature=aaa&keep=yes"
-        b = "http://x/f.png?X-Amz-Date=222&X-Amz-Signature=bbb&keep=yes"
+        a = {"a": [{"b": "http://x/f.png?X-Amz-Date=111&X-Amz-Signature=aaa"}]}
+        b = {"a": [{"b": "http://x/f.png?X-Amz-Date=222&X-Amz-Signature=bbb"}]}
         assert scrub_signed_urls(a) == scrub_signed_urls(b)
-        assert "keep=yes" in scrub_signed_urls(a)
+
+    def test_applies_through_the_artefact(self, record):
+        """The blob that gets stored is the scrubbed one."""
+        signed = record("signed_urls")
+        content = build_protocol_artefact(signed).hashable()
+        assert not re.search(r"X-Amz-Signature=[0-9a-f]", content["materials"])
 
     def test_cloudfront_params(self):
         a = "http://x/f.png?Policy=AAA&Signature=BBB&Key-Pair-Id=CCC"
@@ -90,20 +135,28 @@ class TestStability:
 
 
 # -----------------------------------------------------------------------------#
-# 3. WHAT MUST *NOT* BE TOUCHED
+# 4. WHAT MUST *NOT* BE TOUCHED
 # -----------------------------------------------------------------------------#
 class TestPrecision:
-    def test_real_content_edit_still_changes_the_hash(self):
-        """The whole point of hashing materials_text is to see genuine edits."""
-        h1 = protocol_hash(protocol("Add 5 mL buffer."))
-        h2 = protocol_hash(protocol("Add 10 mL buffer."))
-        assert h1 != h2
+    def test_real_content_edit_still_changes_the_hash(self, record):
+        """The whole point of hashing materials is to see genuine edits."""
+        signed = record("signed_urls")
+        before = protocol_hash(build_protocol_artefact(signed))
+        signed["materials_text"] = signed["materials_text"].replace(
+            '"text":"', '"text":"Add 10 mL buffer. ', 1
+        )
+        assert protocol_hash(build_protocol_artefact(signed)) != before
 
-    def test_edit_alongside_a_rotating_signature_is_still_detected(self):
+    def test_edit_alongside_a_rotating_signature_is_still_detected(self, record):
         """A signature rotating must not mask a real change in the same field."""
-        h1 = protocol_hash(protocol(REAL_A + " Add 5 mL buffer."))
-        h2 = protocol_hash(protocol(REAL_B + " Add 10 mL buffer."))
-        assert h1 != h2
+        signed = record("signed_urls")
+        edited = rotate(signed)
+        edited["materials_text"] = edited["materials_text"].replace(
+            '"text":"', '"text":"Add 10 mL buffer. ', 1
+        )
+        assert protocol_hash(build_protocol_artefact(signed)) != protocol_hash(
+            build_protocol_artefact(edited)
+        )
 
     def test_prose_is_not_scrubbed(self):
         """A leading separator is required, so plain text survives."""
@@ -111,7 +164,7 @@ class TestPrecision:
         assert scrub_signed_urls(text) == text
 
     def test_unsigned_urls_are_untouched(self):
-        url = "https://www.protocols.io/img/avatars/001.png?size=large&v=2"
+        url = "https://www.example.org/img/avatars/001.png?size=large&v=2"
         assert scrub_signed_urls(url) == url
 
     def test_non_string_types_pass_through(self):

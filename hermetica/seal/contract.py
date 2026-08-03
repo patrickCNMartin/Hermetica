@@ -1,9 +1,9 @@
 # -----------------------------------------------------------------------------#
 # IMPORT LIBS
 # -----------------------------------------------------------------------------#
-import re
 import hashlib
 import json
+import re
 import unicodedata
 from dataclasses import asdict, dataclass
 from typing import Any
@@ -134,9 +134,13 @@ def get_steps(protocol:dict)->dict:
     steps_trimmed = [{k: v for k, v in st.items() if k in step_fields} for st in steps]
     return  steps_trimmed
 
+def _step_order(step: dict) -> tuple[int, ...]:
+    # `number` is a dotted string ("7.1"). Sorting it as text puts 10 before 2.
+    return tuple(int(part) for part in step["number"].split("."))
+
 def get_step_chain(steps: list[dict]) -> list:
     """Step ids in execution order. Takes the raw steps — `number` is trimmed."""
-    return [st["id"] for st in sorted(steps, key=lambda st: st["number"])]
+    return [st["id"] for st in sorted(steps, key=_step_order)]
 
 def get_version(protocol: dict) -> dict:
     """The versions entry this pull describes; {} when upstream lists none."""

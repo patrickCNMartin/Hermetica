@@ -1,8 +1,8 @@
 # -----------------------------------------------------------------------------#
 # IMPORT LIBS
 # -----------------------------------------------------------------------------#
-import os
 import json
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -10,10 +10,11 @@ from dotenv import load_dotenv
 # -----------------------------------------------------------------------------#
 # IMPORT GENERIC UTILS
 # -----------------------------------------------------------------------------#
-from chronos.utils.request_utils import fetch_protocol_list,fetch_protocol
-from seal.dates import get_timestamp
-from seal.store import initialize_db, format_entry, write_pull
+from chronos.utils.request_utils import fetch_protocol, fetch_protocol_list
 from seal.contract import build_protocol_artefact
+from seal.dates import get_timestamp
+from seal.store import format_entry, initialize_db, write_pull
+
 # -----------------------------------------------------------------------------#
 # SET ENV VARS
 # -----------------------------------------------------------------------------#

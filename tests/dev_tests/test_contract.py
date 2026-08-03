@@ -5,13 +5,21 @@ import unicodedata
 
 import pytest
 
-from seal.contract import canonical_json, content_hash
+from seal.contract import HASH_ALGORITHM, canonical_json, hash_bytes
+
+
+def content_hash(obj) -> str:
+    """Hash an arbitrary object the way the write path hashes a blob."""
+    return hash_bytes(canonical_json(obj))
+
 
 # Frozen vector. If this changes, every hash in every DB and lock file is
 # invalidated — the test exists so that can never happen silently.
 FROZEN_INPUT = {"b": 1, "a": [2, {"d": None, "c": True}], "e": "café"}
 FROZEN_JSON = b'{"a":[2,{"c":true,"d":null}],"b":1,"e":"caf\\u00e9"}'
-FROZEN_HASH = "1554fedf9a439a5ddd6a772f9e112ef427d431c484c78cbd4d0a029985733377"
+FROZEN_HASH = (
+    "sha256:1554fedf9a439a5ddd6a772f9e112ef427d431c484c78cbd4d0a029985733377"
+)
 
 
 # -----------------------------------------------------------------------------#
@@ -108,6 +116,11 @@ class TestFrozenContract:
         assert content_hash(FROZEN_INPUT) == FROZEN_HASH
 
     def test_hash_shape(self):
-        h = content_hash({"a": 1})
-        assert len(h) == 64
-        assert all(c in "0123456789abcdef" for c in h)
+        algorithm, _, digest = content_hash({"a": 1}).partition(":")
+        assert algorithm == HASH_ALGORITHM
+        assert len(digest) == 64
+        assert all(c in "0123456789abcdef" for c in digest)
+
+    def test_algorithm_prefix_is_part_of_the_identity(self):
+        """The prefix is stored, not decoration — a bare digest is not a hash."""
+        assert content_hash({"a": 1}).startswith(f"{HASH_ALGORITHM}:")

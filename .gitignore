@@ -23,6 +23,10 @@ env/.env.*
 ## Python ##
 !*.py
 
+## Test fixtures ##
+# Synthetic by-ID records; provenance and anonymization in build_fixture.py
+!tests/fixtures/*.json
+
 ## Data base ##
 # Should be tracked but I don't want to export the actual data base on github.
 # Open the data base folder but not the actual db

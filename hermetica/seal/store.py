@@ -20,6 +20,10 @@ class DuplicateProtocolIdError(ValueError):
     """One pull carried two different versions of the same protocol_id."""
 
 
+class UnknownProtocolHashError(ValueError):
+    """A requested hash is not in protocol_content."""
+
+
 # -----------------------------------------------------------------------------#
 # CONNECTION
 # -----------------------------------------------------------------------------#
@@ -53,6 +57,9 @@ SCHEMA: tuple[str, ...] = (
         protocol_id      TEXT NOT NULL,
         protocol_guid    TEXT NOT NULL,
         title            TEXT NOT NULL,
+        doi              TEXT,
+        reserved_doi     TEXT,
+        uri              TEXT,
         protocol         TEXT NOT NULL,
         created_on       INTEGER,
         creator          TEXT,
@@ -104,6 +111,9 @@ class ProtocolRow(NamedTuple):
     protocol_id: str
     protocol_guid: str
     title: str
+    doi: str | None
+    reserved_doi: str | None
+    uri: str | None
     protocol: str
     created_on: int | None
     creator: str | None
@@ -119,6 +129,9 @@ _CONTENT_COLUMNS: tuple[str, ...] = (
     "protocol_id",
     "protocol_guid",
     "title",
+    "doi",
+    "reserved_doi",
+    "uri",
     "protocol",
 ) + METADATA_FIELDS
 
@@ -148,6 +161,9 @@ def build_row(
         protocol_id=str(artefact.id),
         protocol_guid=str(artefact.guid),
         title=artefact.title,
+        doi=artefact.doi,
+        reserved_doi=artefact.reserved_doi,
+        uri=artefact.uri,
         protocol=blob.decode("ascii"),
         valid_from=to_epoch(created_on) if created_on else pulled_at,
         **metadata,
@@ -165,7 +181,12 @@ def format_entry(
 # -----------------------------------------------------------------------------#
 # CHANGE DETECTION
 # -----------------------------------------------------------------------------#
-def _active_hashes(conn: sqlite3.Connection) -> dict[str, str]:
+def active_hashes(conn: sqlite3.Connection) -> dict[str, str]:
+    """protocol_id -> hash for every version not yet deprecated.
+
+    Takes a connection, not a path: write_pull needs this inside its open
+    transaction, and a caller holding only a path can wrap it in `connect`.
+    """
     return dict(
         conn.execute(
             "SELECT protocol_id, hash FROM protocol_history "
@@ -177,7 +198,7 @@ def _active_hashes(conn: sqlite3.Connection) -> dict[str, str]:
 def _diff(
     conn: sqlite3.Connection, rows: Iterable[ProtocolRow]
 ) -> dict[str, list[str]]:
-    active = _active_hashes(conn)
+    active = active_hashes(conn)
     incoming = {row.protocol_id: row.hash for row in rows}
 
     new, changed, unchanged = [], [], []
@@ -212,12 +233,6 @@ def _seen_before(conn: sqlite3.Connection, ids: list[str]) -> set[str]:
     }
 
 
-def get_active_hashes(db: str) -> dict[str, str]:
-    """protocol_id -> hash for every version not yet deprecated."""
-    with connect(db, read_only=True) as conn:
-        return _active_hashes(conn)
-
-
 def diff_pull(db: str, rows: Iterable[ProtocolRow]) -> dict[str, list[str]]:
     """Compare a pull against the active state.
 
@@ -225,6 +240,58 @@ def diff_pull(db: str, rows: Iterable[ProtocolRow]) -> dict[str, list[str]]:
     """
     with connect(db, read_only=True) as conn:
         return _diff(conn, rows)
+
+
+# -----------------------------------------------------------------------------#
+# CONTENT READS
+# -----------------------------------------------------------------------------#
+class ContentRow(NamedTuple):
+    """One stored protocol. `protocol` is the blob, omitted unless asked for."""
+
+    hash: str
+    protocol_id: str
+    protocol_guid: str
+    title: str
+    doi: str | None
+    reserved_doi: str | None
+    uri: str | None
+    created_on: int | None
+    authors: str | None
+    last_modified_on: int | None
+    protocol: str | None = None
+
+
+_READ_COLUMNS: tuple[str, ...] = ContentRow._fields[:-1]
+
+
+def get_content(
+    db: str, hashes: Iterable[str], with_blob: bool = True
+) -> list[ContentRow]:
+    """Fetch stored protocols by hash, in the order asked for.
+
+    The blob dwarfs every other column, so `with_blob=False` skips it for
+    callers that only need the pinned identity. Every requested hash must
+    resolve: a bad pin shrinking a lock silently is the failure this guards
+    against.
+    """
+    wanted = list(hashes)
+    if not wanted:
+        return []
+    columns = _READ_COLUMNS + ("protocol",) if with_blob else _READ_COLUMNS
+    slots = ",".join("?" * len(wanted))
+    with connect(db, read_only=True) as conn:
+        found = {
+            row[0]: ContentRow(*row)
+            for row in conn.execute(
+                f"SELECT {', '.join(columns)} "
+                f"FROM protocol_content WHERE hash IN ({slots})",
+                wanted,
+            )
+        }
+    missing = sorted(set(wanted) - set(found))
+    if missing:
+        raise UnknownProtocolHashError(f"not in protocol_content: {', '.join(missing)}")
+    return [found[h] for h in wanted]
 
 
 # -----------------------------------------------------------------------------#
