@@ -67,6 +67,7 @@ def generate_protocol_lock(
             "last_modified_on": (
                 as_iso(row.last_modified_on) if row.last_modified_on else None
             ),
+            "creator": _decode(row.creator),
             "authors": _decode(row.authors),
         }
         if with_bodies:

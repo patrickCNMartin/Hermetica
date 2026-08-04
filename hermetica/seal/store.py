@@ -197,8 +197,6 @@ def active_hashes(conn: sqlite3.Connection) -> dict[str, str]:
     }
 
 
-
-
 def _diff(
     conn: sqlite3.Connection, rows: Iterable[ProtocolRow]
 ) -> dict[str, list[str]]:
@@ -260,6 +258,7 @@ class ContentRow(NamedTuple):
     reserved_doi: str | None
     uri: str | None
     created_on: int | None
+    creator: str | None
     authors: str | None
     last_modified_on: int | None
     protocol: str | None = None

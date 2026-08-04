@@ -61,31 +61,42 @@ if __name__ == "__main__":
 
     # One timestamp for the whole pull: every row opens its interval at the
     # instant the pull started, not at a per-row clock read.
-    # pulled_at = get_timestamp()
+    pulled_at = get_timestamp()
 
-    # # first we pull protocol ids from list
-    # ids = fetch_protocol_list(
-    #     PROTOCOL_LIST_URL,
-    #     HEADERS,
-    #     page_size=PAGE_SIZE,
-    #     max_pull=MAX_PULL,
-    #     **PULL_PARAMS,
-    # )
-    # # Next we process each id to pull the actual protocol
-    # # Note that to avoid hitting API rate limit, we added
-    # # ratelimit/backoff decorators to the api call function
-    # protocols = [fetch_protocol(p, PROTOCOL_URL, HEADERS) for p in ids]
-    # with open(f"{DB_OUT}/chronos_protocols.json", "w") as f:
-    #     json.dump(protocols, f)
-    # # prepare cleaned dataclass of protocols
-    # protocols = [build_protocol_artefact(p) for p in protocols]
-    # # format_entry hashes the exact bytes it stores, so blob and hash stay bound
-    # # to their row instead of to a list index.
-    # rows = format_entry(protocols, pulled_at)
-    # diff = write_pull(db_name, rows, pulled_at)
+    # first we pull protocol ids from list
+    ids = fetch_protocol_list(
+        PROTOCOL_LIST_URL,
+        HEADERS,
+        page_size=PAGE_SIZE,
+        max_pull=MAX_PULL,
+        **PULL_PARAMS,
+    )
+    # Next we process each id to pull the actual protocol
+    # Note that to avoid hitting API rate limit, we added
+    # ratelimit/backoff decorators to the api call function
+    protocols = [fetch_protocol(p, PROTOCOL_URL, HEADERS) for p in ids]
+    with open(f"{DB_OUT}/chronos_protocols.json", "w") as f:
+        json.dump(protocols, f)
+    # prepare cleaned dataclass of protocols
+    protocols = [build_protocol_artefact(p) for p in protocols]
+    # format_entry hashes the exact bytes it stores, so blob and hash stay bound
+    # to their row instead of to a list index.
+    rows = format_entry(protocols, pulled_at)
+    diff = write_pull(db_name, rows, pulled_at)
 
     ## now we run the second part of the chron job and that is to update
     ## the composed protocols
     protocol_names = active_protocols(db_name)
     with open(f"{DB_OUT}/fixture_names.json","w") as f:
         json.dump(protocol_names,f)
+
+    # exporting locks and testing to see things
+    import random
+    sub_hash = random.sample(list(protocol_names.keys()),5)
+    from seal.seal import generate_protocol_lock,export_pins,export_lock
+    lock = generate_protocol_lock(sub_hash,db=db_name)
+    export_pins(lock,f"{DB_OUT}/pins.lock")
+    export_lock(lock,f"{DB_OUT}/lock.lock")
+    from scribe.markdown import to_markdown,export_markdown
+    md = to_markdown(lock, db_name)
+    export_markdown(lock,f"{DB_OUT}/protocol_render_template.md",db_name)

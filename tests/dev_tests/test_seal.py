@@ -117,7 +117,9 @@ class TestGenerate:
 
     def test_display_fields_are_present_but_unhashed(self, lock):
         sample = next(iter(lock["protocols"].values()))
-        assert {"title", "doi", "reserved_doi", "uri", "authors"} <= set(sample)
+        assert {"title", "doi", "reserved_doi", "uri", "creator", "authors"} <= set(
+            sample
+        )
 
     def test_two_versions_of_one_protocol_raise(self, db_path, by_id_records):
         """One protocol, one active version — a lock may not violate it either."""

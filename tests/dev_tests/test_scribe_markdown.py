@@ -61,6 +61,16 @@ def deprecate(db: str, protocol_id: str) -> None:
         )
 
 
+def section(rendered: str, protocol_id: str) -> str:
+    """One protocol's block. Names repeat across the fixture, so an assertion
+    about one protocol must not be satisfiable by another's text."""
+    blocks = rendered.split("\n## ")
+    match = [b for b in blocks if f"| protocol_id | {protocol_id} |" in b]
+    if len(match) != 1:
+        raise AssertionError(f"{len(match)} blocks for protocol {protocol_id}")
+    return match[0]
+
+
 def with_steps(document: dict) -> str:
     """A pinned protocol_id whose body actually carries steps."""
     for pid, entry in sorted(document["entries"].items()):
@@ -198,7 +208,70 @@ class TestContent:
 
 
 # -----------------------------------------------------------------------------#
-# 4. WHAT IT REFUSES
+# 4. ATTRIBUTION
+# -----------------------------------------------------------------------------#
+class TestAttribution:
+    """Creator and authors are different claims — who owns the upstream record
+    versus who is credited — so they get a row each. They overlap often; that is
+    the source's own duplication, not something to dedupe away."""
+
+    def test_creator_and_affiliation_are_their_own_rows(self, lock, by_id_records):
+        document, _ = lock
+        pid = str(by_id_records["signed_urls"]["id"])
+        rendered = section(to_markdown(document), pid)
+        assert "| creator | Otto Doe |" in rendered
+        assert "| affiliation | Department of Placeholders |" in rendered
+
+    def test_a_creator_renders_when_there_are_no_authors(self, lock, by_id_records):
+        """Half the live set has an empty `authors` — without this row those
+        protocols carry no attribution at all."""
+        document, _ = lock
+        pid = str(by_id_records["baseline"]["id"])
+        assert document["protocols"][pid]["authors"] == []
+        rendered = section(to_markdown(document), pid)
+        assert "| creator | Pablo Personman |" in rendered
+        assert "| authors |" not in rendered
+
+    def test_creator_and_authors_both_render(self, lock, by_id_records):
+        document, _ = lock
+        pid = str(by_id_records["dotted_steps"]["id"])
+        rendered = section(to_markdown(document), pid)
+        assert "| creator | Jane Doe |" in rendered
+        assert "| authors | Jane Doe, Pablo Personman, Jane Doe, Otto Example |" in (
+            rendered
+        )
+
+    def test_a_lock_without_a_creator_omits_both_rows(self, lock, by_id_records):
+        """A lock exported before creator was carried must still render."""
+        document, _ = lock
+        pid = str(by_id_records["signed_urls"]["id"])
+        del document["protocols"][pid]["creator"]
+        rendered = section(to_markdown(document), pid)
+        assert "| creator |" not in rendered
+        assert "| affiliation |" not in rendered
+
+    def test_a_blank_affiliation_omits_only_that_row(self, lock, by_id_records):
+        document, _ = lock
+        pid = str(by_id_records["signed_urls"]["id"])
+        document["protocols"][pid]["creator"]["affiliation"] = ""
+        rendered = section(to_markdown(document), pid)
+        assert "| creator | Otto Doe |" in rendered
+        assert "| affiliation |" not in rendered
+
+    def test_a_pins_only_lock_reads_the_creator_from_the_db(self, lock, by_id_records):
+        """A pins-only lock carries neither display block nor body, so the store
+        is the only source — creator is metadata and was never in the blob."""
+        document, db = lock
+        del document["protocols"]
+        del document["bodies"]
+        pid = str(by_id_records["signed_urls"]["id"])
+        rendered = section(to_markdown(document, db=db), pid)
+        assert "| creator | Otto Doe |" in rendered
+        assert "| affiliation | Department of Placeholders |" in rendered
+
+
+# -----------------------------------------------------------------------------#
+# 5. WHAT IT REFUSES
 # -----------------------------------------------------------------------------#
 class TestRefuses:
     def test_a_body_needed_with_neither_bodies_nor_db_raises(self, lock):
@@ -217,7 +290,7 @@ class TestRefuses:
 
 
 # -----------------------------------------------------------------------------#
-# 5. EXPORT
+# 6. EXPORT
 # -----------------------------------------------------------------------------#
 class TestExport:
     def test_it_writes_what_it_returns(self, lock, tmp_path):

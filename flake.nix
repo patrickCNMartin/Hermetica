@@ -22,6 +22,7 @@
                 system_deps = builtins.attrValues {
                     inherit (pkgs)
                         which
+                        pandoc
                         git
                         uv;
                 };

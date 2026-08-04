@@ -117,6 +117,7 @@ def collect_display(
                 "last_modified_on": (
                     as_iso(row.last_modified_on) if row.last_modified_on else None
                 ),
+                "creator": json.loads(row.creator) if row.creator else None,
                 "authors": json.loads(row.authors) if row.authors else None,
             }
     return display
@@ -133,7 +134,7 @@ def plain(value: str | None) -> str:
     return html.unescape(_TAGS.sub("", value or "")).strip()
 
 
-def _authors(value) -> str:
+def _people(value) -> str:
     if not value:
         return ""
     names = [person.get("name") or "" for person in value if isinstance(person, dict)]
@@ -152,12 +153,15 @@ def _facts(pid: str, entry: dict, fields: dict, body: dict | None) -> list[str]:
             ("version_code", body.get("version_code")),
             ("version_class", body.get("version_class")),
         ]
+    creator = fields.get("creator") or {}
     rows += [
         ("doi", fields.get("doi")),
         ("reserved_doi", fields.get("reserved_doi")),
         ("created_on", fields.get("created_on")),
         ("last_modified_on", fields.get("last_modified_on")),
-        ("authors", _authors(fields.get("authors"))),
+        ("creator", _people([creator])),
+        ("affiliation", creator.get("affiliation")),
+        ("authors", _people(fields.get("authors"))),
     ]
     return [f"| {key} | {value} |" for key, value in rows if value not in (None, "")]
 
