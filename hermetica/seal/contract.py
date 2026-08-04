@@ -25,6 +25,7 @@ HASH_FIELDS: tuple[str, ...] = (
     "materials",
     "steps",
     "chain",
+    "units",
     "uri",
     "version_class",
     "version_code",
@@ -58,6 +59,7 @@ class ProtocolArtefact:
     materials: str
     steps: list[dict]
     chain: list[int]
+    units: dict[str, str]
     uri: str
     doi: str
     reserved_doi: str
@@ -151,6 +153,66 @@ def get_step_chain(steps: list[dict]) -> list:
     return [st["id"] for st in sorted(steps, key=_step_order)]
 
 
+# Rich-text fields arrive as a JSON *string* holding a Draft.js envelope, and the
+# quantities live in `entityMap`, not in the block text — the text carries only a
+# placeholder character where each one belongs.
+RICH_TEXT_FIELDS: tuple[str, ...] = (
+    "description",
+    "materials_text",
+    "disclaimer",
+    "warning",
+)
+UNIT_KEYS: tuple[str, ...] = ("unit", "temperatureUnit")
+
+
+def parse_rich_text(value: Any) -> dict | None:
+    """A Draft.js envelope, or None when the field holds no rich text."""
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str) or not value.strip().startswith("{"):
+        return None
+    # Anything shaped like an envelope but unparseable is corrupt: silently
+    # skipping it would drop units from a hashed field.
+    return json.loads(value)
+
+
+def _cite_units(node: Any, cited: set[int]) -> None:
+    """Collect unit ids from every entity, descending into nested documents."""
+    if isinstance(node, dict):
+        data = node.get("data")
+        if isinstance(data, dict):
+            cited.update(
+                data[key]
+                for key in UNIT_KEYS
+                # bool subclasses int; an entity never carries one, but the
+                # to_epoch precedent says exclude it rather than rely on that.
+                if isinstance(data.get(key), int) and not isinstance(data[key], bool)
+            )
+        for value in node.values():
+            _cite_units(value, cited)
+    elif isinstance(node, list):
+        for value in node:
+            _cite_units(value, cited)
+
+
+def get_unit_map(protocol: dict) -> dict[str, str]:
+    """Unit id -> name, restricted to the units this protocol's rich text cites.
+
+    The upstream `units` list is a shared catalog — ~45 unused entries per
+    protocol, plus viewer-permission fields — so hashing it whole would re-fork
+    every protocol whenever protocols.io edits the catalog. Ids the catalog
+    cannot resolve are omitted and surface as a marker at render time.
+    """
+    cited: set[int] = set()
+    for field in RICH_TEXT_FIELDS:
+        _cite_units(parse_rich_text(protocol.get(field)), cited)
+    for step in protocol.get("steps") or []:
+        _cite_units(parse_rich_text(step.get("step")), cited)
+
+    catalog = {unit["id"]: unit["name"] for unit in protocol.get("units") or []}
+    return {str(uid): catalog[uid] for uid in sorted(cited) if uid in catalog}
+
+
 def get_version(protocol: dict) -> dict:
     """The versions entry this pull describes; {} when upstream lists none."""
     versions = protocol.get("versions") or []
@@ -180,6 +242,7 @@ def build_protocol_artefact(protocol: dict) -> ProtocolArtefact:
         materials=protocol["materials_text"],
         steps=steps,
         chain=chain,
+        units=get_unit_map(protocol),
         uri=protocol["uri"],
         doi=version.get("doi") or "",
         reserved_doi=protocol["reserved_doi"],

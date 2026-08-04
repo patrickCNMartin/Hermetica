@@ -5,6 +5,7 @@
 field sourced from the wrong place silently mis-versions every protocol."""
 
 import dataclasses
+import json
 
 import pytest
 
@@ -14,6 +15,7 @@ from seal.contract import (
     build_protocol_artefact,
     get_step_chain,
     get_steps,
+    get_unit_map,
     get_version,
     protocol_hash,
 )
@@ -34,6 +36,7 @@ SPEC_HASH_FIELDS = (
     "materials",
     "steps",
     "chain",
+    "units",
     "uri",
     "version_class",
     "version_code",
@@ -233,6 +236,77 @@ class TestReorderVsRewrite:
         assert after.chain == before.chain
         assert after.steps != before.steps
         assert protocol_hash(after) != protocol_hash(before)
+
+
+# -----------------------------------------------------------------------------#
+# 4b. THE UNIT MAP
+# -----------------------------------------------------------------------------#
+class TestUnitMap:
+    """Upstream `units` is a shared catalog, not protocol content: ~45 unused
+    entries per protocol and it churns on its own. Only the cited subset is
+    hashed, so a catalog edit cannot re-fork a protocol nothing changed in."""
+
+    def test_only_cited_units_are_kept(self, record):
+        raw = record("dotted_steps")
+        catalog = {unit["id"] for unit in raw["units"]}
+        kept = {int(uid) for uid in get_unit_map(raw)}
+        assert kept < catalog, "the map must be a strict subset of the catalog"
+        assert kept == {1, 2, 5, 6, 13, 28}
+
+    def test_names_resolve_against_the_catalog(self, record):
+        assert get_unit_map(record("dotted_steps"))["6"] == "g"
+
+    def test_growing_the_catalog_does_not_change_the_map(self, record):
+        """The whole point: an upstream catalog edit must not re-fork a protocol."""
+        raw = record("dotted_steps")
+        before = protocol_hash(build_protocol_artefact(raw))
+        raw["units"].append(
+            {"id": 999, "name": "parsec", "aliases": [], "deleted": False}
+        )
+        assert protocol_hash(build_protocol_artefact(raw)) == before
+
+    def test_an_uncited_catalog_entry_is_excluded(self, record):
+        raw = record("dotted_steps")
+        uncited = [u["id"] for u in raw["units"] if u["id"] not in {1, 2, 5, 6, 13, 28}]
+        assert uncited, "the fixture must carry spare entries to prove they are ignored"
+        assert not {str(uid) for uid in uncited} & set(get_unit_map(raw))
+
+    def test_an_unresolvable_id_is_omitted_not_guessed(self, record):
+        """3900 is cited by this record and absent from every upstream catalog."""
+        raw = record("dotted_steps")
+        assert "3900" not in get_unit_map(raw)
+
+    def test_units_are_collected_from_nested_documents(self):
+        """A `notes` entity carries its own blocks and entityMap, arbitrarily deep."""
+        nested = {
+            "blocks": [
+                {"text": " ", "entityRanges": [{"key": 0, "offset": 0, "length": 1}]}
+            ],
+            "entityMap": {"0": {"type": "amount", "data": {"amount": "5", "unit": 2}}},
+        }
+        outer = {
+            "blocks": [
+                {"text": " ", "entityRanges": [{"key": 0, "offset": 0, "length": 1}]}
+            ],
+            "entityMap": {"0": {"type": "notes", "data": nested}},
+        }
+        protocol = {
+            "description": json.dumps(outer),
+            "units": [{"id": 2, "name": "mL"}],
+            "steps": [],
+        }
+        assert get_unit_map(protocol) == {"2": "mL"}
+
+    def test_a_record_citing_nothing_maps_nothing(self, record):
+        assert get_unit_map(record("baseline")) == {}
+
+    def test_units_ride_in_the_hash(self, record):
+        raw = record("dotted_steps")
+        before = protocol_hash(build_protocol_artefact(raw))
+        for unit in raw["units"]:
+            if unit["id"] == 6:
+                unit["name"] = "grammes"
+        assert protocol_hash(build_protocol_artefact(raw)) != before
 
 
 # -----------------------------------------------------------------------------#

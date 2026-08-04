@@ -31,7 +31,7 @@ jobs:
       # dependency change that was never re-locked cannot pass CI.
       - run: uv sync --extra dev --locked
 
-      - run: uv run pytest tests/dev_tests --cov=chronos --cov=seal --cov-report=term-missing
+      - run: uv run pytest tests/dev_tests --cov=chronos --cov=seal --cov=compose --cov=scribe --cov-report=term-missing
 
   lint:
     name: ruff + detect-secrets

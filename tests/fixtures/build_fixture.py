@@ -19,6 +19,8 @@ import random
 import re
 from pathlib import Path
 
+from seal.contract import get_unit_map
+
 SOURCE = Path("db/chronos_protocols.json")
 TARGET = Path("tests/fixtures/protocols_by_id.json")
 SEED = 20260803
@@ -52,8 +54,8 @@ STEP_CAP: dict[str, int] = {
 # that no part of the contract reads. They stay present — a fixture that dropped
 # them could not show that unasked-for fields are ignored — just not at length.
 BLOCK_CAP = 4
+# `units` is capped after transcription instead — see cap_units.
 LIST_CAP: dict[str, int] = {
-    "units": 2,
     "documents": 2,
     "translations": 1,
     "troubleshooting_items": 1,
@@ -74,6 +76,25 @@ def cap_steps(record: dict, keep: int | None) -> dict:
     if keep is None or not steps:
         return record
     return record | {"steps": sorted(steps, key=_step_order)[:keep]}
+
+
+# Entries kept that nothing cites — the fixture must still show that the unit map
+# ignores the unused bulk of the catalog.
+UNIT_EXTRAS = 2
+
+
+def cap_units(record: dict) -> dict:
+    """Keep the catalog entries this record's entities cite, plus a few spare.
+
+    Runs after transcription, on the capped blocks, so the kept set matches the
+    entities that actually survive into the fixture.
+    """
+    units = record.get("units") or []
+    cited = {int(uid) for uid in get_unit_map(record)}
+    unused = [unit for unit in units if unit["id"] not in cited]
+    return record | {
+        "units": [unit for unit in units if unit["id"] in cited] + unused[:UNIT_EXTRAS]
+    }
 
 
 # -----------------------------------------------------------------------------#
@@ -350,6 +371,10 @@ NAME_PART_KEYS = {"first_name", "last_name"}
 
 def transcribe(value, s: Synth, key: str | None = None):
     """Return a synthetic value of the same shape as `value`."""
+    # The unit catalog is structural: entity `unit` ids are kept verbatim, so the
+    # names they resolve to must be too, and SI symbols identify nobody.
+    if key == "units":
+        return value
     if isinstance(value, dict):
         return {k: transcribe(v, s, k) for k, v in value.items()}
     if isinstance(value, list):
@@ -433,7 +458,9 @@ def build() -> dict[str, dict]:
     s = Synth(SEED)
     # Sorted so the seeded stream is consumed in a fixed order.
     return {
-        name: transcribe(cap_steps(records[ARCHETYPES[name]], STEP_CAP.get(name)), s)
+        name: cap_units(
+            transcribe(cap_steps(records[ARCHETYPES[name]], STEP_CAP.get(name)), s)
+        )
         for name in sorted(ARCHETYPES)
     }
 

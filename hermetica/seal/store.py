@@ -185,11 +185,18 @@ def active_hashes(conn: sqlite3.Connection) -> dict[str, str]:
     Takes a connection, not a path: write_pull needs this inside its open
     transaction, and a caller holding only a path can wrap it in `connect`.
     """
-    return dict(
-        conn.execute(
+    # Scoped to the cursor, not the connection: this borrows write_pull's open
+    # transaction and must not change how its other reads come back.
+    cursor = conn.cursor()
+    cursor.row_factory = sqlite3.Row
+    return {
+        row["protocol_id"]: row["hash"]
+        for row in cursor.execute(
             "SELECT protocol_id, hash FROM protocol_history WHERE deprecated_at IS NULL"
-        ).fetchall()
-    )
+        )
+    }
+
+
 
 
 def _diff(
