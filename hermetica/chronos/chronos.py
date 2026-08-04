@@ -4,16 +4,18 @@
 import json
 import os
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # -----------------------------------------------------------------------------#
 # IMPORT GENERIC UTILS
 # -----------------------------------------------------------------------------#
 from chronos.utils.request_utils import fetch_protocol, fetch_protocol_list
+from compose.compose import active_protocols
 from seal.contract import build_protocol_artefact
 from seal.dates import get_timestamp
 from seal.store import format_entry, initialize_db, write_pull
-from compose.compose import active_protocols
+
 # -----------------------------------------------------------------------------#
 # SET ENV VARS
 # -----------------------------------------------------------------------------#
@@ -87,16 +89,19 @@ if __name__ == "__main__":
     ## now we run the second part of the chron job and that is to update
     ## the composed protocols
     protocol_names = active_protocols(db_name)
-    with open(f"{DB_OUT}/fixture_names.json","w") as f:
-        json.dump(protocol_names,f)
+    with open(f"{DB_OUT}/fixture_names.json", "w") as f:
+        json.dump(protocol_names, f)
 
     # exporting locks and testing to see things
     import random
-    sub_hash = random.sample(list(protocol_names.keys()),5)
-    from seal.seal import generate_protocol_lock,export_pins,export_lock
-    lock = generate_protocol_lock(sub_hash,db=db_name)
-    export_pins(lock,f"{DB_OUT}/pins.lock")
-    export_lock(lock,f"{DB_OUT}/lock.lock")
-    from scribe.markdown import to_markdown,export_markdown
+
+    sub_hash = random.sample(list(protocol_names.keys()), 5)
+    from seal.seal import export_lock, export_pins, generate_protocol_lock
+
+    lock = generate_protocol_lock(sub_hash, db=db_name)
+    export_pins(lock, f"{DB_OUT}/pins.lock")
+    export_lock(lock, f"{DB_OUT}/lock.lock")
+    from scribe.markdown import export_markdown, to_markdown
+
     md = to_markdown(lock, db_name)
-    export_markdown(lock,f"{DB_OUT}/protocol_render_template.md",db_name)
+    export_markdown(lock, f"{DB_OUT}/protocol_render_template.md", db_name)
