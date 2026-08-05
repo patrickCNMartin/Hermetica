@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------------------#
 # SHARED FIXTURES
 # -----------------------------------------------------------------------------#
-"""Fixtures for the whole suite. The dataset is synthetic — see build_fixture.py."""
+"""Fixtures for the whole suite. The dataset is synthetic — see test_fixture.py."""
 
 import copy
 import json

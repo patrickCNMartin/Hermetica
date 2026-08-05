@@ -54,7 +54,10 @@ jobs:
 
       # Tracked files only — the same set the pre-push hook would see. The
       # baseline is excluded from its own scan: it stores hashed secrets, so
-      # scanning it re-reports every entry it was written to suppress.
+      # scanning it re-reports every entry it was written to suppress. The
+      # fixture IS scanned; its findings are baselined because they are
+      # meaningless by construction, which keeps a real credential pasted in
+      # visible as an unbaselined finding.
       - name: detect-secrets
         run: |
           git ls-files -z ':!:security/.baseline.security' \

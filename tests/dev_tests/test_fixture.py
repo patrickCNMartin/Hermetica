@@ -3,57 +3,176 @@
 # -----------------------------------------------------------------------------#
 """Guards on the committed dataset, not on the code that reads it.
 
-The fixture is a structural transcription of a real protocols.io pull: every
-shape kept, every value synthetic. Both halves need defending — a regeneration
-that reintroduced real data would be a disclosure, and one that flattened the
-awkward shapes would quietly hollow out the tests that depend on them.
+There is no generator: `protocols_by_id.json` is the source of truth, hand-held
+dummy data shaped like a protocols.io by-ID pull. Two halves need defending —
+a hand-edit that pasted real data in would be a disclosure, and one that
+flattened the awkward shapes would quietly hollow out the tests that depend on
+them.
+
+The synthetic-ness guards are **allowlists**, for the same reason HASH_FIELDS is
+one. A denylist of real terms can only work by naming the real terms, so the
+guard file ends up holding the very values it exists to keep out — which is
+exactly what happened before. An allowlist names nothing real.
 """
 
 import json
 import re
+import unicodedata
 
 import pytest
 
 from tests.conftest import ARCHETYPES, FIXTURE
 
-RAW = FIXTURE.read_text(encoding="utf-8")
+RAW = unicodedata.normalize("NFC", FIXTURE.read_text(encoding="utf-8"))
 
-# Real values from the source corpus. None of these may ever appear again.
-FORBIDDEN = (
-    "Karolinska",
-    "SciLifeLab",
-    "scilifelab",
-    "clinicalgenomics",
-    "protocols.io",
-    "amazonaws",
-    "Covaris",
-    "covaris",
-    "cryoPREP",
-    "tissueTUBE",
-    "AKIAWFTFYUBUZ2U2JGOS",
+# RFC 2606 reserves example.org permanently, so no synthetic value here can ever
+# resolve to a real host or mailbox. 10.99999 is not an assigned DOI prefix.
+RESERVED_DOMAIN = "example.org"
+DOI_PREFIX = "10.99999"
+
+# Every word of human-readable text in the fixture. Slugs, guids and hex are
+# excluded — they are structurally random and carry no meaning; prose is where
+# an identifying term would actually hide.
+LEXICON = frozenset(
+    """
+    ada aliquot bench buffer café cartridge centrifuge column contact council
+    department digest doe eluate elution example examples filtrate gradient
+    incubate ines institute jane lysate macpersonface mira mixer of org otto
+    overnight pablo pellet peptide person personman placeholders plate protocol
+    reagent research resuspend rodney sam sample sampleson supernatant testcase
+    vortex wash
+    """.split()
+)
+
+# The fixture is scanned by detect-secrets and its findings are baselined: the
+# signing material is meaningless by construction. These shapes are the tripwire
+# for a *real* credential arriving by hand-edit. The AWS row is why the fixture's
+# own key id is prefixed EXAMPLEKEYID rather than AKIA.
+CREDENTIAL_SHAPES = (
+    ("aws access key id", r"(?:AKIA|ASIA|AIDA|AROA|AGPA|ANPA)[0-9A-Z]{16}"),
+    ("pem private key", r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
+    ("jwt", r"eyJ[A-Za-z0-9_-]{5,}\.eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]+"),
+    ("github token", r"gh[pousr]_[A-Za-z0-9]{20,}"),
+    ("slack token", r"xox[abprs]-[A-Za-z0-9-]{10,}"),
+    ("google api key", r"AIza[0-9A-Za-z_-]{35}"),
+    ("basic auth in url", r"://[^/\s:@\"]+:[^/\s:@\"]+@"),
+    ("named credential field", r"\"(?:password|secret|api_?key|token)\":\s*\"[^\"]+\""),
+)
+
+# Fields holding text a human reads. `units` is skipped: it is a shared SI
+# catalog ("Celsius", "microliter") that identifies nobody.
+PROSE_KEYS = frozenset(
+    {
+        "title",
+        "title_html",
+        "section",
+        "keywords",
+        "affiliation",
+        "first_name",
+        "last_name",
+        "name",
+        "funder_name",
+        "info",
+    }
+)
+RICH_KEYS = frozenset(
+    {
+        "description",
+        "warning",
+        "disclaimer",
+        "guidelines",
+        "materials_text",
+        "before_start",
+        "protocol_references",
+        "step",
+        "acknowledgements",
+        "ethics_statement",
+        "manuscript_citation",
+    }
 )
 
 
+def _block_text(document, found: list[str]) -> None:
+    """Collect Draft.js block text, recursing into nested documents."""
+    if isinstance(document, dict):
+        for block in document.get("blocks") or []:
+            if block.get("text"):
+                found.append(block["text"])
+        for key, value in document.items():
+            if key != "blocks":
+                _block_text(value, found)
+    elif isinstance(document, list):
+        for value in document:
+            _block_text(value, found)
+    elif isinstance(document, str) and document.lstrip().startswith('{"blocks"'):
+        try:
+            _block_text(json.loads(document), found)
+        except json.JSONDecodeError:
+            pass
+
+
+def prose(records: dict) -> list[str]:
+    """Every human-readable string in the dataset, rich text flattened."""
+    found: list[str] = []
+
+    def walk(value, key=None, in_units=False):
+        if isinstance(value, dict):
+            for k, v in value.items():
+                walk(v, k, in_units or key == "units")
+        elif isinstance(value, list):
+            for v in value:
+                walk(v, key, in_units)
+        elif isinstance(value, str) and value and not in_units:
+            if key in RICH_KEYS or value.lstrip().startswith('{"blocks"'):
+                _block_text(value, found)
+            elif key in PROSE_KEYS:
+                found.append(value)
+
+    for record in records.values():
+        walk(record)
+    return found
+
+
 # -----------------------------------------------------------------------------#
-# 1. NOTHING REAL SURVIVES
+# 1. ONLY SYNTHETIC VALUES — allowlists, so nothing real is ever named here
 # -----------------------------------------------------------------------------#
-class TestNoRealData:
-    @pytest.mark.parametrize("term", FORBIDDEN)
-    def test_identifying_term_is_absent(self, term):
-        assert term not in RAW
+class TestOnlySyntheticValues:
+    def test_prose_uses_only_the_synthetic_lexicon(self, by_id_records):
+        """The strongest guard: a pasted real protocol fails on its first word."""
+        words = {
+            word.lower()
+            for text in prose(by_id_records)
+            for word in re.findall(
+                r"[A-Za-zÀ-ÿ]{2,}", unicodedata.normalize("NFC", text)
+            )
+        }
+        assert words <= LEXICON, sorted(words - LEXICON)
 
-    def test_no_email_addresses(self):
-        """The source carries real staff addresses inside step rich text."""
-        assert re.findall(r"[\w.+-]+@[\w-]+\.[\w.]+", RAW) == []
-
-    def test_no_real_doi_prefix(self):
-        """Real DOIs resolve to real records — synthetic ones must not."""
-        assert "10.17504" not in RAW
-
-    def test_every_url_points_at_example_org(self):
+    def test_every_url_host_is_reserved(self):
         hosts = set(re.findall(r"https?://([^/\s\"'<>\\]+)", RAW))
         assert hosts, "the fixture should still contain URLs"
-        assert all(h.endswith("example.org") for h in hosts), hosts
+        assert all(h.endswith(RESERVED_DOMAIN) for h in hosts), sorted(hosts)
+
+    def test_every_email_uses_the_reserved_domain(self):
+        found = {m.rstrip(".") for m in re.findall(r"[\w.+-]+@[\w-]+\.[\w.]+", RAW)}
+        assert all(m.endswith("@" + RESERVED_DOMAIN) for m in found), sorted(found)
+
+    def test_emails_are_present_at_all(self):
+        """Upstream carries them in author name fields and step rich text.
+
+        A fixture with none passes the domain guard vacuously and leaves that
+        shape untested — which is how the real addresses went missing before.
+        """
+        assert re.findall(r"[\w.+-]+@[\w-]+\.[\w.]+", RAW)
+
+    def test_every_doi_uses_the_unassigned_prefix(self):
+        found = set(re.findall(r"\b10\.\d{4,9}/[^\"\s\\]+", RAW))
+        assert all(d.startswith(DOI_PREFIX + "/") for d in found), sorted(found)
+
+    @pytest.mark.parametrize("name, pattern", CREDENTIAL_SHAPES)
+    def test_no_credential_shaped_value(self, name, pattern):
+        """Tripwire for a real credential arriving by hand-edit."""
+        assert re.findall(pattern, RAW) == [], name
 
 
 # -----------------------------------------------------------------------------#
@@ -93,22 +212,46 @@ class TestStructureSurvives:
             for step in record.get("steps") or []:
                 assert isinstance(step["number"], str)
 
+    def test_first_step_guid_is_a_guid_that_resolves(self, by_id_records):
+        """It points into `steps`; prose there would be a shape nobody has."""
+        for record in by_id_records.values():
+            guids = {s["guid"] for s in record.get("steps") or []}
+            for entry in record.get("table_of_contents") or []:
+                assert re.fullmatch(r"[0-9A-F]{32}", entry["first_step_guid"])
+                if guids:
+                    assert entry["first_step_guid"] in guids
+
+    def test_critical_icons_are_enum_tokens(self, by_id_records):
+        """Upstream sends CriticalIcon/OptionalIcon, never free text."""
+        for record in by_id_records.values():
+            for step in record.get("steps") or []:
+                for critical in step.get("critical") or []:
+                    assert critical["icon"] in {"CriticalIcon", "OptionalIcon"}
+
+    def test_a_bare_text_section_exists(self, by_id_records):
+        """`section` is hashed and rendered, and upstream is not always HTML."""
+        sections = [
+            step["section"]
+            for record in by_id_records.values()
+            for step in record.get("steps") or []
+            if step.get("section")
+        ]
+        assert any("<p>" in s for s in sections)
+        assert any("<" not in s for s in sections)
+
 
 # -----------------------------------------------------------------------------#
 # 3. THE SIGNED-URL MATERIAL THE SCRUB TESTS NEED
 # -----------------------------------------------------------------------------#
 class TestSignedUrlMaterial:
-    @pytest.fixture
-    def signed(self, by_id_records):
-        return by_id_records["signed_urls"]
-
-    def test_rich_text_carries_the_escaped_separator(self, signed):
+    def test_rich_text_carries_the_escaped_separator(self, by_id_records):
         """Inside a double-encoded document upstream escapes & to \\u0026."""
-        assert "\\u0026" in signed["materials_text"]
+        assert "\\u0026" in by_id_records["signed_urls"]["materials_text"]
 
-    def test_a_plain_url_field_carries_a_bare_separator(self, signed):
+    def test_a_plain_url_field_carries_a_bare_separator(self, by_id_records):
         """Both forms must exist or the regex is only half tested."""
-        assert any("&X-Amz" in (d.get("url") or "") for d in signed["documents"])
+        documents = by_id_records["signed_urls"]["documents"]
+        assert any("&X-Amz" in (d.get("url") or "") for d in documents)
 
     def test_a_full_signing_param_set_is_present(self):
         found = set(re.findall(r"(X-Amz-[A-Za-z]+|Key-Pair-Id|Policy)=", RAW))
@@ -119,13 +262,27 @@ class TestSignedUrlMaterial:
         values = re.findall(r"X-Amz-Signature=([0-9a-zA-Z]*)", RAW)
         assert values and all(values)
 
+    def test_credential_carries_a_raw_path_separator(self):
+        """A real X-Amz-Credential is `<key>/<date>/<region>/s3/aws4_request`.
+
+        The scrub's value class permits `/`; with a slash-free value that was
+        never actually exercised, so tightening it would go unnoticed.
+        """
+        values = re.findall(r"X-Amz-Credential=([^&\"'\s\\]*)", RAW)
+        assert values and all("/" in v for v in values)
+
+    def test_policy_carries_base64_padding(self):
+        """CloudFront policies use the `~_-` alphabet and `=` padding."""
+        values = re.findall(r"[?&]Policy=([^&\"'\s\\]*)", RAW)
+        assert values and all(v.endswith("=") and "~" in v for v in values)
+
 
 # -----------------------------------------------------------------------------#
 # 4. THE FILE ITSELF
 # -----------------------------------------------------------------------------#
 class TestFixtureFile:
     def test_it_is_sorted_and_newline_terminated(self):
-        """Written deterministically, so regeneration produces a clean diff."""
+        """Kept tidy so a hand-edit produces a clean, reviewable diff."""
         document = json.loads(RAW)
         assert list(document) == sorted(document)
         assert RAW.endswith("\n")

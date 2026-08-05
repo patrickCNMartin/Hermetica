@@ -152,7 +152,7 @@
     "table_of_contents": [
       {
         "color": "#591bf2",
-        "first_step_guid": "Aliquot incubate column.",
+        "first_step_guid": "9B003FD811BA6BD6681F1EB62FB5E858",
         "title": "Buffer filtrate vortex protocol"
       }
     ],
@@ -193,7 +193,7 @@
         "type_id": 3
       }
     ],
-    "uri": "02xqwgeixor1r98pojpunx9tzkw0aizseh1b4n98zapfk6biy9jo3bjhy535",
+    "uri": "02xqwg-eixor1r9-8pojpunx9tzkw0aizseh1b4n98zapfk6biy9jo3bjhy535",
     "url": "https://rs5123h.example.org/wy3c/02xqwgeixor1r98pojpunx9tzkw0aizseh1b4n98zapfk6biy9jo3bjhy535",
     "version_class": 568614,
     "version_data": null,
@@ -253,7 +253,7 @@
         "title": "Gradient supernatant eluate protocol",
         "title_html": "<p>Eluate filtrate overnight protocol</p>",
         "type_id": 1,
-        "uri": "02xqwgeixor1r98pojpunx9tzkw0aizseh1b4n98zapfk6biy9jo3bjhy535",
+        "uri": "02xqwg-eixor1r9-8pojpunx9tzkw0aizseh1b4n98zapfk6biy9jo3bjhy535",
         "version_class": 568614,
         "version_code": "lpcr9luye",
         "version_id": 0,
@@ -287,13 +287,13 @@
       {
         "affiliation": "Department of Placeholders",
         "affiliation_url": null,
-        "first_name": "Mira",
+        "first_name": "person.macpersonface@example.org",
         "guid": "C4AE6740A5743E7574BD76CE9435EDBF",
         "is_private_profile": false,
         "is_verified_user": true,
         "last_name": "Personman",
         "link": null,
-        "name": "Jane Doe",
+        "name": "person.macpersonface@example.org",
         "note": "",
         "user_image_file": {
           "avg_color": "",
@@ -418,8 +418,8 @@
     "fork_id": 307281,
     "funders": [
       {
-        "funder_name": "Vortex reagent elution.",
-        "grant_id": "Peptide supernatant vortex."
+        "funder_name": "Example Research Council",
+        "grant_id": "2026-10000"
       }
     ],
     "guid": "144E49AF501165633C0CBB4A8B539A8C",
@@ -503,10 +503,10 @@
         "previous_guid": null,
         "previous_id": 0,
         "protocol_id": 319531,
-        "section": "<p>Café café incubate.</p>",
+        "section": "Café café incubate.",
         "section_color": "#591bf2",
         "section_duration": 4500,
-        "step": "{\"blocks\":[{\"key\":\"fue57\",\"text\":\"Centrifuge gradient bench mixer \\u00ae gradient column buffer.\",\"type\":\"unstyled\",\"depth\":0,\"inlineStyleRanges\":[{\"style\":\"bold\",\"offset\":0,\"length\":27}],\"entityRanges\":[],\"data\":{}},{\"key\":\"b9pf8\",\"text\":\"Gradient pellet filtrate plate incubate incubate.\",\"type\":\"unstyled\",\"depth\":0,\"inlineStyleRanges\":[{\"style\":\"bold\",\"offset\":0,\"length\":9}],\"entityRanges\":[{\"key\":0,\"offset\":8,\"length\":1},{\"key\":1,\"offset\":13,\"length\":1}],\"data\":{}},{\"key\":\"9hi2g\",\"text\":\"Aliquot cartridge bench mixer \\u00ae pellet elution sample.\",\"type\":\"atomic\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[{\"key\":2,\"offset\":0,\"length\":1}],\"data\":{}},{\"key\":\"dpj3a\",\"text\":\"\",\"type\":\"unstyled\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[],\"data\":{}}],\"entityMap\":{\"0\":{\"type\":\"amount\",\"mutability\":\"MUTABLE\",\"data\":{\"amount\":\"Filtrate centrifuge buffer.\",\"error\":false,\"guid\":\"\",\"id\":0,\"label\":\"\",\"scientificNotation\":false,\"unit\":2}},\"1\":{\"type\":\"concentration\",\"mutability\":\"MUTABLE\",\"data\":{\"concentration\":\"Gradient 20 \\u00b0c resuspend.\",\"error_concentration\":false,\"guid\":\"\",\"id\":0,\"label\":\"\",\"scientificNotation\":false,\"unit\":13}},\"2\":{\"type\":\"notes\",\"mutability\":\"IMMUTABLE\",\"data\":{\"blocks\":[{\"data\":{},\"depth\":0,\"entityRanges\":[],\"inlineStyleRanges\":[],\"key\":\"1nh85\",\"text\":\"Column aliquot resuspend eluate bench mixer \\u00ae 20 \\u00b0c.\",\"type\":\"unstyled\"}],\"entityMap\":{},\"guid\":\"9FE93C4AB27FA22908C46FDFA36EE658\"}}}}"
+        "step": "{\"blocks\":[{\"key\":\"fue57\",\"text\":\"Centrifuge gradient bench mixer \\u00ae gradient column buffer. Contact sam.sampleson@example.org.\",\"type\":\"unstyled\",\"depth\":0,\"inlineStyleRanges\":[{\"style\":\"bold\",\"offset\":0,\"length\":27}],\"entityRanges\":[],\"data\":{}},{\"key\":\"b9pf8\",\"text\":\"Gradient pellet filtrate plate incubate incubate.\",\"type\":\"unstyled\",\"depth\":0,\"inlineStyleRanges\":[{\"style\":\"bold\",\"offset\":0,\"length\":9}],\"entityRanges\":[{\"key\":0,\"offset\":8,\"length\":1},{\"key\":1,\"offset\":13,\"length\":1}],\"data\":{}},{\"key\":\"9hi2g\",\"text\":\"Aliquot cartridge bench mixer \\u00ae pellet elution sample.\",\"type\":\"atomic\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[{\"key\":2,\"offset\":0,\"length\":1}],\"data\":{}},{\"key\":\"dpj3a\",\"text\":\"\",\"type\":\"unstyled\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[],\"data\":{}}],\"entityMap\":{\"0\":{\"type\":\"amount\",\"mutability\":\"MUTABLE\",\"data\":{\"amount\":\"Filtrate centrifuge buffer.\",\"error\":false,\"guid\":\"\",\"id\":0,\"label\":\"\",\"scientificNotation\":false,\"unit\":2}},\"1\":{\"type\":\"concentration\",\"mutability\":\"MUTABLE\",\"data\":{\"concentration\":\"Gradient 20 \\u00b0c resuspend.\",\"error_concentration\":false,\"guid\":\"\",\"id\":0,\"label\":\"\",\"scientificNotation\":false,\"unit\":13}},\"2\":{\"type\":\"notes\",\"mutability\":\"IMMUTABLE\",\"data\":{\"blocks\":[{\"data\":{},\"depth\":0,\"entityRanges\":[],\"inlineStyleRanges\":[],\"key\":\"1nh85\",\"text\":\"Column aliquot resuspend eluate bench mixer \\u00ae 20 \\u00b0c.\",\"type\":\"unstyled\"}],\"entityMap\":{},\"guid\":\"9FE93C4AB27FA22908C46FDFA36EE658\"}}}}"
       },
       {
         "case_id": 0,
@@ -772,22 +772,22 @@
     "table_of_contents": [
       {
         "color": "#591bf2",
-        "first_step_guid": "Wash overnight sample.",
+        "first_step_guid": "D3507DC82763D70D39E0C1549E78C0DE",
         "title": "Incubate bench mixer ® elution protocol"
       },
       {
         "color": "#c129a0",
-        "first_step_guid": "Sample lysate ≥5 µl.",
+        "first_step_guid": "86B956A6B204B2BB4B959ECC913899B4",
         "title": "Lysate plate supernatant protocol"
       },
       {
         "color": "#549d18",
-        "first_step_guid": "Wash incubate supernatant.",
+        "first_step_guid": "B6353CE5A247420BAB90320A50BE5574",
         "title": "Buffer sample eluate protocol"
       },
       {
         "color": "#5389d1",
-        "first_step_guid": "Sample elution aliquot.",
+        "first_step_guid": "84A6484B0935A75D847EF7AD0282ED32",
         "title": "Eluate cartridge café protocol"
       }
     ],
@@ -905,7 +905,7 @@
         "type_id": 3
       }
     ],
-    "uri": "9kagx5d1nhsu4ueqkm1tmv1xnaknjql88mxi4l6quw2qt6zxqmwfluk946bv",
+    "uri": "9kagx5-d1nhsu4u-eqkm1tmv1xnaknjql88mxi4l6quw2qt6zxqmwfluk946bv",
     "url": "https://rs5123h.example.org/wy3c/9kagx5d1nhsu4ueqkm1tmv1xnaknjql88mxi4l6quw2qt6zxqmwfluk946bv",
     "version_class": 319531,
     "version_data": null,
@@ -965,7 +965,7 @@
         "title": "Eluate bench mixer ® bench mixer ® protocol",
         "title_html": "<p>Digest supernatant sample protocol</p>",
         "type_id": 1,
-        "uri": "9kagx5d1nhsu4ueqkm1tmv1xnaknjql88mxi4l6quw2qt6zxqmwfluk946bv",
+        "uri": "9kagx5-d1nhsu4u-eqkm1tmv1xnaknjql88mxi4l6quw2qt6zxqmwfluk946bv",
         "version_class": 319531,
         "version_code": "dp3f2dgs3",
         "version_id": 0,
@@ -1132,7 +1132,7 @@
         "type_id": 3
       }
     ],
-    "uri": "3ohb398ph8bmx949fxsk9tvx6n1pg3b027h4u71glqt",
+    "uri": "3ohb39-8ph8bmx9-49fxsk9tvx6n1pg3b027h4u71glqt",
     "url": "https://rs5123h.example.org/wy3c/3ohb398ph8bmx949fxsk9tvx6n1pg3b027h4u71glqt",
     "version_class": 201297,
     "version_data": null,
@@ -1461,27 +1461,27 @@
     "table_of_contents": [
       {
         "color": "#591bf2",
-        "first_step_guid": "Elution buffer aliquot.",
+        "first_step_guid": "E83607AD528881E2A7EAD88CF964A0BE",
         "title": "Incubate pellet aliquot protocol"
       },
       {
         "color": "#7bd70b",
-        "first_step_guid": "Gradient pellet resuspend.",
+        "first_step_guid": "9DE37C1DE7336BC984EA2E04B0D7BCC4",
         "title": "Reagent café filtrate protocol"
       },
       {
         "color": "#5389d1",
-        "first_step_guid": "Bench mixer ® aliquot digest.",
+        "first_step_guid": "A3428A8D4E2645BCA760D40D4F79F59E",
         "title": "Lysate sample plate protocol"
       },
       {
         "color": "#fb9bf4",
-        "first_step_guid": "Vortex eluate incubate.",
+        "first_step_guid": "0CCE40F7CAFBDEA9AF6F848181FEB66F",
         "title": "Column filtrate gradient protocol"
       },
       {
         "color": "#49e2b0",
-        "first_step_guid": "Cartridge café elution.",
+        "first_step_guid": "038C64BBA5A87B89742C3E5C35D82D7C",
         "title": "Plate supernatant vortex protocol"
       }
     ],
@@ -1536,7 +1536,7 @@
         "type_id": 3
       }
     ],
-    "uri": "kv492jr6br8j0roe6kc6e7pwj4mhmnhsvzbofk3wx9",
+    "uri": "kv492j-r6br8j0r-oe6kc6e7pwj4mhmnhsvzbofk3wx9",
     "url": "https://rs5123h.example.org/wy3c/kv492jr6br8j0roe6kc6e7pwj4mhmnhsvzbofk3wx9",
     "version_class": 400843,
     "version_data": null,
@@ -1748,7 +1748,7 @@
         "size": 317768,
         "thumb_url": "https://rs5123h.example.org/5cz/0b9wg2qsl1/azvg.png",
         "type_id": 0,
-        "url": "https://rs5123h.example.org/7c9i0/209gg4x74.bmf?X-Amz-Algorithm=6c74396f7b45334c&X-Amz-Credential=2e77a9862c5ee1b3e6a87f4bd58f0d546d70c430e80b0db2da35641e30d1cbc&X-Amz-Date=0e5e0edea78a05c8&X-Amz-Expires=733384&X-Amz-SignedHeaders=7094&X-Amz-Signature=eff8d8acce48b62b722dc4af0db8be3963d53a902f2c1192c855bf46255b13db",
+        "url": "https://rs5123h.example.org/7c9i0/209gg4x74.bmf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=EXAMPLEKEYID0000001/20260804/eu-north-1/s3/aws4_request&X-Amz-Date=20260804T101500Z&X-Amz-Expires=86400&X-Amz-SignedHeaders=host&X-Amz-Signature=eff8d8acce48b62b722dc4af0db8be3963d53a902f2c1192c855bf46255b13db",
         "width": 0
       },
       {
@@ -1769,7 +1769,7 @@
         "size": 318188,
         "thumb_url": "https://rs5123h.example.org/5cz/0b9wg2qsl1/azvg.png",
         "type_id": 0,
-        "url": "https://rs5123h.example.org/7c9i0/bal2ch0s9.bmf?X-Amz-Algorithm=6c74396f7b45334c&X-Amz-Credential=2e77a9862c5ee1b3e6a87f4bd58f0d546d70c430e80b0db2da35641e30d1cbc&X-Amz-Date=0e5e0edea78a05c8&X-Amz-Expires=733384&X-Amz-SignedHeaders=7094&X-Amz-Signature=d32ac304dc1dfd56014d9ef937d0984321d9fab94ce432604a2a2b9b61982428",
+        "url": "https://rs5123h.example.org/7c9i0/bal2ch0s9.bmf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=EXAMPLEKEYID0000001/20260804/eu-north-1/s3/aws4_request&X-Amz-Date=20260804T101500Z&X-Amz-Expires=86400&X-Amz-SignedHeaders=host&X-Amz-Signature=d32ac304dc1dfd56014d9ef937d0984321d9fab94ce432604a2a2b9b61982428",
         "width": 0
       }
     ],
@@ -1778,8 +1778,8 @@
     "fork_id": 460689,
     "funders": [
       {
-        "funder_name": "Column sample cartridge.",
-        "grant_id": "20 °c centrifuge plate."
+        "funder_name": "Example Research Council",
+        "grant_id": "2026-10000"
       }
     ],
     "guid": "1B835BF48F1D97F699FA289FD837324D",
@@ -1866,7 +1866,7 @@
         "section": "<p>Peptide plate cartridge.</p>",
         "section_color": "#273eb9",
         "section_duration": 2700,
-        "step": "{\"blocks\":[{\"key\":\"1fbo2\",\"text\":\"Incubate centrifuge eluate supernatant vortex elution.\",\"type\":\"unstyled\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[],\"data\":{}},{\"key\":\"5knml\",\"text\":\"\",\"type\":\"unstyled\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[],\"data\":{}},{\"key\":\"7b43l\",\"text\":\"\\u22655 \\u00b5l eluate 20 \\u00b0c cartridge centrifuge digest.\",\"type\":\"atomic\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[{\"key\":0,\"offset\":0,\"length\":1}],\"data\":{}},{\"key\":\"8vsan\",\"text\":\"\",\"type\":\"unstyled\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[],\"data\":{}}],\"entityMap\":{\"0\":{\"type\":\"equipment\",\"mutability\":\"IMMUTABLE\",\"data\":{\"id\":258161,\"guid\":\"ADCED5E8E7913D1B1982AD3EE0212FBE\",\"brand\":\"Aliquot reagent centrifuge.\",\"sku\":\"\\u22655 \\u00b5l column reagent.\",\"name\":\"John Personman\",\"link\":\"https://rs5123h.example.org/dlewnbrvmjwz59m/os8xaudap/e4yfp6\",\"type\":\"Centrifuge eluate.\",\"specifications\":\"Centrifuge \\u22655 \\u00b5l buffer.\",\"file\":null,\"image\":{\"id\":372686,\"source\":\"https://rs5123h.example.org/7c9i0/jltzgle5x.jpg?X-Amz-Algorithm=6c74396f7b45334c\\u0026X-Amz-Credential=2e77a9862c5ee1b3e6a87f4bd58f0d546d70c430e80b0db2da35641e30d1cbc\\u0026X-Amz-Date=74285e193641734b\\u0026X-Amz-Expires=733384\\u0026X-Amz-SignedHeaders=7094\\u0026X-Amz-Signature=be05f469ac69750f7cad639365db31aef821ba0916d77b470b1db54b6a8a2546\",\"name\":\"Pablo Example\",\"icon\":\"Supernatant aliquot pellet.\"},\"vendor\":{\"id\":457804,\"name\":\"Ines Sample\",\"link\":\"https://rs5123h.example.org\",\"is_requested\":false,\"image\":{\"source\":\"/img/vendors/placeholder.png\",\"placeholder\":\"/img/vendors/placeholder.png\"}},\"is_public\":true,\"can_edit\":false}}}}"
+        "step": "{\"blocks\":[{\"key\":\"1fbo2\",\"text\":\"Incubate centrifuge eluate supernatant vortex elution.\",\"type\":\"unstyled\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[],\"data\":{}},{\"key\":\"5knml\",\"text\":\"\",\"type\":\"unstyled\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[],\"data\":{}},{\"key\":\"7b43l\",\"text\":\"\\u22655 \\u00b5l eluate 20 \\u00b0c cartridge centrifuge digest.\",\"type\":\"atomic\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[{\"key\":0,\"offset\":0,\"length\":1}],\"data\":{}},{\"key\":\"8vsan\",\"text\":\"\",\"type\":\"unstyled\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[],\"data\":{}}],\"entityMap\":{\"0\":{\"type\":\"equipment\",\"mutability\":\"IMMUTABLE\",\"data\":{\"id\":258161,\"guid\":\"ADCED5E8E7913D1B1982AD3EE0212FBE\",\"brand\":\"Aliquot reagent centrifuge.\",\"sku\":\"\\u22655 \\u00b5l column reagent.\",\"name\":\"John Personman\",\"link\":\"https://rs5123h.example.org/dlewnbrvmjwz59m/os8xaudap/e4yfp6\",\"type\":\"Centrifuge eluate.\",\"specifications\":\"Centrifuge \\u22655 \\u00b5l buffer.\",\"file\":null,\"image\":{\"id\":372686,\"source\":\"https://rs5123h.example.org/7c9i0/jltzgle5x.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256\\u0026X-Amz-Credential=EXAMPLEKEYID0000001/20260804/eu-north-1/s3/aws4_request\\u0026X-Amz-Date=20260804T101500Z\\u0026X-Amz-Expires=86400\\u0026X-Amz-SignedHeaders=host\\u0026X-Amz-Signature=be05f469ac69750f7cad639365db31aef821ba0916d77b470b1db54b6a8a2546\",\"name\":\"Pablo Example\",\"icon\":\"Supernatant aliquot pellet.\"},\"vendor\":{\"id\":457804,\"name\":\"Ines Sample\",\"link\":\"https://rs5123h.example.org\",\"is_requested\":false,\"image\":{\"source\":\"/img/vendors/placeholder.png\",\"placeholder\":\"/img/vendors/placeholder.png\"}},\"is_public\":true,\"can_edit\":false}}}}"
       },
       {
         "case_id": 0,
@@ -1972,17 +1972,17 @@
     "table_of_contents": [
       {
         "color": "#273eb9",
-        "first_step_guid": "Plate pellet supernatant.",
+        "first_step_guid": "7BD23C0CD0074519817A8C9AA1882B5E",
         "title": "≥5 µl resuspend cartridge protocol"
       },
       {
         "color": "#591bf2",
-        "first_step_guid": "Supernatant cartridge eluate.",
+        "first_step_guid": "B0F641F909640500C38C314708C61B79",
         "title": "Aliquot peptide column protocol"
       },
       {
         "color": "#49e2b0",
-        "first_step_guid": "Gradient buffer eluate.",
+        "first_step_guid": "1178A9C1C3AD8DD7E78618430051DD34",
         "title": "Gradient incubate digest protocol"
       }
     ],
@@ -2037,7 +2037,7 @@
         "type_id": 3
       }
     ],
-    "uri": "0dxbuibm7l7lyhuvr4a82crny7ogdl4ulpkfl0eakoua9emowctop8htq48b",
+    "uri": "0dxbui-bm7l7lyh-uvr4a82crny7ogdl4ulpkfl0eakoua9emowctop8htq48b",
     "url": "https://rs5123h.example.org/wy3c/0dxbuibm7l7lyhuvr4a82crny7ogdl4ulpkfl0eakoua9emowctop8htq48b",
     "version_class": 404172,
     "version_data": null,
@@ -2097,7 +2097,7 @@
         "title": "Pellet eluate 20 °c protocol",
         "title_html": "<p>Plate wash centrifuge protocol</p>",
         "type_id": 1,
-        "uri": "0dxbuibm7l7lyhuvr4a82crny7ogdl4ulpkfl0eakoua9emowctop8htq48b",
+        "uri": "0dxbui-bm7l7lyh-uvr4a82crny7ogdl4ulpkfl0eakoua9emowctop8htq48b",
         "version_class": 404172,
         "version_code": "83mct1716",
         "version_id": 0,
@@ -2200,7 +2200,7 @@
         "size": 421301,
         "thumb_url": "https://rs5123h.example.org/5cz/0b9wg2qsl1/22o.png",
         "type_id": 0,
-        "url": "https://rs5123h.example.org/7c9i0/4dugnz5pm.pdf?X-Amz-Algorithm=6c74396f7b45334c&X-Amz-Credential=2e77a9862c5ee1b3e6a87f4bd58f0d546d70c430e80b0db2da35641e30d1cbc&X-Amz-Date=35fa337d11ce0c4c&X-Amz-Expires=733384&X-Amz-SignedHeaders=7094&X-Amz-Signature=db84170e22cba8ff93085c017fae16b60886f642abd985f910e38a833541faf4",
+        "url": "https://rs5123h.example.org/7c9i0/4dugnz5pm.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=EXAMPLEKEYID0000001/20260804/eu-north-1/s3/aws4_request&X-Amz-Date=20260804T101500Z&X-Amz-Expires=86400&X-Amz-SignedHeaders=host&X-Amz-Signature=db84170e22cba8ff93085c017fae16b60886f642abd985f910e38a833541faf4",
         "width": 0
       },
       {
@@ -2221,7 +2221,7 @@
         "size": 1057858,
         "thumb_url": "https://rs5123h.example.org/5cz/0b9wg2qsl1/c92.png",
         "type_id": 0,
-        "url": "https://rs5123h.example.org/7c9i0/0az97cyse.png?X-Amz-Algorithm=6c74396f7b45334c&X-Amz-Credential=2e77a9862c5ee1b3e6a87f4bd58f0d546d70c430e80b0db2da35641e30d1cbc&X-Amz-Date=35fa337d11ce0c4c&X-Amz-Expires=733384&X-Amz-SignedHeaders=7094&X-Amz-Signature=ad2ad8c48d4da1bfd1b95b966320beb0f0308221ab43c6c550621f219c223f54",
+        "url": "https://rs5123h.example.org/7c9i0/0az97cyse.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=EXAMPLEKEYID0000001/20260804/eu-north-1/s3/aws4_request&X-Amz-Date=20260804T101500Z&X-Amz-Expires=86400&X-Amz-SignedHeaders=host&X-Amz-Signature=ad2ad8c48d4da1bfd1b95b966320beb0f0308221ab43c6c550621f219c223f54",
         "width": 0
       }
     ],
@@ -2251,7 +2251,7 @@
     "link": "https://rs5123h.example.org/ctpfnzry5pk2q1md7jje16yo7v8ji5hn4otfrt6tcn60h17xm5",
     "manuscript_citation": "",
     "materials": [],
-    "materials_text": "{\"blocks\":[{\"key\":\"a8k5g\",\"text\":\"Plate lysate elution reagent cartridge caf\\u00e9.\",\"type\":\"unstyled\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[{\"key\":0,\"offset\":21,\"length\":1}],\"data\":{}},{\"key\":\"ftru0\",\"text\":\"Resuspend overnight reagent pellet vortex resuspend.\",\"type\":\"unstyled\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[],\"data\":{}},{\"key\":\"b5dbo\",\"text\":\"\\u22655 \\u00b5l plate gradient eluate lysate centrifuge.\",\"type\":\"unstyled\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[{\"key\":1,\"offset\":42,\"length\":1},{\"key\":2,\"offset\":48,\"length\":1}],\"data\":{}},{\"key\":\"fiphe\",\"text\":\"Lysate eluate filtrate elution vortex eluate.\",\"type\":\"atomic\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[{\"key\":5,\"offset\":0,\"length\":1}],\"data\":{}}],\"entityMap\":{\"0\":{\"type\":\"reagents\",\"mutability\":\"MUTABLE\",\"data\":{\"id\":925823,\"guid\":\"78C33FFDC59903B2F1F41DCC41485968\",\"name\":\"Rodney Personman\",\"mol_weight\":0,\"sku\":\"Incubate plate filtrate.\",\"url\":\"https://rs5123h.example.org/jgrk4b4zsi4co33umr5\",\"cas_number\":\"\",\"rrid\":\"\",\"vendor\":{\"id\":153911,\"name\":\"Mira Roe\",\"link\":\"http://rs5123h.example.org\",\"is_requested\":false,\"image\":{\"source\":\"/img/vendors/placeholder.png\",\"placeholder\":\"/img/vendors/placeholder.png\"}},\"is_public\":false,\"can_edit\":false}},\"1\":{\"type\":\"reagents\",\"mutability\":\"MUTABLE\",\"data\":{\"id\":863223,\"guid\":\"9A04DD3617CBFA015333F45EEFEF7EA3\",\"name\":\"Rodney Example\",\"mol_weight\":0,\"sku\":\"Wash 20 \\u00b0c supernatant.\",\"url\":\"https://rs5123h.example.org/wvpfa33hobizj\",\"cas_number\":\"\",\"rrid\":\"\",\"vendor\":{\"id\":153911,\"name\":\"Mira Roe\",\"link\":\"http://rs5123h.example.org\",\"is_requested\":false,\"image\":{\"source\":\"/img/vendors/placeholder.png\",\"placeholder\":\"/img/vendors/placeholder.png\"}},\"is_public\":false,\"can_edit\":false}},\"2\":{\"type\":\"reagents\",\"mutability\":\"MUTABLE\",\"data\":{\"id\":822390,\"guid\":\"E1B07D447F7F129C161B6E0B83E4EBF8\",\"name\":\"Otto Personman\",\"mol_weight\":0,\"sku\":\"Reagent digest bench mixer \\u00ae.\",\"url\":\"https://rs5123h.example.org/3wkrx6l9giq2vp\",\"cas_number\":\"\",\"rrid\":\"\",\"vendor\":{\"id\":153911,\"name\":\"Mira Roe\",\"link\":\"http://rs5123h.example.org\",\"is_requested\":false,\"image\":{\"source\":\"/img/vendors/placeholder.png\",\"placeholder\":\"/img/vendors/placeholder.png\"}},\"is_public\":false,\"can_edit\":false}},\"5\":{\"type\":\"equipment\",\"mutability\":\"IMMUTABLE\",\"data\":{\"id\":272811,\"guid\":\"F956AE455DFD04036FA65BC7FC8B09A8\",\"brand\":\"Bench mixer \\u00ae reagent resuspend.\",\"sku\":\"20 \\u00b0c eluate overnight.\",\"name\":\"Ada Personman\",\"link\":\"https://rs5123h.example.org/ctpfnzry5pk2q1md7jje16yo7v8ji5hn4otfrt6tcn60h17xm5\",\"type\":\"\",\"specifications\":\"\",\"file\":{\"id\":123496,\"source\":\"https://rs5123h.example.org/7c9i0/9i1sd6mta.png?X-Amz-Algorithm=6c74396f7b45334c\\u0026X-Amz-Credential=2e77a9862c5ee1b3e6a87f4bd58f0d546d70c430e80b0db2da35641e30d1cbc\\u0026X-Amz-Date=35fa337d11ce0c4c\\u0026X-Amz-Expires=733384\\u0026X-Amz-SignedHeaders=7094\\u0026X-Amz-Signature=1c9134b4eb43ef0f72b2a22f43e1a9885163abdab924e476b1acfb1aae2fa634\",\"name\":\"Otto Sample\",\"icon\":\"Wash column bench mixer \\u00ae.\"},\"image\":null,\"vendor\":{\"id\":153911,\"name\":\"Mira Roe\",\"link\":\"http://rs5123h.example.org\",\"is_requested\":false,\"image\":{\"source\":\"/img/vendors/placeholder.png\",\"placeholder\":\"/img/vendors/placeholder.png\"}},\"is_public\":false,\"can_edit\":false}}}}",
+    "materials_text": "{\"blocks\":[{\"key\":\"a8k5g\",\"text\":\"Plate lysate elution reagent cartridge caf\\u00e9.\",\"type\":\"unstyled\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[{\"key\":0,\"offset\":21,\"length\":1}],\"data\":{}},{\"key\":\"ftru0\",\"text\":\"Resuspend overnight reagent pellet vortex resuspend.\",\"type\":\"unstyled\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[],\"data\":{}},{\"key\":\"b5dbo\",\"text\":\"\\u22655 \\u00b5l plate gradient eluate lysate centrifuge.\",\"type\":\"unstyled\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[{\"key\":1,\"offset\":42,\"length\":1},{\"key\":2,\"offset\":48,\"length\":1}],\"data\":{}},{\"key\":\"fiphe\",\"text\":\"Lysate eluate filtrate elution vortex eluate.\",\"type\":\"atomic\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[{\"key\":5,\"offset\":0,\"length\":1}],\"data\":{}}],\"entityMap\":{\"0\":{\"type\":\"reagents\",\"mutability\":\"MUTABLE\",\"data\":{\"id\":925823,\"guid\":\"78C33FFDC59903B2F1F41DCC41485968\",\"name\":\"Rodney Personman\",\"mol_weight\":0,\"sku\":\"Incubate plate filtrate.\",\"url\":\"https://rs5123h.example.org/jgrk4b4zsi4co33umr5\",\"cas_number\":\"\",\"rrid\":\"\",\"vendor\":{\"id\":153911,\"name\":\"Mira Roe\",\"link\":\"http://rs5123h.example.org\",\"is_requested\":false,\"image\":{\"source\":\"/img/vendors/placeholder.png\",\"placeholder\":\"/img/vendors/placeholder.png\"}},\"is_public\":false,\"can_edit\":false}},\"1\":{\"type\":\"reagents\",\"mutability\":\"MUTABLE\",\"data\":{\"id\":863223,\"guid\":\"9A04DD3617CBFA015333F45EEFEF7EA3\",\"name\":\"Rodney Example\",\"mol_weight\":0,\"sku\":\"Wash 20 \\u00b0c supernatant.\",\"url\":\"https://rs5123h.example.org/wvpfa33hobizj\",\"cas_number\":\"\",\"rrid\":\"\",\"vendor\":{\"id\":153911,\"name\":\"Mira Roe\",\"link\":\"http://rs5123h.example.org\",\"is_requested\":false,\"image\":{\"source\":\"/img/vendors/placeholder.png\",\"placeholder\":\"/img/vendors/placeholder.png\"}},\"is_public\":false,\"can_edit\":false}},\"2\":{\"type\":\"reagents\",\"mutability\":\"MUTABLE\",\"data\":{\"id\":822390,\"guid\":\"E1B07D447F7F129C161B6E0B83E4EBF8\",\"name\":\"Otto Personman\",\"mol_weight\":0,\"sku\":\"Reagent digest bench mixer \\u00ae.\",\"url\":\"https://rs5123h.example.org/3wkrx6l9giq2vp\",\"cas_number\":\"\",\"rrid\":\"\",\"vendor\":{\"id\":153911,\"name\":\"Mira Roe\",\"link\":\"http://rs5123h.example.org\",\"is_requested\":false,\"image\":{\"source\":\"/img/vendors/placeholder.png\",\"placeholder\":\"/img/vendors/placeholder.png\"}},\"is_public\":false,\"can_edit\":false}},\"5\":{\"type\":\"equipment\",\"mutability\":\"IMMUTABLE\",\"data\":{\"id\":272811,\"guid\":\"F956AE455DFD04036FA65BC7FC8B09A8\",\"brand\":\"Bench mixer \\u00ae reagent resuspend.\",\"sku\":\"20 \\u00b0c eluate overnight.\",\"name\":\"Ada Personman\",\"link\":\"https://rs5123h.example.org/ctpfnzry5pk2q1md7jje16yo7v8ji5hn4otfrt6tcn60h17xm5\",\"type\":\"\",\"specifications\":\"\",\"file\":{\"id\":123496,\"source\":\"https://rs5123h.example.org/7c9i0/9i1sd6mta.png?X-Amz-Algorithm=AWS4-HMAC-SHA256\\u0026X-Amz-Credential=EXAMPLEKEYID0000001/20260804/eu-north-1/s3/aws4_request\\u0026X-Amz-Date=20260804T101500Z\\u0026X-Amz-Expires=86400\\u0026X-Amz-SignedHeaders=host\\u0026X-Amz-Signature=1c9134b4eb43ef0f72b2a22f43e1a9885163abdab924e476b1acfb1aae2fa634\",\"name\":\"Otto Sample\",\"icon\":\"Wash column bench mixer \\u00ae.\"},\"image\":null,\"vendor\":{\"id\":153911,\"name\":\"Mira Roe\",\"link\":\"http://rs5123h.example.org\",\"is_requested\":false,\"image\":{\"source\":\"/img/vendors/placeholder.png\",\"placeholder\":\"/img/vendors/placeholder.png\"}},\"is_public\":false,\"can_edit\":false}}}}",
     "protocol_image_file": {
       "avg_color": "",
       "created_at": 1753351539,
@@ -2261,7 +2261,7 @@
       "mime": "image/png",
       "scan_status": 0,
       "size": 180536,
-      "url": "https://rs5123h.example.org/7so5ewl/nvy7zgcm/tzwepvfj4nkgtcv57hlaq59ahpxjojyycppucxub0v.png?Policy=543d5bdc18e628ae7d6d3c9510f8eacd8ecd1a89655df971307f21f520b09397057c59b504714f449a9f0bd5199393b008f865da810ad0e0e352d7cf0fb027f62262e93896973d35f6af7b57e1deabcc98c74795b501f593f8cdd9ae61369cb23d9394d9e07d47a69403f82ebb1bc0580172747d02560b375fd7&Signature=674c81e8af847c58e78c046deff88e269c56e942e66f722b9492f61696a62057a342e6316f45b4c6269b048565467edbc93c9502655660f20ace2e01c8700a421f89ef964a1d923fab7311e6f73ebf082cb7c0a54df3fdfda5e472149a7f9596cd5042f6a7d9e61648b6538138b3ea31780314259437abf8f212cf2f9c8e36137ef3dab79685d970b2f82e4830fe2be857f4f840fc6d4883d68e9136588d7c851174928f25c4bfb77b71230c&Key-Pair-Id=8deb22748bf94d",
+      "url": "https://rs5123h.example.org/7so5ewl/nvy7zgcm/tzwepvfj4nkgtcv57hlaq59ahpxjojyycppucxub0v.png?Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cHM6Ly9yczUxMjNoLmV4YW1wbGUub3JnLyoifV19_-~==&Signature=EXAMPLESIGNATURE~0000_1111-2222==&Key-Pair-Id=EXAMPLEKEYPAIRID01",
       "width": 0
     },
     "protocol_references": "{\"blocks\":[{\"key\":\"3cmib\",\"text\":\"Centrifuge overnight plate vortex centrifuge \\u22655 \\u00b5l.\",\"type\":\"unstyled\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[{\"key\":0,\"offset\":0,\"length\":56}],\"data\":{}}],\"entityMap\":{\"0\":{\"type\":\"link\",\"mutability\":\"MUTABLE\",\"data\":{\"guid\":\"06EA158B356B4673703EDFE37E983B59\",\"url\":\"https://rs5123h.example.org/d89qh8zj6h/ijjxpma/0f8p740tc.pdf\"}}}}",
@@ -2333,7 +2333,7 @@
         "section": "<p>Buffer resuspend gradient.</p>",
         "section_color": "#c129a0",
         "section_duration": 3600,
-        "step": "{\"blocks\":[{\"key\":\"2kuqk\",\"text\":\"Column plate \\u22655 \\u00b5l vortex caf\\u00e9 incubate.\",\"type\":\"align-justify\",\"depth\":0,\"inlineStyleRanges\":[{\"style\":\"bold\",\"offset\":44,\"length\":8}],\"entityRanges\":[],\"data\":{}},{\"key\":\"dvsk4\",\"text\":\"\",\"type\":\"align-justify\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[],\"data\":{}},{\"key\":\"6l3o5\",\"text\":\"\",\"type\":\"align-justify\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[],\"data\":{}},{\"key\":\"dvetc\",\"text\":\"Gradient peptide \\u22655 \\u00b5l peptide overnight overnight.\",\"type\":\"atomic\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[{\"key\":0,\"offset\":0,\"length\":1}],\"data\":{}}],\"entityMap\":{\"0\":{\"type\":\"image\",\"mutability\":\"IMMUTABLE\",\"data\":{\"align\":\"\",\"alt\":\"\",\"guid\":\"17B9815603F9E9A6FDA757BA1381978B\",\"height\":232,\"is_video\":false,\"legend\":\"{\\\"blocks\\\":[{\\\"key\\\":\\\"8djdm\\\",\\\"text\\\":\\\"Caf\\\\u00e9 overnight peptide caf\\\\u00e9 lysate reagent.\\\",\\\"type\\\":\\\"unstyled\\\",\\\"depth\\\":0,\\\"inlineStyleRanges\\\":[{\\\"style\\\":\\\"bold\\\",\\\"offset\\\":0,\\\"length\\\":10}],\\\"entityRanges\\\":[],\\\"data\\\":{}}],\\\"entityMap\\\":{}}\",\"mime\":\"image/png\",\"nestedSelector\":null,\"original_name\":\"Vortex wash pellet.\",\"placeholder\":\"https://rs5123h.example.org/7c9i0/hn8xd6krw.png?X-Amz-Algorithm=6c74396f7b45334c\\u0026X-Amz-Credential=2e77a9862c5ee1b3e6a87f4bd58f0d546d70c430e80b0db2da35641e30d1cbc\\u0026X-Amz-Date=35fa337d11ce0c4c\\u0026X-Amz-Expires=733384\\u0026X-Amz-SignedHeaders=7094\\u0026X-Amz-Signature=41dfc71f989fd0ea35e95eae8b8fe06662bb5007c17948fce08840f4b2f693cc\",\"shadow\":false,\"source\":\"https://rs5123h.example.org/7c9i0/2la9gn362.png?X-Amz-Algorithm=6c74396f7b45334c\\u0026X-Amz-Credential=2e77a9862c5ee1b3e6a87f4bd58f0d546d70c430e80b0db2da35641e30d1cbc\\u0026X-Amz-Date=35fa337d11ce0c4c\\u0026X-Amz-Expires=733384\\u0026X-Amz-SignedHeaders=7094\\u0026X-Amz-Signature=0ec586a5045f2d9dce454a62e6348a28711d61f18d66b288173e2bcb22f3d653\",\"width\":550}}}}"
+        "step": "{\"blocks\":[{\"key\":\"2kuqk\",\"text\":\"Column plate \\u22655 \\u00b5l vortex caf\\u00e9 incubate.\",\"type\":\"align-justify\",\"depth\":0,\"inlineStyleRanges\":[{\"style\":\"bold\",\"offset\":44,\"length\":8}],\"entityRanges\":[],\"data\":{}},{\"key\":\"dvsk4\",\"text\":\"\",\"type\":\"align-justify\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[],\"data\":{}},{\"key\":\"6l3o5\",\"text\":\"\",\"type\":\"align-justify\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[],\"data\":{}},{\"key\":\"dvetc\",\"text\":\"Gradient peptide \\u22655 \\u00b5l peptide overnight overnight.\",\"type\":\"atomic\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[{\"key\":0,\"offset\":0,\"length\":1}],\"data\":{}}],\"entityMap\":{\"0\":{\"type\":\"image\",\"mutability\":\"IMMUTABLE\",\"data\":{\"align\":\"\",\"alt\":\"\",\"guid\":\"17B9815603F9E9A6FDA757BA1381978B\",\"height\":232,\"is_video\":false,\"legend\":\"{\\\"blocks\\\":[{\\\"key\\\":\\\"8djdm\\\",\\\"text\\\":\\\"Caf\\\\u00e9 overnight peptide caf\\\\u00e9 lysate reagent.\\\",\\\"type\\\":\\\"unstyled\\\",\\\"depth\\\":0,\\\"inlineStyleRanges\\\":[{\\\"style\\\":\\\"bold\\\",\\\"offset\\\":0,\\\"length\\\":10}],\\\"entityRanges\\\":[],\\\"data\\\":{}}],\\\"entityMap\\\":{}}\",\"mime\":\"image/png\",\"nestedSelector\":null,\"original_name\":\"Vortex wash pellet.\",\"placeholder\":\"https://rs5123h.example.org/7c9i0/hn8xd6krw.png?X-Amz-Algorithm=AWS4-HMAC-SHA256\\u0026X-Amz-Credential=EXAMPLEKEYID0000001/20260804/eu-north-1/s3/aws4_request\\u0026X-Amz-Date=20260804T101500Z\\u0026X-Amz-Expires=86400\\u0026X-Amz-SignedHeaders=host\\u0026X-Amz-Signature=41dfc71f989fd0ea35e95eae8b8fe06662bb5007c17948fce08840f4b2f693cc\",\"shadow\":false,\"source\":\"https://rs5123h.example.org/7c9i0/2la9gn362.png?X-Amz-Algorithm=AWS4-HMAC-SHA256\\u0026X-Amz-Credential=EXAMPLEKEYID0000001/20260804/eu-north-1/s3/aws4_request\\u0026X-Amz-Date=20260804T101500Z\\u0026X-Amz-Expires=86400\\u0026X-Amz-SignedHeaders=host\\u0026X-Amz-Signature=0ec586a5045f2d9dce454a62e6348a28711d61f18d66b288173e2bcb22f3d653\",\"width\":550}}}}"
       },
       {
         "case_id": 0,
@@ -2413,7 +2413,7 @@
         "section": "<p>Filtrate peptide sample.</p>",
         "section_color": "#591bf2",
         "section_duration": 3960,
-        "step": "{\"blocks\":[{\"key\":\"ct3q2\",\"text\":\"Overnight elution vortex wash centrifuge centrifuge.\",\"type\":\"align-justify\",\"depth\":0,\"inlineStyleRanges\":[{\"style\":\"bold\",\"offset\":0,\"length\":51}],\"entityRanges\":[],\"data\":{}},{\"key\":\"74aef\",\"text\":\"\",\"type\":\"unstyled\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[],\"data\":{}},{\"key\":\"coq2l\",\"text\":\"\",\"type\":\"unstyled\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[],\"data\":{}},{\"key\":\"ctkj7\",\"text\":\"Centrifuge digest resuspend digest plate plate.\",\"type\":\"atomic\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[{\"key\":0,\"offset\":0,\"length\":1}],\"data\":{}}],\"entityMap\":{\"0\":{\"type\":\"image\",\"mutability\":\"IMMUTABLE\",\"data\":{\"alt\":\"\",\"guid\":\"18F87EA44887C543B437D07565027B5C\",\"height\":173,\"is_video\":false,\"legend\":\"{\\\"blocks\\\":[{\\\"key\\\":\\\"ffn9r\\\",\\\"text\\\":\\\"Digest gradient gradient resuspend sample bench mixer \\\\u00ae.\\\",\\\"type\\\":\\\"unstyled\\\",\\\"depth\\\":0,\\\"inlineStyleRanges\\\":[],\\\"entityRanges\\\":[],\\\"data\\\":{}}],\\\"entityMap\\\":{}}\",\"mime\":\"image/jpeg\",\"nestedSelector\":null,\"original_name\":\"Resuspend resuspend aliquot.\",\"placeholder\":\"https://rs5123h.example.org/7c9i0/qyewsi3dl.jpg?X-Amz-Algorithm=6c74396f7b45334c\\u0026X-Amz-Credential=2e77a9862c5ee1b3e6a87f4bd58f0d546d70c430e80b0db2da35641e30d1cbc\\u0026X-Amz-Date=35fa337d11ce0c4c\\u0026X-Amz-Expires=733384\\u0026X-Amz-SignedHeaders=7094\\u0026X-Amz-Signature=0c6630bcb78cc6a0c4d022c0c9985593bfa3a9cd66992c964b8f1fc220df4e15\",\"shadow\":false,\"source\":\"https://rs5123h.example.org/7c9i0/aycgdogvy.jpg?X-Amz-Algorithm=6c74396f7b45334c\\u0026X-Amz-Credential=2e77a9862c5ee1b3e6a87f4bd58f0d546d70c430e80b0db2da35641e30d1cbc\\u0026X-Amz-Date=35fa337d11ce0c4c\\u0026X-Amz-Expires=733384\\u0026X-Amz-SignedHeaders=7094\\u0026X-Amz-Signature=df95f38abf8521f63fd93997b786eba32347ffec21cded4f34b2614a0a55ac7c\",\"width\":550}}}}"
+        "step": "{\"blocks\":[{\"key\":\"ct3q2\",\"text\":\"Overnight elution vortex wash centrifuge centrifuge.\",\"type\":\"align-justify\",\"depth\":0,\"inlineStyleRanges\":[{\"style\":\"bold\",\"offset\":0,\"length\":51}],\"entityRanges\":[],\"data\":{}},{\"key\":\"74aef\",\"text\":\"\",\"type\":\"unstyled\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[],\"data\":{}},{\"key\":\"coq2l\",\"text\":\"\",\"type\":\"unstyled\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[],\"data\":{}},{\"key\":\"ctkj7\",\"text\":\"Centrifuge digest resuspend digest plate plate.\",\"type\":\"atomic\",\"depth\":0,\"inlineStyleRanges\":[],\"entityRanges\":[{\"key\":0,\"offset\":0,\"length\":1}],\"data\":{}}],\"entityMap\":{\"0\":{\"type\":\"image\",\"mutability\":\"IMMUTABLE\",\"data\":{\"alt\":\"\",\"guid\":\"18F87EA44887C543B437D07565027B5C\",\"height\":173,\"is_video\":false,\"legend\":\"{\\\"blocks\\\":[{\\\"key\\\":\\\"ffn9r\\\",\\\"text\\\":\\\"Digest gradient gradient resuspend sample bench mixer \\\\u00ae.\\\",\\\"type\\\":\\\"unstyled\\\",\\\"depth\\\":0,\\\"inlineStyleRanges\\\":[],\\\"entityRanges\\\":[],\\\"data\\\":{}}],\\\"entityMap\\\":{}}\",\"mime\":\"image/jpeg\",\"nestedSelector\":null,\"original_name\":\"Resuspend resuspend aliquot.\",\"placeholder\":\"https://rs5123h.example.org/7c9i0/qyewsi3dl.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256\\u0026X-Amz-Credential=EXAMPLEKEYID0000001/20260804/eu-north-1/s3/aws4_request\\u0026X-Amz-Date=20260804T101500Z\\u0026X-Amz-Expires=86400\\u0026X-Amz-SignedHeaders=host\\u0026X-Amz-Signature=0c6630bcb78cc6a0c4d022c0c9985593bfa3a9cd66992c964b8f1fc220df4e15\",\"shadow\":false,\"source\":\"https://rs5123h.example.org/7c9i0/aycgdogvy.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256\\u0026X-Amz-Credential=EXAMPLEKEYID0000001/20260804/eu-north-1/s3/aws4_request\\u0026X-Amz-Date=20260804T101500Z\\u0026X-Amz-Expires=86400\\u0026X-Amz-SignedHeaders=host\\u0026X-Amz-Signature=df95f38abf8521f63fd93997b786eba32347ffec21cded4f34b2614a0a55ac7c\",\"width\":550}}}}"
       },
       {
         "case_id": 0,
@@ -2500,12 +2500,12 @@
         "cases": [],
         "critical": [
           {
-            "icon": "Filtrate supernatant column.",
+            "icon": "CriticalIcon",
             "id": 172642,
             "title": "Bench mixer ® overnight cartridge protocol"
           }
         ],
-        "critical_ids": "Cartridge filtrate 20 °c.",
+        "critical_ids": "14",
         "data": null,
         "duration": 1200,
         "guid": "A4ED40F039AC0A8D49526C9A72B62AF8",
@@ -2525,12 +2525,12 @@
     "table_of_contents": [
       {
         "color": "#591bf2",
-        "first_step_guid": "≥5 µl reagent resuspend.",
+        "first_step_guid": "CC1AE09C04FE061FD800B84F97763775",
         "title": "Digest wash ≥5 µl protocol"
       },
       {
         "color": "#c129a0",
-        "first_step_guid": "Gradient gradient 20 °c.",
+        "first_step_guid": "B28C17FA4176426ADCAF099E8350975F",
         "title": "Centrifuge ≥5 µl aliquot protocol"
       }
     ],
@@ -2585,7 +2585,7 @@
         "type_id": 3
       }
     ],
-    "uri": "u97v9usb3z5p6mmp7bl6u8y38mjyq1v19ah96v53v2a3aj6iah6k22p98d",
+    "uri": "u97v9u-sb3z5p6m-mp7bl6u8y38mjyq1v19ah96v53v2a3aj6iah6k22p98d",
     "url": "https://rs5123h.example.org/wy3c/u97v9usb3z5p6mmp7bl6u8y38mjyq1v19ah96v53v2a3aj6iah6k22p98d",
     "version_class": 307451,
     "version_data": null,
@@ -2634,7 +2634,7 @@
           "mime": "image/png",
           "scan_status": 0,
           "size": 180536,
-          "url": "https://rs5123h.example.org/7so5ewl/nvy7zgcm/tzwepvfj4nkgtcv57hlaq59ahpxjojyycppucxub0v.png?Policy=543d5bdc18e628ae7d6d3c9510f8eacd8ecd1a89655df971307f21f520b09397057c59b504714f449a9f0bd5199393b008f865da810ad0e0e352d7cf0fb027f62262e93896973d35f6af7b57e1deabcc98c74795b501f593f8cdd9ae61369cb23d9394d9e07d47a69403f82ebb1bc0580172747d02560b375fd7&Signature=674c81e8af847c58e78c046deff88e269c56e942e66f722b9492f61696a62057a342e6316f45b4c6269b048565467edbc93c9502655660f20ace2e01c8700a421f89ef964a1d923fab7311e6f73ebf082cb7c0a54df3fdfda5e472149a7f9596cd5042f6a7d9e61648b6538138b3ea31780314259437abf8f212cf2f9c8e36137ef3dab79685d970b2f82e4830fe2be857f4f840fc6d4883d68e9136588d7c851174928f25c4bfb77b71230c&Key-Pair-Id=8deb22748bf94d",
+          "url": "https://rs5123h.example.org/7so5ewl/nvy7zgcm/tzwepvfj4nkgtcv57hlaq59ahpxjojyycppucxub0v.png?Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cHM6Ly9yczUxMjNoLmV4YW1wbGUub3JnLyoifV19_-~==&Signature=EXAMPLESIGNATURE~0000_1111-2222==&Key-Pair-Id=EXAMPLEKEYPAIRID01",
           "width": 0
         },
         "published_on": 0,
@@ -2645,7 +2645,7 @@
         "title": "Eluate lysate sample protocol",
         "title_html": "<p>Buffer reagent filtrate protocol</p>",
         "type_id": 1,
-        "uri": "u97v9usb3z5p6mmp7bl6u8y38mjyq1v19ah96v53v2a3aj6iah6k22p98d",
+        "uri": "u97v9u-sb3z5p6m-mp7bl6u8y38mjyq1v19ah96v53v2a3aj6iah6k22p98d",
         "version_class": 307451,
         "version_code": "x81t3xpe",
         "version_id": 0,
@@ -2907,22 +2907,22 @@
     "table_of_contents": [
       {
         "color": "#591bf2",
-        "first_step_guid": "Pellet resuspend vortex.",
+        "first_step_guid": "BBF6C76D41B9E1FD49EF6045AA97E293",
         "title": "Column overnight centrifuge protocol"
       },
       {
         "color": "#c129a0",
-        "first_step_guid": "Vortex digest plate.",
+        "first_step_guid": "6C27FAE4431330F9DBEC8ADBCB37C862",
         "title": "Buffer pellet bench mixer ® protocol"
       },
       {
         "color": "#549d18",
-        "first_step_guid": "Supernatant wash cartridge.",
+        "first_step_guid": "027D554047DF9E1647EF6EAD309B2D6B",
         "title": "Plate gradient sample protocol"
       },
       {
         "color": "#5389d1",
-        "first_step_guid": "Pellet 20 °c reagent.",
+        "first_step_guid": "76478E791D8C2034FE3663DF6637D841",
         "title": "Gradient wash filtrate protocol"
       }
     ],
@@ -3028,7 +3028,7 @@
         "type_id": 3
       }
     ],
-    "uri": "zy6ixp8jbxicf3or6v5eurr11duzvn8cz4gaqwu0t4d9yxa571v1a",
+    "uri": "zy6ixp-8jbxicf3-or6v5eurr11duzvn8cz4gaqwu0t4d9yxa571v1a",
     "url": "https://rs5123h.example.org/wy3c/zy6ixp8jbxicf3or6v5eurr11duzvn8cz4gaqwu0t4d9yxa571v1a",
     "version_class": 568883,
     "version_data": null,
@@ -3088,7 +3088,7 @@
         "title": "Wash café reagent protocol",
         "title_html": "<p>Lysate buffer buffer protocol</p>",
         "type_id": 1,
-        "uri": "7265m4nry1kyrswim6bahjc5kt8zelweaemz5w7huq28bun0v82zarm28j1",
+        "uri": "7265m4-nry1kyrs-wim6bahjc5kt8zelweaemz5w7huq28bun0v82zarm28j1",
         "version_class": 568883,
         "version_code": "wf2kz5q3",
         "version_id": 0,

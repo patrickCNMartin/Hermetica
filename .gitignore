@@ -29,7 +29,8 @@ env/.env.*
 !.github/workflows/*.yml
 
 ## Test fixtures ##
-# Synthetic by-ID records; provenance and anonymization in build_fixture.py
+# Synthetic by-ID records. There is no generator: this file IS the source of
+# truth, and test_fixture.py guards its shape and its synthetic-ness.
 !tests/fixtures/*.json
 
 ## Data base ##

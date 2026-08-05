@@ -233,13 +233,15 @@ class TestAttribution:
         assert "| authors |" not in rendered
 
     def test_creator_and_authors_both_render(self, lock, by_id_records):
+        """The first author's name is an address — upstream really does that."""
         document, _ = lock
         pid = str(by_id_records["dotted_steps"]["id"])
         rendered = section(to_markdown(document), pid)
         assert "| creator | Jane Doe |" in rendered
-        assert "| authors | Jane Doe, Pablo Personman, Jane Doe, Otto Example |" in (
-            rendered
-        )
+        assert (
+            "| authors | person.macpersonface@example.org, Pablo Personman, "
+            "Jane Doe, Otto Example |"
+        ) in rendered
 
     def test_a_lock_without_a_creator_omits_both_rows(self, lock, by_id_records):
         """A lock exported before creator was carried must still render."""

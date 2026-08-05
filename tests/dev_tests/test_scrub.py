@@ -133,6 +133,24 @@ class TestStability:
         b = "http://x/f.png?Policy=ZZZ&Signature=YYY&Key-Pair-Id=XXX"
         assert scrub_signed_urls(a) == scrub_signed_urls(b)
 
+    def test_adversarial_values_are_consumed_whole(self):
+        """A real credential carries `/`; a CloudFront policy carries `~` and `=`.
+
+        The value class permits all three, but nothing proved it while every
+        fixture value was plain hex — so tightening it would have gone unseen.
+        """
+        url = (
+            "https://x.example.org/f.pdf"
+            "?X-Amz-Credential=EXAMPLEKEYID0000001/20260804/eu-north-1/s3/aws4_request"
+            "&Policy=eyJTdGF0ZW1lbnQiOltdfQ_-~=="
+            "&X-Amz-Signature=abc123"
+            "&keep=1"
+        )
+        assert scrub_signed_urls(url) == (
+            "https://x.example.org/f.pdf"
+            "?X-Amz-Credential=&Policy=&X-Amz-Signature=&keep=1"
+        )
+
 
 # -----------------------------------------------------------------------------#
 # 4. WHAT MUST *NOT* BE TOUCHED

@@ -17,7 +17,11 @@ repos:
       - id: detect-secrets
         args: ['--baseline', 'security/.baseline.security']
         # The baseline stores hashed secrets, so scanning it re-reports every
-        # entry it exists to suppress.
+        # entry it exists to suppress. Keep in sync with the pathspec in
+        # .github/workflows/tests.yml. The fixture is deliberately NOT excluded:
+        # its signing material is meaningless by construction, so baselining it
+        # is safe, and scanning it means a real credential pasted in would show
+        # up as an unbaselined finding.
         exclude: ^security/\.baseline\.security$
         # The baseline records the gibberish filter, so loading it imports
         # gibberish_detector - absent from this hook's isolated env otherwise.
