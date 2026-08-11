@@ -102,5 +102,5 @@ if __name__ == "__main__":
     from scribe.markdown import export_markdown, to_markdown
 
     md = to_markdown(lock, db_name)
-    export_markdown(lock, f"{DB_OUT}/protocol_render_template_from_db.md",db_name)
+    export_markdown(lock, f"{DB_OUT}/protocol_render_template_from_db.md", db_name)
     export_markdown(lock, f"{DB_OUT}/protocol_render_template_from_lock.md")

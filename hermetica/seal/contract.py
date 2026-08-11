@@ -55,6 +55,7 @@ RICH_TEXT_FIELDS: tuple[str, ...] = (
 PROTOCOL_FIELDS: tuple[str, ...] = HASH_FIELDS + METADATA_FIELDS
 UNIT_KEYS: tuple[str, ...] = ("unit", "temperatureUnit")
 
+
 # The template itself. Frozen: an artefact is a snapshot of upstream content,
 # not a working buffer — mutating one after hashing would desync blob and hash.
 @dataclass(frozen=True, slots=True)
@@ -139,21 +140,24 @@ def scrub_signed_urls(value):
         return [scrub_signed_urls(v) for v in value]
     return value
 
+
 class MissingHashField(Exception):
     def __init__(self, message, missing):
         self.message = message
         self.missing = missing
         super().__init__(self.message)
+
     def __str__(self):
         return f"{self.message} : {self.missing}"
 
-    
+
 def check_protocol_integrity(protocol):
     missing = [f for f in protocol.keys() if f not in HASH_FIELDS]
     if missing:
-        raise MissingHashField("Missing Hash Fields:" ,missing)
+        raise MissingHashField("Missing Hash Fields:", missing)
     else:
         return protocol
+
 
 # -----------------------------------------------------------------------------#
 # DATA PREPARATION
@@ -176,7 +180,6 @@ def _step_order(step: dict) -> tuple[int, ...]:
 def get_step_chain(steps: list[dict]) -> list:
     """Step ids in execution order. Takes the raw steps — `number` is trimmed."""
     return [st["id"] for st in sorted(steps, key=_step_order)]
-
 
 
 def parse_rich_text(value: Any) -> dict | None:
@@ -234,7 +237,6 @@ def build_protocol_artefact(protocol: dict) -> ProtocolArtefact:
     steps = get_steps(protocol)
     chain = get_step_chain(protocol.get("steps") or [])
 
-    
     return ProtocolArtefact(
         id=protocol["id"],
         guid=protocol["guid"],
