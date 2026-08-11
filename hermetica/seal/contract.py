@@ -28,14 +28,24 @@ HASH_FIELDS: tuple[str, ...] = (
     "units",
     "uri",
     "version_class",
-    "version_code",
+    "protocol_references",
 )
 # Specify other in
 METADATA_FIELDS: tuple[str, ...] = (
     "created_on",
     "creator",
     "authors",
-    "last_modified_on",
+    "keywords",
+)
+
+# Rich-text fields arrive as a JSON *string* holding a Draft.js envelope, and the
+# quantities live in `entityMap`, not in the block text — the text carries only a
+# placeholder character where each one belongs.
+RICH_TEXT_FIELDS: tuple[str, ...] = (
+    "description",
+    "materials_text",
+    "disclaimer",
+    "warning",
 )
 
 
@@ -43,7 +53,7 @@ METADATA_FIELDS: tuple[str, ...] = (
 # The reason is that we have nested API requests to pull all the
 # relevant information so creating a "template" to hold that info is usefull.
 PROTOCOL_FIELDS: tuple[str, ...] = HASH_FIELDS + METADATA_FIELDS
-
+UNIT_KEYS: tuple[str, ...] = ("unit", "temperatureUnit")
 
 # The template itself. Frozen: an artefact is a snapshot of upstream content,
 # not a working buffer — mutating one after hashing would desync blob and hash.
@@ -64,10 +74,10 @@ class ProtocolArtefact:
     doi: str
     reserved_doi: str
     version_class: int
-    version_code: str
+    protocol_references: str
     # --- retained, never hashed (METADATA_FIELDS) -------------------------- #
     created_on: int
-    last_modified_on: int
+    keywords: str
     authors: list[dict] | None = None
     creator: dict | None = None
 
@@ -129,6 +139,21 @@ def scrub_signed_urls(value):
         return [scrub_signed_urls(v) for v in value]
     return value
 
+class MissingHashField(Exception):
+    def __init__(self, message, missing):
+        self.message = message
+        self.missing = missing
+        super().__init__(self.message)
+    def __str__(self):
+        return f"{self.message} : {self.missing}"
+
+    
+def check_protocol_integrity(protocol):
+    missing = [f for f in protocol.keys() if f not in HASH_FIELDS]
+    if missing:
+        raise MissingHashField("Missing Hash Fields:" ,missing)
+    else:
+        return protocol
 
 # -----------------------------------------------------------------------------#
 # DATA PREPARATION
@@ -152,17 +177,6 @@ def get_step_chain(steps: list[dict]) -> list:
     """Step ids in execution order. Takes the raw steps — `number` is trimmed."""
     return [st["id"] for st in sorted(steps, key=_step_order)]
 
-
-# Rich-text fields arrive as a JSON *string* holding a Draft.js envelope, and the
-# quantities live in `entityMap`, not in the block text — the text carries only a
-# placeholder character where each one belongs.
-RICH_TEXT_FIELDS: tuple[str, ...] = (
-    "description",
-    "materials_text",
-    "disclaimer",
-    "warning",
-)
-UNIT_KEYS: tuple[str, ...] = ("unit", "temperatureUnit")
 
 
 def parse_rich_text(value: Any) -> dict | None:
@@ -213,25 +227,14 @@ def get_unit_map(protocol: dict) -> dict[str, str]:
     return {str(uid): catalog[uid] for uid in sorted(cited) if uid in catalog}
 
 
-def get_version(protocol: dict) -> dict:
-    """The versions entry this pull describes; {} when upstream lists none."""
-    versions = protocol.get("versions") or []
-    if not versions:
-        return {}
-    return max(versions, key=lambda v: v.get("modified_on") or 0)
-
-
 def build_protocol_artefact(protocol: dict) -> ProtocolArtefact:
     # Scrubbed once, up front: the artefact is frozen, so nothing can be
     # rewritten after construction.
     protocol = scrub_signed_urls(protocol)
     steps = get_steps(protocol)
     chain = get_step_chain(protocol.get("steps") or [])
-    version = get_version(protocol)
 
-    # doi/version_code/modified_on live only in the versions entry, and upstream
-    # leaves that list empty for some protocols — no version record means no
-    # recorded modification, so creation is the effective last edit.
+    
     return ProtocolArtefact(
         id=protocol["id"],
         guid=protocol["guid"],
@@ -244,12 +247,12 @@ def build_protocol_artefact(protocol: dict) -> ProtocolArtefact:
         chain=chain,
         units=get_unit_map(protocol),
         uri=protocol["uri"],
-        doi=version.get("doi") or "",
+        doi=protocol.get("doi") or "",
         reserved_doi=protocol["reserved_doi"],
         version_class=protocol["version_class"],
-        version_code=version.get("version_code") or "",
+        protocol_references=protocol["protocol_references"],
         created_on=protocol["created_on"],
-        last_modified_on=version.get("modified_on") or protocol["created_on"],
+        keywords=protocol["keywords"],
         authors=protocol["authors"],
         creator=protocol["creator"],
     )

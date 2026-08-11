@@ -16,7 +16,6 @@ from seal.contract import (
     get_step_chain,
     get_steps,
     get_unit_map,
-    get_version,
     protocol_hash,
 )
 from tests.conftest import ARCHETYPES
@@ -39,9 +38,9 @@ SPEC_HASH_FIELDS = (
     "units",
     "uri",
     "version_class",
-    "version_code",
+    "protocol_references",
 )
-SPEC_METADATA_FIELDS = ("created_on", "creator", "authors", "last_modified_on")
+SPEC_METADATA_FIELDS = ("created_on", "creator", "authors", "keywords")
 
 STEP_CONTENT_FIELDS = {"id", "guid", "section", "step", "critical"}
 
@@ -98,56 +97,40 @@ class TestFieldSourcing:
         raw = record("signed_urls")
         assert build_protocol_artefact(raw).materials != raw["materials"]
 
-    def test_version_sourced_fields_come_from_the_version(self, record):
+    def test_doi_comes_from_the_top_level(self, record):
         raw = record("baseline")
-        built = build_protocol_artefact(raw)
-        version = raw["versions"][0]
-        assert built.version_code == version["version_code"]
-        assert built.last_modified_on == version["modified_on"]
+        raw["doi"] = "10.99999/example.org.toplevel"
+        assert build_protocol_artefact(raw).doi == raw["doi"]
 
     def test_version_class_can_differ_from_id(self, record):
         """Upstream lets these diverge — reading one for the other is a bug."""
         built = build_protocol_artefact(record("version_class_differs"))
         assert built.version_class != built.id
 
-    def test_get_version_picks_the_latest_modified(self):
-        """All real records carry 0 or 1 versions, so this needs a built one."""
-        protocol = {
-            "versions": [
-                {"version_code": "old", "modified_on": 100},
-                {"version_code": "new", "modified_on": 300},
-                {"version_code": "mid", "modified_on": 200},
-            ]
-        }
-        assert get_version(protocol)["version_code"] == "new"
-
-    def test_get_version_is_empty_when_upstream_lists_none(self):
-        assert get_version({"versions": []}) == {}
-        assert get_version({"versions": None}) == {}
+    @pytest.mark.parametrize("archetype", ARCHETYPES)
+    def test_nothing_is_sourced_from_versions(self, record, archetype):
+        """`versions` is the version *family* keyed on the root, so for a non-root
+        record it describes the ancestor. Editing it must not move the hash."""
+        raw = record(archetype)
+        before = protocol_hash(build_protocol_artefact(raw))
+        raw["versions"] = [{"id": 1, "version_code": "zzzz", "modified_on": 9}]
+        assert protocol_hash(build_protocol_artefact(raw)) == before
 
 
 # -----------------------------------------------------------------------------#
-# 3. FALLBACKS — the empty `versions` list
+# 3. FALLBACKS — a null top-level `doi`
 # -----------------------------------------------------------------------------#
-class TestEmptyVersions:
-    @pytest.mark.parametrize(
-        "archetype", ("empty_versions_null_steps", "empty_versions_with_steps")
-    )
-    def test_doi_and_version_code_fall_back_to_empty(self, record, archetype):
-        built = build_protocol_artefact(record(archetype))
-        assert built.doi == ""
-        assert built.version_code == ""
+class TestDoiFallback:
+    @pytest.mark.parametrize("archetype", ARCHETYPES)
+    def test_doi_falls_back_to_empty(self, record, archetype):
+        """Upstream sends doi=null for anything unpublished."""
+        assert build_protocol_artefact(record(archetype)).doi == ""
 
     def test_doi_never_falls_back_to_reserved_doi(self, record):
         """Two fields holding one string would make an unissued DOI look issued."""
         built = build_protocol_artefact(record("reserved_doi"))
         assert built.reserved_doi
         assert built.doi != built.reserved_doi
-
-    def test_last_modified_falls_back_to_created_on(self, record):
-        """No version record means no recorded edit — creation is the last one."""
-        built = build_protocol_artefact(record("empty_versions_null_steps"))
-        assert built.last_modified_on == built.created_on
 
 
 # -----------------------------------------------------------------------------#

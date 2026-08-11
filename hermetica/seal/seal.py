@@ -64,9 +64,6 @@ def generate_protocol_lock(
             "reserved_doi": row.reserved_doi,
             "uri": row.uri,
             "created_on": as_iso(row.created_on) if row.created_on else None,
-            "last_modified_on": (
-                as_iso(row.last_modified_on) if row.last_modified_on else None
-            ),
             "creator": _decode(row.creator),
             "authors": _decode(row.authors),
         }

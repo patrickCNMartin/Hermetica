@@ -19,12 +19,13 @@ from seal.contract import (
     hash_bytes,
     protocol_hash,
 )
-from seal.dates import as_date, to_epoch
+from seal.dates import as_date, end_of_day, to_epoch
 from seal.store import (
     _CONTENT_COLUMNS,
     DuplicateProtocolIdError,
     ProtocolRow,
     UnknownProtocolHashError,
+    VersionInterval,
     active_hashes,
     build_row,
     connect,
@@ -32,6 +33,7 @@ from seal.store import (
     format_entry,
     get_content,
     initialize_db,
+    protocols_on_date,
     verify_protocols,
     write_pull,
 )
@@ -40,6 +42,12 @@ PULLED_AT = to_epoch("2026-07-27")
 LATER = to_epoch("2026-08-03")
 CREATED_ON = to_epoch("2025-04-29")
 FOREVER = 9223372036854775807
+
+# One day, two pushes: the case a single date cannot disambiguate.
+PUSH_DAY = "2026-08-11"
+MIDNIGHT = to_epoch(PUSH_DAY)
+MORNING = MIDNIGHT + 9 * 3600
+EVENING = MIDNIGHT + 18 * 3600
 
 
 # -----------------------------------------------------------------------------#
@@ -88,6 +96,11 @@ def active_count(db: str) -> list[tuple]:
     )
 
 
+def on_date(db: str, when) -> dict[str, list[VersionInterval]]:
+    with connect(db, read_only=True) as conn:
+        return protocols_on_date(conn, when)
+
+
 def overlaps(db: str) -> list[tuple]:
     """protocol_ids whose validity intervals overlap at ANY instant.
 
@@ -121,7 +134,7 @@ class TestDatabaseBuild:
         "created_on",
         "creator",
         "authors",
-        "last_modified_on",
+        "keywords",
     ]
     HISTORY_COLUMNS = ["protocol_id", "hash", "valid_from", "deprecated_at"]
     SNAPSHOT_COLUMNS = ["manifest_hash", "created_at", "provenance"]
@@ -783,7 +796,173 @@ class TestWritePath:
 
 
 # -----------------------------------------------------------------------------#
-# 9. TITLE IS DISPLAY ONLY
+# 9. RESOLVING A DATE AGAINST THE INTERVALS
+# -----------------------------------------------------------------------------#
+class TestProtocolsOnDate:
+    """A date is coarser than the intervals it queries.
+
+    Everywhere else the invariant holds that one protocol_id has one active
+    version at any INSTANT. A whole day is not an instant: push twice and two
+    versions each held the slot for part of it. protocols_on_date reports both
+    rather than picking, so the ambiguity is visible to the caller.
+    """
+
+    def test_one_push_gives_one_version_each(self, db_path, protocol):
+        initialize_db(db_path)
+        write_pull(db_path, rows_for([protocol(1), protocol(2)], MORNING), MORNING)
+
+        found = on_date(db_path, PUSH_DAY)
+
+        assert sorted(found) == ["1", "2"]
+        assert [len(v) for v in found.values()] == [1, 1]
+
+    def test_two_pushes_in_one_day_report_both_versions(self, db_path, protocol):
+        """The case a single date cannot disambiguate — neither answer is wrong."""
+        initialize_db(db_path)
+        write_pull(db_path, rows_for([protocol(1, title="Morning")], MORNING), MORNING)
+        write_pull(db_path, rows_for([protocol(1, title="Evening")], EVENING), EVENING)
+
+        versions = on_date(db_path, PUSH_DAY)["1"]
+
+        assert len(versions) == 2
+        assert [v.deprecated_at for v in versions] == [EVENING, None]
+        assert len({v.hash for v in versions}) == 2
+
+    def test_versions_come_back_oldest_first(self, db_path, protocol):
+        """Order is the day's chronology, so the caller can take the last one."""
+        initialize_db(db_path)
+        for title, stamp in (("A", MORNING), ("B", EVENING), ("C", EVENING + 60)):
+            write_pull(db_path, rows_for([protocol(1, title=title)], stamp), stamp)
+
+        opened = [v.valid_from for v in on_date(db_path, PUSH_DAY)["1"]]
+
+        assert opened == sorted(opened)
+        assert len(opened) == 3
+
+    def test_a_version_closing_at_midnight_belongs_to_the_day_before(
+        self, db_path, protocol
+    ):
+        """Intervals are half-open, so the closing instant is not part of the day.
+
+        With `deprecated_at >= T` instead of `>`, the retired version would show
+        up on both days and a date query would report a version that was already
+        gone before that day began.
+        """
+        initialize_db(db_path)
+        write_pull(db_path, rows_for([protocol(1, title="Old")], PULLED_AT), PULLED_AT)
+        write_pull(db_path, rows_for([protocol(1, title="New")], MIDNIGHT), MIDNIGHT)
+
+        closed_at = query(
+            db_path, "SELECT deprecated_at FROM protocol_history WHERE deprecated_at"
+        )
+        assert closed_at == [(MIDNIGHT,)]
+
+        assert len(on_date(db_path, PUSH_DAY)["1"]) == 1
+        assert len(on_date(db_path, "2026-08-10")["1"]) == 1
+        assert (
+            on_date(db_path, PUSH_DAY)["1"][0].hash
+            != on_date(db_path, "2026-08-10")["1"][0].hash
+        )
+
+    def test_a_version_opening_in_the_last_second_still_counts(self, db_path, protocol):
+        """The upper bound is inclusive — end_of_day is 23:59:59, not midnight."""
+        initialize_db(db_path)
+        last = end_of_day(PUSH_DAY)
+        write_pull(db_path, rows_for([protocol(1, created_on=None)], last), last)
+
+        assert on_date(db_path, PUSH_DAY)["1"][0].valid_from == last
+        assert on_date(db_path, "2026-08-10") == {}
+
+    def test_a_protocol_created_later_is_absent(self, db_path, protocol):
+        initialize_db(db_path)
+        write_pull(db_path, rows_for([protocol(1, created_on=None)], EVENING), EVENING)
+
+        assert on_date(db_path, "2026-08-10") == {}
+        assert "1" in on_date(db_path, PUSH_DAY)
+
+    def test_a_protocol_retired_earlier_is_absent(self, db_path, protocol):
+        """Deprecate-on-absence closes it; the day after must not resolve it."""
+        initialize_db(db_path)
+        write_pull(db_path, rows_for([protocol(1), protocol(2)], MORNING), MORNING)
+        write_pull(db_path, rows_for([protocol(2)], EVENING), EVENING)
+
+        assert sorted(on_date(db_path, PUSH_DAY)) == ["1", "2"]
+        assert sorted(on_date(db_path, "2026-08-12")) == ["2"]
+
+    def test_a_protocol_that_lived_entirely_after_the_date_is_absent(
+        self, db_path, protocol
+    ):
+        """Both bounds have to be read together, so the OR needs its parentheses.
+
+        SQL binds AND tighter than OR. Unparenthesised, the closing bound stands
+        alone as its own branch and every protocol ever deprecated after the date
+        resolves for it — however long after that date it was created.
+        """
+        initialize_db(db_path)
+        retired_at = to_epoch("2026-08-12") + 3600
+        write_pull(
+            db_path,
+            rows_for(
+                [protocol(1, created_on=None), protocol(2, created_on=None)], MORNING
+            ),
+            MORNING,
+        )
+        write_pull(
+            db_path, rows_for([protocol(2, created_on=None)], retired_at), retired_at
+        )
+
+        assert on_date(db_path, "2026-08-10") == {}
+
+    def test_an_open_interval_resolves_for_every_later_date(self, db_path, protocol):
+        """deprecated_at NULL means still active, however far ahead you ask."""
+        initialize_db(db_path)
+        write_pull(db_path, rows_for([protocol(1)], MORNING), MORNING)
+
+        assert on_date(db_path, "2031-01-01")["1"][0].deprecated_at is None
+
+    def test_it_agrees_with_active_hashes_for_today(self, db_path, protocol):
+        """The two reads are the same question at different resolutions."""
+        initialize_db(db_path)
+        write_pull(db_path, rows_for([protocol(1), protocol(2)], MORNING), MORNING)
+
+        latest = {pid: v[-1].hash for pid, v in on_date(db_path, PUSH_DAY).items()}
+
+        assert latest == live_hashes(db_path)
+
+    def test_entries_carry_hash_and_both_bounds(self, db_path, protocol):
+        initialize_db(db_path)
+        write_pull(db_path, rows_for([protocol(1)], MORNING), MORNING)
+
+        version = on_date(db_path, PUSH_DAY)["1"][0]
+
+        assert isinstance(version, VersionInterval)
+        assert version.hash.startswith("sha256:")
+        assert version.valid_from == CREATED_ON
+        assert version.deprecated_at is None
+
+    def test_a_full_timestamp_widens_to_its_whole_day(self, db_path, protocol):
+        """Day granularity is the contract: 13:45 answers for the whole day."""
+        initialize_db(db_path)
+        write_pull(db_path, rows_for([protocol(1, title="Morning")], MORNING), MORNING)
+        write_pull(db_path, rows_for([protocol(1, title="Evening")], EVENING), EVENING)
+
+        assert len(on_date(db_path, f"{PUSH_DAY}T13:45:00")["1"]) == 2
+
+    def test_an_ambiguous_date_format_is_refused(self, db_path):
+        """Only ISO parses, so 10-12-2026 can never be read as the wrong month."""
+        initialize_db(db_path)
+
+        for ambiguous in ("10-12-2026", "11/08/2026"):
+            with pytest.raises(ValueError, match="isoformat"):
+                on_date(db_path, ambiguous)
+
+    def test_an_empty_store_resolves_to_nothing(self, db_path):
+        initialize_db(db_path)
+        assert on_date(db_path, PUSH_DAY) == {}
+
+
+# -----------------------------------------------------------------------------#
+# 10. TITLE IS DISPLAY ONLY
 # -----------------------------------------------------------------------------#
 class TestTitleIsNotIdentity:
     def test_two_protocols_may_share_a_title(self, db_path, protocol):
@@ -824,7 +1003,7 @@ class TestTitleIsNotIdentity:
 
 
 # -----------------------------------------------------------------------------#
-# 10. THE WHOLE FIXTURE THROUGH THE WRITE PATH
+# 11. THE WHOLE FIXTURE THROUGH THE WRITE PATH
 # -----------------------------------------------------------------------------#
 class TestEveryArchetype:
     def test_all_archetypes_write_and_verify(self, db_path, by_id_records):

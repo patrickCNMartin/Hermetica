@@ -14,7 +14,6 @@ HASH_FIELDS: tuple[str, ...] = ("id", "guid", "title", "manifest_hash", "DAG")
 METADATA_FIELDS: tuple[str, ...] = (
     "created_on",
     "creator",
-    "last_modified_on",
 )
 
 
@@ -41,7 +40,6 @@ class ComposedProtocols:
     DAG: dict
     # --- retained, never hashed (METADATA_FIELDS) -------------------------- #
     created_on: int
-    last_modified_on: int
     creator: dict
 
     def to_dict(self) -> dict:

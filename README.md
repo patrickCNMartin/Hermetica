@@ -17,16 +17,18 @@ NOTE: There is a protocols.io MCP server. Not sure what to do with this informat
 Hermetica use strict guardrails to avoid any unforseen issues pushed to production. 
 
 ## Whitelisting
+
 Always use a whitelist approach over a blacklist approach. For example, the `.gitignore` file will explicitely state which files/file types are allowed to be tracked. If you add a new file type, or a new directory, it will not be tracked by git by default. You will need to
 explicitely add it to the `.gitignore`. 
 
 The purpose of this approach is to avoid any "pushed by mistake" scenarioes. 
-Hopefully, you won't push secret keys, massive data sets, or anything else because you forgot that was tracked by git. I'm looking at you Patrick...
+Hopefully, you won't push secret keys, massive data sets, or anything else because you forgot that it was tracked by git. I'm looking at you Patrick...
 
 ## Environments
+
 The project works on a multi-tier level for development purposes.
 
-1. `uv` only. All python dependencies are stated in the `pyproject.toml` and can be run using the `uv` or `venv` virtual environments. Certain system dependencies are required but that's on you to add them. 
+1. `uv` only. All python dependencies are stated in the `pyproject.toml` and can be run using the `uv` / `venv` virtual environments. Certain system dependencies are required but that's on you to add them (`pandoc` for example). 
 
 2. `docker` + `uv`. We provide a `docker` container for this project which will contain all the python dependencies stated in the `pyproject.toml`. 
 
@@ -36,8 +38,12 @@ The project works on a multi-tier level for development purposes.
 
 NOTE: We will also provide a `PIXI` approach in the future for those who prefer a conda like environment.
 
+## Pre-commit hooks
+
+This directory contains pre-commit hooks that will trigger on a push to main. It will run `ruff` (check and lint) and `detect-secrets`. `PyTest` does not currently run in the pre-commit hook but will run through GitHub Actions. It might be added in the future. The goal is to make sure that we are confident in the code that we push and shared before doing so. 
+
 
 # AI Use
 
-This project used Claude code (Opus 4.8 and Opus 5) to write code, unit tests and documentation. However, this was not a "vibe coded" project. Outline code was written by
+This project used Claude code (Opus 4.8 and Opus 5) to write code, unit tests and documentation. However, this is not a "vibe coded" project. Outline code was written by
 a human, expanded on or fixed by AI, and then vetted by human again. 

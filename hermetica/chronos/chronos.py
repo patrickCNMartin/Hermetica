@@ -58,7 +58,7 @@ MAX_PULL = None  # no ceiling: pull every page so nothing is silently truncated
 # -----------------------------------------------------------------------------#
 if __name__ == "__main__":
     # Initialize data base and create if does not exist (schema only).
-    db_name = f"{DB_OUT}/chronos_database.db"
+    db_name = f"{DB_OUT}/chronos.db"
     initialize_db(db_name)
 
     # One timestamp for the whole pull: every row opens its interval at the
@@ -93,15 +93,14 @@ if __name__ == "__main__":
         json.dump(protocol_names, f)
 
     # exporting locks and testing to see things
-    import random
-
-    sub_hash = random.sample(list(protocol_names.keys()), 5)
+    wanted = [h for h, title in protocol_names.items() if "SDS lysis" in title]
     from seal.seal import export_lock, export_pins, generate_protocol_lock
 
-    lock = generate_protocol_lock(sub_hash, db=db_name)
+    lock = generate_protocol_lock(wanted, db=db_name)
     export_pins(lock, f"{DB_OUT}/pins.lock")
     export_lock(lock, f"{DB_OUT}/lock.lock")
     from scribe.markdown import export_markdown, to_markdown
 
     md = to_markdown(lock, db_name)
-    export_markdown(lock, f"{DB_OUT}/protocol_render_template.md", db_name)
+    export_markdown(lock, f"{DB_OUT}/protocol_render_template_from_db.md",db_name)
+    export_markdown(lock, f"{DB_OUT}/protocol_render_template_from_lock.md")

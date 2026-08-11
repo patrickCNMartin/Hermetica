@@ -4,6 +4,7 @@
 import sqlite3
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
+from datetime import date, datetime
 from typing import Any, NamedTuple
 
 from seal.contract import (
@@ -13,7 +14,7 @@ from seal.contract import (
     hash_bytes,
     protocol_blob,
 )
-from seal.dates import get_timestamp, to_epoch
+from seal.dates import end_of_day, get_timestamp, start_of_day, to_epoch
 
 
 class DuplicateProtocolIdError(ValueError):
@@ -64,7 +65,7 @@ SCHEMA: tuple[str, ...] = (
         created_on       INTEGER,
         creator          TEXT,
         authors          TEXT,
-        last_modified_on INTEGER
+        keywords         TEXT
     )
     """,
     """
@@ -118,7 +119,7 @@ class ProtocolRow(NamedTuple):
     created_on: int | None
     creator: str | None
     authors: str | None
-    last_modified_on: int | None
+    keywords: str | None
     valid_from: int
 
 
@@ -197,6 +198,44 @@ def active_hashes(conn: sqlite3.Connection) -> dict[str, str]:
     }
 
 
+class VersionInterval(NamedTuple):
+    """One version's slot in a protocol's history. `deprecated_at` None = open."""
+
+    hash: str
+    valid_from: int
+    deprecated_at: int | None
+
+
+def protocols_on_date(
+    conn: sqlite3.Connection, when: int | float | str | date | datetime
+) -> dict[str, list[VersionInterval]]:
+    """protocol_id -> every version that held the active slot on `when`'s UTC day.
+
+    Dates are ISO only (`YYYY-MM-DD`); anything else raises. A date is coarser
+    than the second-resolution intervals it queries, so a protocol pushed twice
+    in one day has more than one entry, oldest first. They are reported rather
+    than resolved: picking a winner is the caller's policy, and a list makes the
+    ambiguity visible instead of silently dropping a version. Intervals are
+    half-open — [valid_from, deprecated_at) — so a version closing exactly at
+    midnight belongs to the day before.
+    """
+    opens, closes = start_of_day(when), end_of_day(when)
+    cursor = conn.cursor()
+    cursor.row_factory = sqlite3.Row
+    versions: dict[str, list[VersionInterval]] = {}
+    for row in cursor.execute(
+        "SELECT protocol_id, hash, valid_from, deprecated_at FROM protocol_history "
+        "WHERE valid_from <= ? "
+        "AND (deprecated_at IS NULL OR deprecated_at > ?) "
+        "ORDER BY protocol_id, valid_from",
+        (closes, opens),
+    ):
+        versions.setdefault(row["protocol_id"], []).append(
+            VersionInterval(row["hash"], row["valid_from"], row["deprecated_at"])
+        )
+    return versions
+
+
 def _diff(
     conn: sqlite3.Connection, rows: Iterable[ProtocolRow]
 ) -> dict[str, list[str]]:
@@ -260,7 +299,7 @@ class ContentRow(NamedTuple):
     created_on: int | None
     creator: str | None
     authors: str | None
-    last_modified_on: int | None
+    keywords: str | None
     protocol: str | None = None
 
 

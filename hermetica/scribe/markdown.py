@@ -114,9 +114,6 @@ def collect_display(
                 "reserved_doi": row.reserved_doi,
                 "uri": row.uri,
                 "created_on": as_iso(row.created_on) if row.created_on else None,
-                "last_modified_on": (
-                    as_iso(row.last_modified_on) if row.last_modified_on else None
-                ),
                 "creator": json.loads(row.creator) if row.creator else None,
                 "authors": json.loads(row.authors) if row.authors else None,
             }
@@ -149,16 +146,12 @@ def _facts(pid: str, entry: dict, fields: dict, body: dict | None) -> list[str]:
         ("hash", entry.get("hash")),
     ]
     if body:
-        rows += [
-            ("version_code", body.get("version_code")),
-            ("version_class", body.get("version_class")),
-        ]
+        rows += [("version_class", body.get("version_class"))]
     creator = fields.get("creator") or {}
     rows += [
         ("doi", fields.get("doi")),
         ("reserved_doi", fields.get("reserved_doi")),
         ("created_on", fields.get("created_on")),
-        ("last_modified_on", fields.get("last_modified_on")),
         ("creator", _people([creator])),
         ("affiliation", creator.get("affiliation")),
         ("authors", _people(fields.get("authors"))),

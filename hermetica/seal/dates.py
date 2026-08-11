@@ -6,9 +6,6 @@ from datetime import date, datetime, timedelta, timezone
 # -----------------------------------------------------------------------------#
 # EPOCH <-> HUMAN
 # -----------------------------------------------------------------------------#
-# The store holds unix epoch seconds (UTC) only. Every human-readable form is
-# produced at the call boundary, never persisted.
-DAY = 86_400
 
 
 def get_timestamp() -> int:
@@ -57,11 +54,16 @@ def as_iso(epoch: int) -> str:
     return from_epoch(epoch).isoformat()
 
 
+def start_of_day(value: int | float | str | date | datetime) -> int:
+    """First instant of the UTC day containing `value`."""
+    start = datetime(*from_epoch(to_epoch(value)).timetuple()[:3], tzinfo=timezone.utc)
+    return int(start.timestamp())
+
+
 def end_of_day(value: int | float | str | date | datetime) -> int:
     """Last instant of the UTC day containing `value`.
 
     The upper bound for "give me the state as of date D": take everything on or
     before D, not everything before D began.
     """
-    start = datetime(*from_epoch(to_epoch(value)).timetuple()[:3], tzinfo=timezone.utc)
-    return int((start + timedelta(days=1)).timestamp()) - 1
+    return int((from_epoch(start_of_day(value)) + timedelta(days=1)).timestamp()) - 1
