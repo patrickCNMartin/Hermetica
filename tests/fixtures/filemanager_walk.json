@@ -1,0 +1,314 @@
+{
+  "folder_pages": {
+    "AAAA00000000000000000000000000B1": [
+      {
+        "ids": [9001, 9002, 9003],
+        "pagination": {
+          "current_page": 1,
+          "next_page": 2,
+          "page_size": 3,
+          "prev_page": null,
+          "total_pages": 2,
+          "total_results": 6
+        },
+        "status_code": 0
+      },
+      {
+        "ids": [9004, 9005, 9006],
+        "pagination": {
+          "current_page": 2,
+          "next_page": null,
+          "page_size": 3,
+          "prev_page": 1,
+          "total_pages": 2,
+          "total_results": 6
+        },
+        "status_code": 0
+      }
+    ],
+    "AAAA00000000000000000000000000B2": [
+      {
+        "ids": [9007, 9008, 9009, 9010],
+        "pagination": {
+          "current_page": 1,
+          "next_page": null,
+          "page_size": 100,
+          "prev_page": null,
+          "total_pages": 1,
+          "total_results": 4
+        },
+        "status_code": 0
+      }
+    ],
+    "AAAA00000000000000000000000000B3": [
+      {
+        "ids": [9011, 9012],
+        "pagination": {
+          "current_page": 1,
+          "next_page": null,
+          "page_size": 100,
+          "prev_page": null,
+          "total_pages": 1,
+          "total_results": 2
+        },
+        "status_code": 0
+      }
+    ],
+    "AAAA00000000000000000000000000B4": [
+      {
+        "ids": [],
+        "pagination": {
+          "current_page": 1,
+          "next_page": null,
+          "page_size": 100,
+          "prev_page": null,
+          "total_pages": 1,
+          "total_results": 0
+        },
+        "status_code": 0
+      }
+    ],
+    "AAAA00000000000000000000000000B5": [
+      {
+        "ids": [9004],
+        "pagination": {
+          "current_page": 1,
+          "next_page": null,
+          "page_size": 100,
+          "prev_page": null,
+          "total_pages": 1,
+          "total_results": 1
+        },
+        "status_code": 0
+      }
+    ],
+    "AAAA00000000000000000000000000B6": [
+      {
+        "ids": [9013],
+        "pagination": {
+          "current_page": 1,
+          "next_page": null,
+          "page_size": 100,
+          "prev_page": null,
+          "total_pages": 1,
+          "total_results": 1
+        },
+        "status_code": 0
+      }
+    ]
+  },
+  "items": {
+    "9001": {
+      "content_type_id": 10,
+      "guid": "AAAA00000000000000000000000000B2",
+      "id": 8102,
+      "in_trash": false,
+      "item_id": 9001,
+      "kind": "Folder",
+      "parent_guid": null,
+      "title": "Bench",
+      "type_id": null
+    },
+    "9002": {
+      "content_type_id": 10,
+      "guid": "AAAA00000000000000000000000000B3",
+      "id": 8103,
+      "in_trash": false,
+      "item_id": 9002,
+      "kind": "Folder",
+      "parent_guid": null,
+      "title": "Trash",
+      "type_id": null
+    },
+    "9003": {
+      "content_type_id": 10,
+      "guid": "AAAA00000000000000000000000000B4",
+      "id": 8104,
+      "in_trash": false,
+      "item_id": 9003,
+      "kind": "Folder",
+      "parent_guid": null,
+      "title": "Column",
+      "type_id": null
+    },
+    "9004": {
+      "content_type_id": 1,
+      "created_on": 1700000101,
+      "doi": null,
+      "guid": "CCCC0000000000000000000000000101",
+      "id": 101,
+      "in_trash": false,
+      "item_id": 9004,
+      "kind": "Private Protocol",
+      "public": false,
+      "published_on": null,
+      "size": 4096,
+      "title": "Sample buffer wash protocol",
+      "type_id": 1,
+      "uri": "sample-buffer-wash-protocol-a1b2c3d4",
+      "version_class": 101,
+      "version_id": 0
+    },
+    "9005": {
+      "content_type_id": 1,
+      "created_on": 1700000102,
+      "doi": null,
+      "guid": "CCCC0000000000000000000000000102",
+      "id": 102,
+      "in_trash": false,
+      "item_id": 9005,
+      "kind": "Private Protocol",
+      "public": false,
+      "published_on": null,
+      "size": 4097,
+      "title": "Peptide elution protocol",
+      "type_id": 1,
+      "uri": "peptide-elution-protocol-b2c3d4e5",
+      "version_class": 102,
+      "version_id": 0
+    },
+    "9006": {
+      "content_type_id": 1,
+      "created_on": 1700000106,
+      "doi": null,
+      "guid": "CCCC0000000000000000000000000106",
+      "id": 106,
+      "in_trash": false,
+      "item_id": 9006,
+      "kind": "Collection",
+      "public": false,
+      "published_on": null,
+      "size": 512,
+      "title": "Reagent plate examples",
+      "type_id": 3,
+      "uri": "reagent-plate-examples-c3d4e5f6",
+      "version_class": 106,
+      "version_id": 0
+    },
+    "9007": {
+      "content_type_id": 1,
+      "created_on": 1700000103,
+      "doi": null,
+      "guid": "CCCC0000000000000000000000000103",
+      "id": 103,
+      "in_trash": false,
+      "item_id": 9007,
+      "kind": "Private Protocol",
+      "public": false,
+      "published_on": null,
+      "size": 4098,
+      "title": "Sample buffer wash protocol gradient",
+      "type_id": 1,
+      "uri": "sample-buffer-wash-protocol-gradient-d4e5f6a7",
+      "version_class": 101,
+      "version_id": 1
+    },
+    "9008": {
+      "content_type_id": 1,
+      "created_on": 1700000104,
+      "doi": null,
+      "guid": "CCCC0000000000000000000000000104",
+      "id": 104,
+      "in_trash": false,
+      "item_id": 9008,
+      "kind": "Public Protocol",
+      "public": true,
+      "published_on": 1700000904,
+      "size": 4099,
+      "title": "Lysate pellet resuspend protocol",
+      "type_id": 1,
+      "uri": "lysate-pellet-resuspend-protocol-e5f6a7b8",
+      "version_class": 104,
+      "version_id": 0
+    },
+    "9009": {
+      "content_type_id": 1,
+      "created_on": 1700000105,
+      "doi": null,
+      "guid": "CCCC0000000000000000000000000105",
+      "id": 105,
+      "in_trash": false,
+      "item_id": 9009,
+      "kind": "Private Protocol",
+      "public": false,
+      "published_on": null,
+      "size": 4100,
+      "title": "Cartridge filtrate protocol",
+      "type_id": 1,
+      "uri": "cartridge-filtrate-protocol-f6a7b8c9",
+      "version_class": 105,
+      "version_id": 0
+    },
+    "9010": {
+      "content_type_id": 10,
+      "guid": "AAAA00000000000000000000000000B5",
+      "id": 8105,
+      "in_trash": false,
+      "item_id": 9010,
+      "kind": "Folder",
+      "parent_guid": null,
+      "title": "Sample",
+      "type_id": null
+    },
+    "9011": {
+      "content_type_id": 1,
+      "created_on": 1700000107,
+      "doi": null,
+      "guid": "CCCC0000000000000000000000000107",
+      "id": 107,
+      "in_trash": true,
+      "item_id": 9011,
+      "kind": "Private Protocol",
+      "public": false,
+      "published_on": null,
+      "size": 4101,
+      "title": "Vortex mixer protocol",
+      "type_id": 1,
+      "uri": "vortex-mixer-protocol-a7b8c9d0",
+      "version_class": 107,
+      "version_id": 0
+    },
+    "9012": {
+      "content_type_id": 10,
+      "guid": "AAAA00000000000000000000000000B6",
+      "id": 8106,
+      "in_trash": true,
+      "item_id": 9012,
+      "kind": "Folder",
+      "parent_guid": null,
+      "title": "Buffer",
+      "type_id": null
+    },
+    "9013": {
+      "content_type_id": 1,
+      "created_on": 1700000108,
+      "doi": null,
+      "guid": "CCCC0000000000000000000000000108",
+      "id": 108,
+      "in_trash": false,
+      "item_id": 9013,
+      "kind": "Private Protocol",
+      "public": false,
+      "published_on": null,
+      "size": 4102,
+      "title": "Overnight digest protocol",
+      "type_id": 1,
+      "uri": "overnight-digest-protocol-b8c9d0e1",
+      "version_class": 108,
+      "version_id": 0
+    }
+  },
+  "top_folders": {
+    "folders": [
+      {
+        "created_on": 1700000000,
+        "guid": "AAAA00000000000000000000000000B1",
+        "id": 8101,
+        "parent_guid": null,
+        "title": "Institute",
+        "type_id": 2
+      }
+    ],
+    "status_code": 0
+  }
+}

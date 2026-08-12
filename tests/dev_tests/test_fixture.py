@@ -21,9 +21,14 @@ import unicodedata
 
 import pytest
 
-from tests.conftest import ARCHETYPES, FIXTURE
+from tests.conftest import ARCHETYPES, FIXTURE, WALK_FIXTURE
 
 RAW = unicodedata.normalize("NFC", FIXTURE.read_text(encoding="utf-8"))
+WALK_RAW = unicodedata.normalize("NFC", WALK_FIXTURE.read_text(encoding="utf-8"))
+
+# Every committed dataset. A fixture that is not scanned is a fixture that can
+# leak, so a new one joins this tuple rather than getting its own weaker rules.
+DATASETS = (("protocols_by_id", RAW), ("filemanager_walk", WALK_RAW))
 
 # RFC 2606 reserves example.org permanently, so no synthetic value here can ever
 # resolve to a real host or mailbox. 10.99999 is not an assigned DOI prefix.
@@ -40,7 +45,7 @@ LEXICON = frozenset(
     incubate ines institute jane lysate macpersonface mira mixer of org otto
     overnight pablo pellet peptide person personman placeholders plate protocol
     reagent research resuspend rodney sam sample sampleson supernatant testcase
-    vortex wash
+    trash vortex wash
     """.split()
 )
 
@@ -148,13 +153,29 @@ class TestOnlySyntheticValues:
         }
         assert words <= LEXICON, sorted(words - LEXICON)
 
-    def test_every_url_host_is_reserved(self):
-        hosts = set(re.findall(r"https?://([^/\s\"'<>\\]+)", RAW))
-        assert hosts, "the fixture should still contain URLs"
+    def test_prose_in_the_walk_fixture_uses_the_same_lexicon(self, walk_records):
+        """Folder names are prose too — a real workspace tree fails here."""
+        words = {
+            word.lower()
+            for text in prose(walk_records)
+            for word in re.findall(
+                r"[A-Za-zÀ-ÿ]{2,}", unicodedata.normalize("NFC", text)
+            )
+        }
+        assert words <= LEXICON, sorted(words - LEXICON)
+
+    @pytest.mark.parametrize("dataset, raw", DATASETS)
+    def test_every_url_host_is_reserved(self, dataset, raw):
+        hosts = set(re.findall(r"https?://([^/\s\"'<>\\]+)", raw))
         assert all(h.endswith(RESERVED_DOMAIN) for h in hosts), sorted(hosts)
 
-    def test_every_email_uses_the_reserved_domain(self):
-        found = {m.rstrip(".") for m in re.findall(r"[\w.+-]+@[\w-]+\.[\w.]+", RAW)}
+    def test_the_by_id_fixture_still_contains_urls(self):
+        """The scrub tests need them; a fixture with none passes vacuously."""
+        assert re.findall(r"https?://([^/\s\"'<>\\]+)", RAW)
+
+    @pytest.mark.parametrize("dataset, raw", DATASETS)
+    def test_every_email_uses_the_reserved_domain(self, dataset, raw):
+        found = {m.rstrip(".") for m in re.findall(r"[\w.+-]+@[\w-]+\.[\w.]+", raw)}
         assert all(m.endswith("@" + RESERVED_DOMAIN) for m in found), sorted(found)
 
     def test_emails_are_present_at_all(self):
@@ -165,14 +186,16 @@ class TestOnlySyntheticValues:
         """
         assert re.findall(r"[\w.+-]+@[\w-]+\.[\w.]+", RAW)
 
-    def test_every_doi_uses_the_unassigned_prefix(self):
-        found = set(re.findall(r"\b10\.\d{4,9}/[^\"\s\\]+", RAW))
+    @pytest.mark.parametrize("dataset, raw", DATASETS)
+    def test_every_doi_uses_the_unassigned_prefix(self, dataset, raw):
+        found = set(re.findall(r"\b10\.\d{4,9}/[^\"\s\\]+", raw))
         assert all(d.startswith(DOI_PREFIX + "/") for d in found), sorted(found)
 
+    @pytest.mark.parametrize("dataset, raw", DATASETS)
     @pytest.mark.parametrize("name, pattern", CREDENTIAL_SHAPES)
-    def test_no_credential_shaped_value(self, name, pattern):
+    def test_no_credential_shaped_value(self, name, pattern, dataset, raw):
         """Tripwire for a real credential arriving by hand-edit."""
-        assert re.findall(pattern, RAW) == [], name
+        assert re.findall(pattern, raw) == [], f"{dataset}: {name}"
 
 
 # -----------------------------------------------------------------------------#
@@ -281,12 +304,95 @@ class TestSignedUrlMaterial:
 # 4. THE FILE ITSELF
 # -----------------------------------------------------------------------------#
 class TestFixtureFile:
-    def test_it_is_sorted_and_newline_terminated(self):
+    @pytest.mark.parametrize("dataset, raw", DATASETS)
+    def test_it_is_sorted_and_newline_terminated(self, dataset, raw):
         """Kept tidy so a hand-edit produces a clean, reviewable diff."""
-        document = json.loads(RAW)
+        document = json.loads(raw)
         assert list(document) == sorted(document)
-        assert RAW.endswith("\n")
+        assert raw.endswith("\n")
 
     def test_ids_are_unique_across_archetypes(self, by_id_records):
         ids = [r["id"] for r in by_id_records.values()]
         assert len(set(ids)) == len(ids)
+
+
+# -----------------------------------------------------------------------------#
+# 5. THE WALK FIXTURE — the shapes the folder walk has to survive
+# -----------------------------------------------------------------------------#
+class TestWalkFixtureStructure:
+    def test_a_folder_spans_more_than_one_page(self, walk_records):
+        """`next_page` on page 1 is what proves the pager is 1-indexed here."""
+        multi = [p for p in walk_records["folder_pages"].values() if len(p) > 1]
+        assert multi
+        assert multi[0][0]["pagination"]["next_page"] == 2
+        assert multi[0][0]["pagination"]["current_page"] == 1
+
+    def test_page_counts_add_up_to_total_results(self, walk_records):
+        """Otherwise IncompleteWalkError fires on a fixture, not on a real bug."""
+        for guid, pages in walk_records["folder_pages"].items():
+            collected = sum(len(page["ids"]) for page in pages)
+            assert collected == pages[0]["pagination"]["total_results"], guid
+
+    def test_an_empty_folder_exists(self, walk_records):
+        assert any(
+            page[0]["ids"] == [] for page in walk_records["folder_pages"].values()
+        )
+
+    def test_the_trash_folder_reports_itself_as_not_trashed(self, walk_records):
+        """Measured upstream: the container carries in_trash False."""
+        trash = [
+            i
+            for i in walk_records["items"].values()
+            if str(i.get("title", "")).casefold() == "trash"
+        ]
+        assert len(trash) == 1
+        assert trash[0]["in_trash"] is False
+        assert trash[0]["content_type_id"] == 10
+
+    def test_a_trashed_protocol_exists(self, walk_records):
+        assert any(
+            i["in_trash"] and i["content_type_id"] == 1
+            for i in walk_records["items"].values()
+        )
+
+    def test_a_trashed_folder_holds_an_unflagged_protocol(self, walk_records):
+        """The one case that could not be measured: does the flag propagate?
+
+        Upstream has no such protocol, so the fixture supplies the shape and the
+        walk's answer is a decision we make, not one we observed.
+        """
+        folders = {
+            i["guid"]: i
+            for i in walk_records["items"].values()
+            if i["content_type_id"] == 10 and i["in_trash"]
+        }
+        assert folders
+        held = [
+            walk_records["items"][str(item_id)]
+            for guid in folders
+            for page in walk_records["folder_pages"][guid]
+            for item_id in page["ids"]
+        ]
+        assert any(i["content_type_id"] == 1 and not i["in_trash"] for i in held)
+
+    def test_one_protocol_is_filed_in_two_folders(self, walk_records):
+        seen: list[int] = []
+        for pages in walk_records["folder_pages"].values():
+            for page in pages:
+                seen.extend(page["ids"])
+        assert len(seen) != len(set(seen))
+
+    def test_two_protocols_share_a_version_family(self, walk_records):
+        families = [
+            i["version_class"]
+            for i in walk_records["items"].values()
+            if i["content_type_id"] == 1
+        ]
+        assert len(families) != len(set(families))
+
+    def test_a_non_protocol_content_item_exists(self, walk_records):
+        """type_id 3 is a Collection — it must not be sealed as a protocol."""
+        assert any(
+            i["content_type_id"] == 1 and i["type_id"] != 1
+            for i in walk_records["items"].values()
+        )

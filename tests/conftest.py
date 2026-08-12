@@ -12,6 +12,7 @@ import pytest
 from chronos.utils.request_utils import _call_api
 
 FIXTURE = Path(__file__).parent / "fixtures" / "protocols_by_id.json"
+WALK_FIXTURE = Path(__file__).parent / "fixtures" / "filemanager_walk.json"
 
 # Named for the structure each one carries, not for the protocol it came from.
 ARCHETYPES = (
@@ -75,6 +76,12 @@ def record(by_id_records):
         return copy.deepcopy(by_id_records[archetype])
 
     return _record
+
+
+@pytest.fixture(scope="session")
+def walk_records() -> dict:
+    """The synthetic File Manager tree: top folders, folder pages, items."""
+    return json.loads(WALK_FIXTURE.read_text(encoding="utf-8"))
 
 
 @pytest.fixture
