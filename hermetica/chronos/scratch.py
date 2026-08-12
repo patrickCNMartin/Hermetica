@@ -100,11 +100,13 @@ if profile:
 # /v3/researchers/<u>/workspaces is documented as *public* workspaces, and this
 # one is private — it returned 0 items. Top folders is the other route in.
 folders: list[tuple[str, str]] = []
-tops = probe("filemanager/folders?top", f"{BASE_URL}/v3/filemanager/folders", {"top": 1})
+tops = probe(
+    "filemanager/folders?top", f"{BASE_URL}/v3/filemanager/folders", {"top": 1}
+)
 for folder in (tops or {}).get("folders") or []:
     guid = folder.get("guid")
-    name = folder.get("name") or folder.get("title") or folder.get("icon", {}).get(
-        "code"
+    name = (
+        folder.get("name") or folder.get("title") or folder.get("icon", {}).get("code")
     )
     folders.append((guid, str(name)))
     print(f"    {str(name)[:34]:36} {guid}")
@@ -183,7 +185,9 @@ if workspace_uri:
         if not (payload.get("pagination") or {}).get("next_page"):
             break
     seen["workspace_public"] = ids
-    print(f"    {len(ids)} ids   contains target: {'YES' if target_id in ids else 'no'}")
+    print(
+        f"    {len(ids)} ids   contains target: {'YES' if target_id in ids else 'no'}"
+    )
 else:
     print("  skipped — no workspace uri resolved in probe 2")
 
@@ -228,7 +232,9 @@ for guid, name in folders:
             print(f"    item keys: {sorted(items[0].keys())}")
             print(f"    first item: {json.dumps(items[0], indent=2)[:800]}")
         fm_ids.update(
-            i["content_id"] for i in items if i.get("type_id") == 1 and "content_id" in i
+            i["content_id"]
+            for i in items
+            if i.get("type_id") == 1 and "content_id" in i
         )
         if not (fm.get("pagination") or {}).get("next_page"):
             break
