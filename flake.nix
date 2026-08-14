@@ -25,7 +25,11 @@
                         pandoc
                         git
                         uv;
-                };
+                } ++ [tex];
+                tex = pkgs.texliveSmall.withPackages (ps: [
+                    ps.dejavu
+                    ps.lualatex-math
+                ]);
                 python_base = pkgs.python313;
                 oci_deps = [
                     python_base
@@ -33,6 +37,8 @@
                     pkgs.cacert # Essential for HTTPS requests within python/uv
                     pkgs.bashInteractive
                     pkgs.coreutils
+                    pkgs.pandoc
+                    tex
                 ];
     
             in {

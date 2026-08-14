@@ -18,6 +18,13 @@ VIEW_URL = os.getenv("VIEW_URL", "https://www.protocols.io/view/")
 
 DISPLAY_FIELDS: tuple[str, ...] = ("title", "doi", "reserved_doi", "uri")
 
+# Fonts only; the engine is a pandoc option, not a metadata variable.
+PDF_METADATA: dict[str, str] = {
+    "mainfont": "DejaVu Serif",
+    "sansfont": "DejaVu Sans",
+    "monofont": "DejaVu Sans Mono",
+}
+
 
 class OrderError(ValueError):
     """`order` is not an exact permutation of the lock's pin set."""
@@ -232,6 +239,17 @@ def _protocol(
     return lines
 
 
+def _frontmatter(metadata: dict[str, str]) -> list[str]:
+    """A YAML metadata block. JSON strings are valid YAML, so they quote safely."""
+    if not metadata:
+        return []
+    return (
+        ["---"]
+        + [f"{key}: {json.dumps(value)}" for key, value in metadata.items()]
+        + ["---", ""]
+    )
+
+
 def _banner(total: int, linked: int, inline: int, db: str | None) -> str:
     """State why each protocol rendered the way it did — never imply more than known."""
     if not db:
@@ -247,7 +265,10 @@ def _banner(total: int, linked: int, inline: int, db: str | None) -> str:
 
 
 def to_markdown(
-    lock: dict, db: str | None = None, order: Sequence[str] | None = None
+    lock: dict,
+    db: str | None = None,
+    order: Sequence[str] | None = None,
+    metadata: dict[str, str] | None = None,
 ) -> str:
     """Render a lock document as markdown.
 
@@ -255,7 +276,8 @@ def to_markdown(
     canonical copy is one click away and duplicating it here only creates a second
     thing to drift. A pin that is no longer live has no such source, so its body is
     inlined from the blob. Without a `db` that distinction is unknowable and
-    everything inlines, which keeps a standalone lock renderable.
+    everything inlines, which keeps a standalone lock renderable. `metadata` writes a
+    pandoc YAML block; empty by default, so the output is plain markdown.
     """
     entries = lock["entries"]
     order = resolve_order(entries, order)
@@ -267,7 +289,7 @@ def to_markdown(
 
     recorded = lock.get("manifest_hash")
     verified = recorded == manifest_hash(entries)
-    lines = [
+    lines = _frontmatter(metadata or {}) + [
         "# Protocol manifest",
         "",
         f"- **manifest_hash**: `{recorded}`"
@@ -284,10 +306,14 @@ def to_markdown(
 
 
 def export_markdown(
-    lock: dict, path: str, db: str | None = None, order: Sequence[str] | None = None
+    lock: dict,
+    path: str,
+    db: str | None = None,
+    order: Sequence[str] | None = None,
+    metadata: dict[str, str] | None = None,
 ) -> str:
     """Render and write. Returns what was written."""
-    document = to_markdown(lock, db=db, order=order)
+    document = to_markdown(lock, db=db, order=order, metadata=metadata)
     with open(path, "w", encoding="utf-8") as handle:
         handle.write(document)
     return document

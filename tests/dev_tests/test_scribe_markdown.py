@@ -12,6 +12,7 @@ import json
 import pytest
 
 from scribe.markdown import (
+    PDF_METADATA,
     OrderError,
     UnrenderableProtocolError,
     export_markdown,
@@ -351,7 +352,46 @@ class TestRefuses:
 
 
 # -----------------------------------------------------------------------------#
-# 6. EXPORT
+# 6. PANDOC METADATA
+# -----------------------------------------------------------------------------#
+class TestFrontmatter:
+    def test_there_is_no_block_by_default(self, lock):
+        document, db = lock
+        rendered = to_markdown(document, db=db)
+        assert rendered.startswith("# Protocol manifest")
+
+    def test_an_empty_dict_writes_no_block(self, lock):
+        """Empty must mean absent, not an empty pair of fences."""
+        document, db = lock
+        rendered = to_markdown(document, db=db, metadata={})
+        assert rendered.startswith("# Protocol manifest")
+
+    def test_the_block_opens_the_document(self, lock):
+        """Pandoc reads the block only at the top of the file."""
+        document, db = lock
+        rendered = to_markdown(document, db=db, metadata=PDF_METADATA)
+        lines = rendered.splitlines()
+        assert lines[0] == "---"
+        assert lines[len(PDF_METADATA) + 1] == "---"
+        assert "# Protocol manifest" in lines[len(PDF_METADATA) + 2 :]
+
+    def test_every_key_is_written(self, lock):
+        document, db = lock
+        rendered = to_markdown(document, db=db, metadata=PDF_METADATA)
+        block = rendered.split("---")[1].splitlines()
+        assert [line.split(":")[0] for line in block if line] == list(PDF_METADATA)
+
+    def test_values_are_quoted(self, lock):
+        """A font name carrying a quote or a colon must not break the block."""
+        document, db = lock
+        rendered = to_markdown(
+            document, db=db, metadata={"mainfont": 'Not "Real": Font'}
+        )
+        assert rendered.splitlines()[1] == 'mainfont: "Not \\"Real\\": Font"'
+
+
+# -----------------------------------------------------------------------------#
+# 7. EXPORT
 # -----------------------------------------------------------------------------#
 class TestExport:
     def test_it_writes_what_it_returns(self, lock, tmp_path):
@@ -360,3 +400,9 @@ class TestExport:
         written = export_markdown(document, path, db=db)
         assert open(path, encoding="utf-8").read() == written
         assert written.startswith("# Protocol manifest")
+
+    def test_it_passes_metadata_through(self, lock, tmp_path):
+        document, db = lock
+        path = str(tmp_path / "manifest.md")
+        written = export_markdown(document, path, db=db, metadata=PDF_METADATA)
+        assert written.startswith('---\nmainfont: "DejaVu Serif"')
