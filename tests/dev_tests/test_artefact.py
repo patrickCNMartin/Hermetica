@@ -30,6 +30,8 @@ SPEC_HASH_FIELDS = (
     "guid",
     "title",
     "description",
+    "guidelines",
+    "before_start",
     "disclaimer",
     "warning",
     "materials",
@@ -41,6 +43,19 @@ SPEC_HASH_FIELDS = (
     "protocol_references",
 )
 SPEC_METADATA_FIELDS = ("created_on", "creator", "authors", "keywords")
+
+# Hashed rich-text fields under their upstream names (`materials` is
+# `materials_text`). Restated, not derived from RICH_TEXT_FIELDS — deriving it
+# would make the test agree with whatever the code already does.
+HASHED_RICH_TEXT = (
+    "description",
+    "guidelines",
+    "before_start",
+    "materials_text",
+    "disclaimer",
+    "warning",
+    "protocol_references",
+)
 
 STEP_CONTENT_FIELDS = {"id", "guid", "section", "step", "critical"}
 
@@ -282,6 +297,18 @@ class TestUnitMap:
 
     def test_a_record_citing_nothing_maps_nothing(self, record):
         assert get_unit_map(record("baseline")) == {}
+
+    @pytest.mark.parametrize("field", HASHED_RICH_TEXT)
+    def test_every_hashed_rich_text_field_is_scanned_for_units(self, field):
+        """Hashed but unscanned loses the unit name — the catalog is gone by then."""
+        cited = {
+            "blocks": [
+                {"text": " ", "entityRanges": [{"key": 0, "offset": 0, "length": 1}]}
+            ],
+            "entityMap": {"0": {"type": "amount", "data": {"amount": "5", "unit": 2}}},
+        }
+        protocol = {field: json.dumps(cited), "units": [{"id": 2, "name": "mL"}]}
+        assert get_unit_map(protocol) == {"2": "mL"}, f"{field} is not scanned"
 
     def test_units_ride_in_the_hash(self, record):
         raw = record("dotted_steps")

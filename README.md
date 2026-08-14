@@ -26,11 +26,11 @@ Hopefully, you won't push secret keys, massive data sets, or anything else becau
 
 ## Environments
 
-The project works on a multi-tier level for development purposes.
+The project works on a multi-tier level for development purposes. Currently, only option 1 and 3 are provided. 
 
 1. `uv` only. All python dependencies are stated in the `pyproject.toml` and can be run using the `uv` / `venv` virtual environments. Certain system dependencies are required but that's on you to add them (`pandoc` for example). 
 
-2. `docker` + `uv`. We provide a `docker` container for this project which will contain all the python dependencies stated in the `pyproject.toml`. 
+2. `docker` + `uv`. We will provide a `docker` container for this project which will contain all the python dependencies stated in the `pyproject.toml`. 
 
 3. `nix` + `uv`. All code can be run in a `nix develop` shell which handles system dependencies and will install python dependencies with `uv`
 
@@ -46,4 +46,4 @@ This directory contains pre-commit hooks that will trigger on a push to main. It
 # AI Use
 
 This project used Claude code (Opus 4.8 and Opus 5) to write code, unit tests and documentation. However, this is not a "vibe coded" project. Outline code was written by
-a human, expanded on or fixed by AI, and then vetted by human again. 
+a human, expanded on or fixed by AI, and then vetted by human again. And let me tell, you it needed vetting. Did you know that Claude tried to circumvent my rules about writing page comments and docs, by writing a python class that would contain a bunch of strings with its comments and docs?

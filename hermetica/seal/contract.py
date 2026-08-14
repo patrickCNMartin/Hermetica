@@ -20,6 +20,8 @@ HASH_FIELDS: tuple[str, ...] = (
     "guid",
     "title",
     "description",
+    "guidelines",
+    "before_start",
     "disclaimer",
     "warning",
     "materials",
@@ -41,11 +43,17 @@ METADATA_FIELDS: tuple[str, ...] = (
 # Rich-text fields arrive as a JSON *string* holding a Draft.js envelope, and the
 # quantities live in `entityMap`, not in the block text — the text carries only a
 # placeholder character where each one belongs.
+# Every hashed rich-text field belongs here: the unit map is built from this
+# list, so a field hashed but not scanned stores text citing unit ids the map
+# cannot resolve, and the catalog is gone by then.
 RICH_TEXT_FIELDS: tuple[str, ...] = (
     "description",
+    "guidelines",
+    "before_start",
     "materials_text",
     "disclaimer",
     "warning",
+    "protocol_references",
 )
 
 
@@ -65,6 +73,8 @@ class ProtocolArtefact:
     guid: str
     title: str
     description: str
+    guidelines: str
+    before_start: str
     disclaimer: str
     warning: str
     materials: str
@@ -242,6 +252,8 @@ def build_protocol_artefact(protocol: dict) -> ProtocolArtefact:
         guid=protocol["guid"],
         title=protocol["title"],
         description=protocol["description"],
+        guidelines=protocol["guidelines"],
+        before_start=protocol["before_start"],
         disclaimer=protocol["disclaimer"],
         warning=protocol["warning"],
         materials=protocol["materials_text"],

@@ -211,13 +211,24 @@ def _protocol(
         )
         return lines
 
-    for label, field in (("Description", "description"), ("Materials", "materials")):
-        rendered = render_document(body.get(field), body.get("units") or {})
+    units = body.get("units") or {}
+    for label, field in (
+        ("Description", "description"),
+        ("Warning", "warning"),
+        ("Disclaimer", "disclaimer"),
+        ("Guidelines", "guidelines"),
+        ("Before you start", "before_start"),
+        ("Materials", "materials"),
+    ):
+        rendered = render_document(body.get(field), units)
         if rendered:
             lines += ["", f"### {label}", "", rendered]
     steps = _steps(body)
     if steps:
         lines += ["", "### Steps"] + steps
+    references = render_document(body.get("protocol_references"), units)
+    if references:
+        lines += ["", "### References", "", references]
     return lines
 
 

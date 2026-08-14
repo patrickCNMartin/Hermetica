@@ -85,6 +85,46 @@ class TestEntities:
         entity = {"type": "link", "data": {"url": "https://example.org/x"}}
         assert render_entity(entity, {}) == "<https://example.org/x>"
 
+    def test_a_reagent_names_its_vendor_and_sku(self):
+        entity = {
+            "type": "reagents",
+            "data": {
+                "name": "Trizma base",
+                "sku": "T1503",
+                "vendor": {"name": "MilliporeSigma"},
+            },
+        }
+        assert render_entity(entity, {}) == "Trizma base (MilliporeSigma, T1503)"
+
+    def test_a_reagent_with_no_vendor_or_sku_is_just_its_name(self):
+        """Real entries carry an empty vendor and sku — "1X PBS (, )" is wrong."""
+        entity = {
+            "type": "reagents",
+            "data": {"name": "1X PBS", "sku": "", "vendor": {"name": ""}},
+        }
+        assert render_entity(entity, {}) == "1X PBS"
+
+    def test_a_reagent_with_a_null_vendor_still_renders(self):
+        entity = {"type": "reagents", "data": {"name": "DTT", "sku": "D0632"}}
+        assert render_entity(entity, {}) == "DTT (D0632)"
+
+    def test_equipment_names_the_brand_not_the_reseller(self):
+        """`vendor` is who sold it; `brand` is who made it."""
+        entity = {
+            "type": "equipment",
+            "data": {
+                "name": "Biomek i7",
+                "brand": "Beckman Coulter",
+                "sku": "B87585",
+                "vendor": {"name": "Ramcon"},
+            },
+        }
+        assert render_entity(entity, {}) == "Biomek i7 (Beckman Coulter, B87585)"
+
+    def test_a_nameless_catalog_entry_is_marked_never_dropped(self):
+        entity = {"type": "equipment", "data": {"brand": "Eppendorf", "sku": "X"}}
+        assert render_entity(entity, {}) == "[equipment]"
+
     def test_an_unknown_type_is_marked_never_dropped(self):
         """Silence here would mean content vanishing with no trace in the output."""
         assert render_entity({"type": "invented", "data": {}}, {}) == "[invented]"

@@ -58,6 +58,17 @@ def _link(data: dict) -> str:
     return f"<{url}>" if url else ""
 
 
+def _catalog(kind: str, name: Any, maker: Any, sku: Any) -> str:
+    """`name (maker, sku)`. Entries carry no vendor or sku, so parts drop."""
+    name = (name or "").strip()
+    detail = ", ".join(
+        part for part in ((maker or "").strip(), (sku or "").strip()) if part
+    )
+    if not name:
+        return f"[{kind}]"
+    return f"{name} ({detail})" if detail else name
+
+
 def render_entity(entity: dict, units: dict[str, str]) -> str:
     """One entity as text. Anything without a renderer is marked, never dropped."""
     kind = entity.get("type")
@@ -74,6 +85,17 @@ def render_entity(entity: dict, units: dict[str, str]) -> str:
         return _centrifuge(data, units)
     if kind == "ph":
         return f"pH {data.get('number', '')}".strip()
+    if kind == "reagents":
+        return _catalog(
+            kind,
+            data.get("name"),
+            (data.get("vendor") or {}).get("name"),
+            data.get("sku"),
+        )
+    if kind == "equipment":
+        # `vendor` is the reseller, `brand` the maker — a Beckman instrument
+        # comes back with vendor "Ramcon".
+        return _catalog(kind, data.get("name"), data.get("brand"), data.get("sku"))
     if kind == "link":
         return _link(data)
     if kind == "emoji":

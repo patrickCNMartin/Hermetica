@@ -26,10 +26,10 @@ BASE_URL = "https://api.example.org"
 HEADERS = {"Authorization": "Bearer test-token"}
 
 # Ids the fixture tree resolves to, named so a failure reads as a story.
-SHARED = [101, 102]
+LIVE = [101, 102]
 FAMILY_SIBLING = 103
-PUBLIC_NOT_SHARED = 104
-PRIVATE_NOT_SHARED = 105
+PUBLIC = 104
+PRIVATE = 105
 COLLECTION = 106
 TRASHED = 107
 UNDER_TRASHED_FOLDER = 108
@@ -162,7 +162,7 @@ class TestWalk:
 
     def test_it_recurses_into_nested_folders(self, walked):
         """105 sits two levels down; a flat walk would miss it."""
-        assert PRIVATE_NOT_SHARED in {item.id for item in walked}
+        assert PRIVATE in {item.id for item in walked}
 
     def test_the_path_records_where_each_protocol_was_found(self, walked):
         found = {item.id: item.path for item in walked}
@@ -182,7 +182,7 @@ class TestWalk:
         assert item.flag_disagrees is True
 
     def test_live_protocols_are_not_trashed(self, walked):
-        assert not any(i.trashed for i in walked if i.id in SHARED)
+        assert not any(i.trashed for i in walked if i.id in LIVE)
 
     @responses.activate
     def test_each_folder_is_walked_once(self, walk_records):
@@ -204,65 +204,58 @@ class TestWalk:
 # 3. SELECTION
 # -----------------------------------------------------------------------------#
 class TestSelection:
-    def test_shared_protocols_are_selected(self, walked):
-        selection = select_protocols(walked, SHARED)
+    def test_every_live_protocol_is_selected(self, walked):
+        """The whole rule: trash and type are the only two things that hold an
+        item back. How it was discovered qualifies nothing."""
+        selection = select_protocols(walked)
 
-        assert set(SHARED) <= {item.id for item in selection.selected}
-        assert selection.admitted_by[101] == "shared"
+        assert {item.id for item in selection.selected} == {
+            *LIVE,
+            FAMILY_SIBLING,
+            PUBLIC,
+            PRIVATE,
+        }
 
-    def test_a_family_sibling_of_a_shared_protocol_is_recovered(self, walked):
-        """The list endpoint returns one item per family, so a shared protocol's
-        other versions are invisible to every filter. Without this clause they
-        would silently never be sealed."""
-        selection = select_protocols(walked, SHARED)
+    def test_a_private_protocol_nobody_shared_is_selected(self, walked):
+        """It was excluded while selection consulted the shared list. In the
+        workspace and not trashed is now the whole test."""
+        selection = select_protocols(walked)
 
-        assert FAMILY_SIBLING in selection.admitted_by
-        assert selection.admitted_by[FAMILY_SIBLING] == "shared family"
+        assert PRIVATE in {item.id for item in selection.selected}
+        assert PRIVATE not in {item.id for item in selection.excluded}
 
-    def test_a_public_protocol_nobody_shared_is_selected(self, walked):
-        """Published by another member: in no user-scoped filter at all."""
-        selection = select_protocols(walked, SHARED)
+    def test_a_public_protocol_is_selected(self, walked):
+        selection = select_protocols(walked)
 
-        assert selection.admitted_by[PUBLIC_NOT_SHARED] == "public"
-
-    def test_a_private_unshared_protocol_is_excluded(self, walked):
-        selection = select_protocols(walked, SHARED)
-
-        assert PRIVATE_NOT_SHARED in {item.id for item in selection.excluded}
-        assert PRIVATE_NOT_SHARED not in selection.admitted_by
+        assert PUBLIC in {item.id for item in selection.selected}
 
     def test_trashed_protocols_are_never_selected(self, walked):
-        selection = select_protocols(walked, SHARED + [TRASHED])
+        selection = select_protocols(walked)
 
         assert TRASHED in {item.id for item in selection.trashed}
         assert TRASHED not in {item.id for item in selection.selected}
 
-    def test_a_trashed_protocol_that_is_shared_is_still_trashed(self, walked):
-        """Trash wins over every admission route — it is checked first."""
-        selection = select_protocols(walked, [TRASHED])
+    def test_a_protocol_under_a_trashed_folder_is_never_selected(self, walked):
+        """The flag says live, the folder says trash. Position wins."""
+        selection = select_protocols(walked)
 
-        assert TRASHED not in {item.id for item in selection.selected}
-        assert TRASHED in {item.id for item in selection.trashed}
-        assert TRASHED not in selection.admitted_by
+        assert UNDER_TRASHED_FOLDER in {item.id for item in selection.trashed}
+        assert UNDER_TRASHED_FOLDER not in {item.id for item in selection.selected}
 
     def test_a_collection_is_not_sealed_as_a_protocol(self, walked):
-        selection = select_protocols(walked, SHARED + [COLLECTION])
+        selection = select_protocols(walked)
 
         assert COLLECTION not in {item.id for item in selection.selected}
+        assert COLLECTION in {item.id for item in selection.excluded}
         assert any("not a protocol" in w for w in selection.warnings)
 
     def test_the_flag_disagreement_is_reported(self, walked):
-        selection = select_protocols(walked, SHARED)
+        selection = select_protocols(walked)
 
         assert any("in_trash flag disagrees" in w for w in selection.warnings)
 
-    def test_nothing_shared_selects_only_public(self, walked):
-        selection = select_protocols(walked, [])
-
-        assert {item.id for item in selection.selected} == {PUBLIC_NOT_SHARED}
-
     def test_selected_trashed_and_excluded_partition_the_live_tree(self, walked):
-        selection = select_protocols(walked, SHARED)
+        selection = select_protocols(walked)
         counted = (
             len(selection.selected) + len(selection.trashed) + len(selection.excluded)
         )

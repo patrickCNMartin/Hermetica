@@ -54,13 +54,13 @@ class TestRecordPull:
     def test_the_caller_payload_is_preserved(self, tmp_path):
         detail = {
             "strategy": "walk",
-            "admitted_by": {"shared family": [112516]},
+            "diff": {"new": [112516], "changed": []},
             "warnings": ["something worth reading later"],
         }
 
         record_pull(str(tmp_path), 1700000000, detail)
 
-        assert read_pulls(str(tmp_path))[0]["admitted_by"] == detail["admitted_by"]
+        assert read_pulls(str(tmp_path))[0]["diff"] == detail["diff"]
 
 
 class TestReadPulls:

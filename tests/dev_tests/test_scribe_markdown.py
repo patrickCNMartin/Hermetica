@@ -7,6 +7,7 @@ distinction is unknowable and everything inlines, which keeps a standalone lock
 renderable."""
 
 import copy
+import json
 
 import pytest
 
@@ -196,6 +197,64 @@ class TestContent:
         body["chain"] = list(body["chain"]) + [999999]
         with pytest.raises(ValueError, match="chain does not cover steps"):
             to_markdown(document)
+
+    @pytest.mark.parametrize(
+        "field, heading",
+        [
+            ("warning", "### Warning"),
+            ("disclaimer", "### Disclaimer"),
+            ("guidelines", "### Guidelines"),
+            ("before_start", "### Before you start"),
+            ("protocol_references", "### References"),
+        ],
+    )
+    def test_a_populated_section_reaches_the_page(self, lock, field, heading):
+        document, _ = lock
+        body = next(iter(document["bodies"].values()))
+        body[field] = json.dumps({"blocks": [{"text": "Kantele"}], "entityMap": {}})
+        assert heading in to_markdown(document)
+
+    @pytest.mark.parametrize(
+        "heading",
+        ["### Warning", "### Disclaimer", "### Guidelines", "### Before you start"],
+    )
+    def test_an_empty_section_is_omitted(self, lock, heading):
+        document, _ = lock
+        for body in document["bodies"].values():
+            for field in ("warning", "disclaimer", "guidelines", "before_start"):
+                body[field] = ""
+        assert heading not in to_markdown(document)
+
+    def test_before_you_start_precedes_materials(self, lock):
+        document, _ = lock
+        body = next(iter(document["bodies"].values()))
+        for field in ("before_start", "materials"):
+            body[field] = json.dumps({"blocks": [{"text": "Kantele"}], "entityMap": {}})
+        rendered = to_markdown(document)
+        assert rendered.index("### Before you start") < rendered.index("### Materials")
+
+    def test_a_reagent_entity_renders_its_name_not_a_marker(self, lock):
+        document, _ = lock
+        body = next(iter(document["bodies"].values()))
+        body["materials"] = json.dumps(
+            {
+                "blocks": [
+                    {
+                        "text": " ",
+                        "entityRanges": [{"key": 0, "offset": 0, "length": 1}],
+                    }
+                ],
+                "entityMap": {
+                    "0": {
+                        "type": "reagents",
+                        "data": {"name": "Trizma base", "sku": "T1503", "vendor": {}},
+                    }
+                },
+            }
+        )
+        rendered = to_markdown(document)
+        assert "Trizma base (T1503)" in rendered
+        assert "[reagents]" not in rendered
 
     def test_the_manifest_hash_is_reported(self, lock):
         document, _ = lock

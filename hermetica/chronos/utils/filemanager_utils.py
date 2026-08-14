@@ -40,16 +40,14 @@ class IncompleteWalkError(RuntimeError):
 class WalkItem(NamedTuple):
     """One protocol found in the workspace tree, with where it was found.
 
+    Discovery yields ids; the by-ID fetch is the only source of content. Only
+    what gates an id or names it in a warning is kept.
     `in_trash` is the upstream flag; `trashed` also counts a trashed branch.
     """
 
     id: int
-    guid: str
     title: str
-    uri: str | None
     type_id: int | None
-    version_class: int | None
-    public: bool
     in_trash: bool
     trashed: bool
     path: str
@@ -125,12 +123,8 @@ def _as_walk_item(item: dict, path: str, trashed_branch: bool) -> WalkItem:
     in_trash = item.get("in_trash") is True
     return WalkItem(
         id=item["id"],
-        guid=item.get("guid"),
         title=item.get("title"),
-        uri=item.get("uri"),
         type_id=item.get("type_id"),
-        version_class=item.get("version_class"),
-        public=item.get("public") is True,
         in_trash=in_trash,
         trashed=in_trash or trashed_branch,
         path=path,
@@ -182,31 +176,21 @@ def walk_workspace(
 # SELECTION
 # -----------------------------------------------------------------------------#
 class Selection(NamedTuple):
-    """What a pull will fetch, what it skips, and why each one qualified."""
+    """What a pull will fetch and what it holds back."""
 
     selected: list[WalkItem]
     trashed: list[WalkItem]
     excluded: list[WalkItem]
-    admitted_by: dict[int, str]
     warnings: list[str]
 
 
-def select_protocols(items: Iterable[WalkItem], shared_ids: Iterable[int]) -> Selection:
-    """Pick what gets sealed: not trashed, and shared, shared-family or public.
+def select_protocols(items: Iterable[WalkItem]) -> Selection:
+    """Gate whatever discovery found: not trashed, and actually a protocol.
 
-    The family clause is an inference — the list endpoint collapses a family to
-    one item, so a shared protocol's siblings are invisible to every filter.
+    How an item was discovered does not qualify or disqualify it — trash and
+    type are the only two states the API states for itself.
     """
-    items = list(items)
-    shared_ids = set(shared_ids)
-    shared_families = {
-        item.version_class
-        for item in items
-        if item.id in shared_ids and item.version_class is not None
-    }
-
     selected, trashed, excluded = [], [], []
-    admitted_by: dict[int, str] = {}
     warnings: list[str] = []
 
     for item in items:
@@ -226,17 +210,6 @@ def select_protocols(items: Iterable[WalkItem], shared_ids: Iterable[int]) -> Se
             excluded.append(item)
             continue
 
-        if item.id in shared_ids:
-            reason = "shared"
-        elif item.version_class in shared_families:
-            reason = "shared family"
-        elif item.public:
-            reason = "public"
-        else:
-            excluded.append(item)
-            continue
-
-        admitted_by[item.id] = reason
         selected.append(item)
 
-    return Selection(selected, trashed, excluded, admitted_by, warnings)
+    return Selection(selected, trashed, excluded, warnings)

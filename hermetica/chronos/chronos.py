@@ -80,32 +80,19 @@ class Discovery(NamedTuple):
 
 
 def _selection_detail(selection: Selection) -> dict:
-    by_reason: dict[str, list[int]] = {}
-    for protocol_id, reason in selection.admitted_by.items():
-        by_reason.setdefault(reason, []).append(protocol_id)
     return {
         "selected": len(selection.selected),
         "trashed": sorted(item.id for item in selection.trashed),
         "excluded": sorted(item.id for item in selection.excluded),
-        # The family clause is an inference the API never states, so every
-        # protocol admitted by it is named rather than counted.
-        "admitted_by": {reason: sorted(ids) for reason, ids in by_reason.items()},
         "warnings": selection.warnings,
     }
 
 
-def discover_by_walk(base_url: str, list_url: str, headers: dict) -> Discovery:
-    """Walk the workspace, then ask the list endpoint what is shared."""
+def discover_by_walk(base_url: str, headers: dict) -> Discovery:
+    """Walk the workspace and gate what it found. Touches no list endpoint."""
     items = walk_workspace(base_url, headers)
-    shared = fetch_protocol_list(
-        list_url, headers, page_size=PAGE_SIZE, max_pull=MAX_PULL, **PULL_PARAMS
-    )
-    selection = select_protocols(items, shared)
-    detail = {
-        "workspace_items": len(items),
-        "shared_with_user": len(shared),
-        **_selection_detail(selection),
-    }
+    selection = select_protocols(items)
+    detail = {"workspace_items": len(items), **_selection_detail(selection)}
     return Discovery([item.id for item in selection.selected], "walk", detail)
 
 
@@ -119,7 +106,7 @@ def discover_by_filter(list_url: str, headers: dict) -> Discovery:
 
 def discover(strategy: str, base_url: str, list_url: str, headers: dict) -> Discovery:
     if strategy == "walk":
-        return discover_by_walk(base_url, list_url, headers)
+        return discover_by_walk(base_url, headers)
     if strategy == "filter":
         return discover_by_filter(list_url, headers)
     raise ValueError(f"unknown PULL_STRATEGY {strategy!r}; expected 'walk' or 'filter'")

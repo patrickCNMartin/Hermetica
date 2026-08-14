@@ -24,18 +24,12 @@ def entry():
         "pulled_at_iso": "2023-11-14T22:13:20+00:00",
         "strategy": "walk",
         "workspace_items": 67,
-        "shared_with_user": 61,
-        "selected": 55,
-        "admitted_by": {
-            "shared": list(range(1, 53)),
-            "shared family": [112516],
-            "public": [112049, 115111],
-        },
+        "selected": 57,
         "trashed": list(range(200, 209)),
-        "excluded": [317763, 317764, 317766],
-        "fetched": 55,
+        "excluded": [106],
+        "fetched": 57,
         "deprecated": [],
-        "sealed": 55,
+        "sealed": 57,
         "diff": {
             "new": [1, 2, 3],
             "changed": [],
@@ -64,14 +58,14 @@ class TestFormatReport:
             assert label in text
 
     def test_short_id_lists_are_named(self, entry):
-        """Three excluded ids are worth reading; you cannot act on a count."""
+        """One excluded id is worth reading; you cannot act on a count."""
         text = format_report(entry)
 
-        assert "317763" in text
-        assert "112516" in text
+        assert "106" in text
+        assert "1, 2, 3" in text
 
     def test_long_id_lists_are_counted_not_dumped(self, entry):
-        """52 shared ids would bury the two that matter."""
+        """52 unchanged ids would bury the three that moved."""
         text = format_report(entry)
 
         assert "(52 ids, see the log)" in text

@@ -45,7 +45,6 @@ def _header(entry: dict, outcome: str) -> list[str]:
 
 def format_report(entry: dict) -> str:
     """One pull as something a person can read over coffee."""
-    admitted = entry.get("admitted_by") or {}
     diff = entry.get("diff") or {}
     warnings = entry.get("warnings") or []
     deprecated = entry.get("deprecated") or []
@@ -61,10 +60,6 @@ def format_report(entry: dict) -> str:
     if "shared_with_user" in entry:
         lines.append(_line("shared_with_user", entry["shared_with_user"]))
     lines.append(_line("selected", entry.get("selected", 0)))
-    for reason in sorted(admitted):
-        lines.append(
-            _line(f"  via {reason}", len(admitted[reason]), _ids(admitted[reason]))
-        )
     lines.append(_line("trashed, skipped", len(entry.get("trashed") or [])))
     lines.append(
         _line("excluded", len(entry.get("excluded") or []), _ids(entry.get("excluded")))
