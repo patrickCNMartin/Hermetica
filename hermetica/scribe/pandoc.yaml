@@ -1,0 +1,5 @@
+pdf-engine: lualatex
+variables:
+  mainfont: DejaVu Serif
+  sansfont: DejaVu Sans
+  monofont: DejaVu Sans Mono

@@ -28,6 +28,10 @@ env/.env.*
 # Narrow on purpose: the workflow directory only, not all YAML.
 !.github/workflows/*.yml
 
+## Render config ##
+# The pandoc defaults file: engine and fonts, read by the render entry point.
+!hermetica/scribe/*.yaml
+
 ## Test fixtures ##
 # Synthetic by-ID records. There is no generator: this file IS the source of
 # truth, and test_fixture.py guards its shape and its synthetic-ness.
