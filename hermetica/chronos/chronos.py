@@ -62,7 +62,7 @@ HEADERS = {"Authorization": f"Bearer {API_KEY}"}
 # -----------------------------------------------------------------------------#
 class DiscoveredProtocols(NamedTuple):
     ids: list[int]
-    strategy: str  # this is only useful for the log and will be pointless if only one method is used
+    strategy: str  # this is only useful for the log
     detail: dict
 
 
@@ -95,7 +95,9 @@ def discover_by_walk(base_url: str, headers: dict) -> DiscoveredProtocols:
 def discover_by_filter(
     list_url: str, headers: dict, page_size: int = 10, max_pull: int | None = None
 ) -> DiscoveredProtocols:
-    """Use get list method to list protocol ids under certain label (e.g 'shared_with_user)"""
+    """Use get list method to list protocol ids under 
+        certain label (e.g 'shared_with_user)
+    """
     params = {
         "filter": "shared_with_user",
         "key": " ",
