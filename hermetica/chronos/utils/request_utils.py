@@ -101,7 +101,6 @@ def fetch_protocol_list(
     protocols, total = _walk_pages(
         proto_list_url, headers, params, start_page, page_size, max_pull
     )
-
     # A capped or resumed walk is expected to be partial; nothing to verify.
     if total is None or max_pull is not None or start_page != FIRST_PAGE:
         return [i["id"] for i in protocols]
@@ -119,6 +118,7 @@ def fetch_protocol_list(
             f"{total}; refusing to write a partial pull"
         )
     # Pull out protocol ids
+    
     return [i["id"] for i in protocols]
 
 

@@ -10,21 +10,18 @@ from seal.dates import as_iso
 # -----------------------------------------------------------------------------#
 # CONSTANTS & STORES
 # -----------------------------------------------------------------------------#
-# One JSON object per line, appended. Line-delimited so a half-written final
-# line costs one record rather than the whole file.
 PULL_LOG_NAME = "pull_log.jsonl"
-
 
 # -----------------------------------------------------------------------------#
 # WRITE
 # -----------------------------------------------------------------------------#
-def log_path(db_dir: str) -> Path:
-    return Path(db_dir) / PULL_LOG_NAME
+def log_path(log_dir: str) -> Path:
+    return Path(log_dir) / PULL_LOG_NAME
 
 
-def record_pull(db_dir: str, pulled_at: int, entry: dict[str, Any]) -> Path:
+def record_pull(log_dir: str, pulled_at: int, entry: dict[str, Any]) -> Path:
     """Append one pull to the log, creating it if this is the first."""
-    path = log_path(db_dir)
+    path = log_path(log_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     line = json.dumps(
         {"pulled_at": pulled_at, "pulled_at_iso": as_iso(pulled_at), **entry},

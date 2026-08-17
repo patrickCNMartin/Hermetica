@@ -175,16 +175,14 @@ def walk_workspace(
 # -----------------------------------------------------------------------------#
 # SELECTION
 # -----------------------------------------------------------------------------#
-class Selection(NamedTuple):
-    """What a pull will fetch and what it holds back."""
-
+class SelectedProtocols(NamedTuple):
     selected: list[WalkItem]
     trashed: list[WalkItem]
     excluded: list[WalkItem]
     warnings: list[str]
 
 
-def select_protocols(items: Iterable[WalkItem]) -> Selection:
+def select_protocols(items: Iterable[WalkItem]) -> SelectedProtocols:
     """Gate whatever discovery found: not trashed, and actually a protocol.
 
     How an item was discovered does not qualify or disqualify it — trash and
@@ -212,4 +210,4 @@ def select_protocols(items: Iterable[WalkItem]) -> Selection:
 
         selected.append(item)
 
-    return Selection(selected, trashed, excluded, warnings)
+    return SelectedProtocols(selected, trashed, excluded, warnings)

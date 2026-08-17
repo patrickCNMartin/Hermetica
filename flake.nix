@@ -11,39 +11,33 @@
                 # Every Python package and every Python-based tool (pytest,
                 # ruff, pre-commit, detect-secrets) belongs in pyproject.toml,
                 # which is the single declaration shared by the uv / nix / pixi
-                # paths. Adding a Python application here re-creates the
-                # PYTHONPATH shadowing bug: Nix propagates its whole closure
-                # (e.g. its own pytest) into the shell, where it overrides the
-                # uv venv on sys.path.
-                #
-                # No native build toolchain (gcc/gfortran/cmake/pkg-config)
-                # either — current deps are pure-Python wheels. This is
-                # deliberately just the toolchain needed to bootstrap the venv.
+                # paths. 
                 system_deps = builtins.attrValues {
                     inherit (pkgs)
                         which
                         pandoc
                         git
                         uv;
-                } ++ [tex];
+                };
+                # get the tex packages to generate full math reports 
+                # Weird unicode stuff happening otherwise.
                 tex = pkgs.texliveSmall.withPackages (ps: [
                     ps.dejavu
                     ps.lualatex-math
                 ]);
+                # Fix python version
                 python_base = pkgs.python313;
+                # Stuff that is specifically required to build the OCIs
+                # Don't put shit here that you will be pulling from other args
                 oci_deps = [
-                    python_base
-                    pkgs.uv
                     pkgs.cacert # Essential for HTTPS requests within python/uv
                     pkgs.bashInteractive
                     pkgs.coreutils
-                    pkgs.pandoc
-                    tex
                 ];
     
             in {
                 devShells.default = pkgs.mkShell {
-                    buildInputs = system_deps ++ [python_base];
+                    buildInputs = system_deps ++ [tex] ++ [python_base];
                     shellHook = ''
                         echo "====> HERMETICA - Preparing DEV SHELL <===="
 

@@ -12,13 +12,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# ALL Python tooling lives here — including Python-based CLIs like pre-commit.
-# Only non-Python system tools (git, uv) belong in flake.nix; putting a Python
-# app in Nix leaks its closure onto PYTHONPATH and shadows this venv.
 dev = [
     "ruff",
-    # [gibberish] is required, not optional: security/.baseline.security records
-    # the gibberish filter, so loading the baseline imports gibberish_detector.
     "detect-secrets[gibberish]",
     "pre-commit",
     "pytest",
