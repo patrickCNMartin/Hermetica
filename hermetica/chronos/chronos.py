@@ -11,7 +11,11 @@ from dotenv import load_dotenv
 # -----------------------------------------------------------------------------#
 # IMPORT GENERIC UTILS
 # -----------------------------------------------------------------------------#
-from chronos.utils.filemanager_utils import SelectedProtocols, select_protocols, walk_workspace
+from chronos.utils.filemanager_utils import (
+    SelectedProtocols,
+    select_protocols,
+    walk_workspace,
+)
 from chronos.utils.pull_log import record_pull
 from chronos.utils.report import format_failure, format_report, write_report
 from chronos.utils.request_utils import fetch_protocol, fetch_protocol_list
@@ -37,12 +41,12 @@ CLIENT_ID = os.getenv("CLIENT_ID", "")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET", "")
 
 EMAIL = os.getenv("EMAIL", "")
-LOGS = os.getenv("LOGS","logs")
+LOGS = os.getenv("LOGS", "logs")
 DB_OUT = os.getenv("DB", "db")
 
 # Walk uses old entry point which goes through folder - works but archived
 # filter uses the modern entry point - but sucks.
-# This might need to be updated completely depending on what happens 
+# This might need to be updated completely depending on what happens
 # with protocols.io
 PULL_STRATEGY = os.getenv("PULL_STRATEGY", "walk")
 
@@ -51,18 +55,23 @@ PULL_STRATEGY = os.getenv("PULL_STRATEGY", "walk")
 # DEFINE ILAB HEADERS
 # -----------------------------------------------------------------------------#
 HEADERS = {"Authorization": f"Bearer {API_KEY}"}
+
+
 # -----------------------------------------------------------------------------#
 # ClASSES
 # -----------------------------------------------------------------------------#
 class DiscoveredProtocols(NamedTuple):
     ids: list[int]
-    strategy: str # this is only useful for the log and will be pointless if only one method is used
+    strategy: str  # this is only useful for the log and will be pointless if only one method is used
     detail: dict
+
 
 class ScreenedProtocols(NamedTuple):
     kept: list[dict]
     deprecated: list[dict]
     warnings: list[str]
+
+
 # -----------------------------------------------------------------------------#
 # UTIL FUNCTIONS
 # -----------------------------------------------------------------------------#
@@ -84,10 +93,7 @@ def discover_by_walk(base_url: str, headers: dict) -> DiscoveredProtocols:
 
 
 def discover_by_filter(
-    list_url: str,
-    headers: dict,
-    page_size: int = 10,
-    max_pull: int|None = None
+    list_url: str, headers: dict, page_size: int = 10, max_pull: int | None = None
 ) -> DiscoveredProtocols:
     """Use get list method to list protocol ids under certain label (e.g 'shared_with_user)"""
     params = {
@@ -109,7 +115,7 @@ def discover(
     list_url: str,
     headers: dict,
     page_size: int = 10,
-    max_pull: int|None = None
+    max_pull: int | None = None,
 ) -> DiscoveredProtocols:
     if strategy == "walk":
         return discover_by_walk(base_url, headers)
@@ -141,31 +147,28 @@ def screen_deprecated(protocols: list[dict]) -> ScreenedProtocols:
 # -----------------------------------------------------------------------------#
 def run_pull(
     db_name: str,
-    pulled_at : int,
+    pulled_at: int,
     pull_strategy: str,
     base_url: str,
-    protocol_list_url : str,
-    protocol_url : str,
-    headers : dict,
+    protocol_list_url: str,
+    protocol_url: str,
+    headers: dict,
     db_out: str,
     page_size: int = 10,
-    max_pull: int|None = None,
-    dump_all : bool = True) -> dict:
+    max_pull: int | None = None,
+    dump_all: bool = True,
+) -> dict:
     """Discover, fetch, screen, seal. Returns the entry written to the log."""
-    
+
     # Get list of protocols for protocols.io
     # Either walk or use filter strategy
     discovery = discover(
-        pull_strategy,
-        base_url,
-        protocol_list_url,
-        headers,
-        page_size,
-        max_pull)
+        pull_strategy, base_url, protocol_list_url, headers, page_size, max_pull
+    )
     print(f"strategy={discovery.strategy} -> {len(discovery.ids)} protocols to fetch")
     for warning in discovery.detail.get("warnings", []):
         print(f"  WARNING: {warning}")
-   
+
     # Now that we have the list of availble protocols
     # we pull the protocols - the actual protocols with the relevant info
     protocols = [fetch_protocol(p, protocol_url, headers) for p in discovery.ids]
@@ -181,7 +184,7 @@ def run_pull(
     # This is section is specifically for protcols that are placed
     # in folder such as 'old' and contain the 'deprecated' keyword.
     # If the core doesn't add that key word AND it is in OLD
-    # it will come up as active. 
+    # it will come up as active.
     screened = screen_deprecated(protocols)
     for warning in screened.warnings:
         print(f"  WARNING: {warning}")
@@ -189,16 +192,16 @@ def run_pull(
         print(f"  deprecated, not sealed: {protocol.get('id')} {protocol.get('title')}")
 
     # Build a protocol artefact/datatype which allows for some addition validation
-    # Also contains everything we need in the correct format 
+    # Also contains everything we need in the correct format
     artefacts = [build_protocol_artefact(p) for p in screened.kept]
     # reformat to something that can inserted into a data base
     rows = format_entry(artefacts, pulled_at)
-    # This will 
+    # This will
     diff = write_pull(db_name, rows, pulled_at)
 
     # Return some more info about the whole thing
     # assumes that the writing to db went well otherwise it would
-    # have raised an error. 
+    # have raised an error.
     return {
         "strategy": discovery.strategy,
         **discovery.detail,
@@ -234,7 +237,8 @@ if __name__ == "__main__":
             DB_OUT,
             page_size=10,
             max_pull=None,
-            dump_all=True)
+            dump_all=True,
+        )
     except Exception as error:
         # If the pull failed, the error is parsed to the log
         entry = {
@@ -243,9 +247,9 @@ if __name__ == "__main__":
             "error": f"{type(error).__name__}: {error}",
         }
         record_pull(LOGS, pulled_at, entry)
-        failure =  format_failure({**entry, "pulled_at": pulled_at},error)
+        failure = format_failure({**entry, "pulled_at": pulled_at}, error)
         write_report(LOGS, failure)
-        print(f"pull FAILED — Check pull logs")
+        print("pull FAILED — Check pull logs")
         raise
 
     # finally we write the pull logs
@@ -253,15 +257,14 @@ if __name__ == "__main__":
     log_entry = format_report({**entry, "pulled_at": pulled_at})
     report = write_report(LOGS, log_entry)
 
-    # place holder to transfer log to the maintainer 
+    # place holder to transfer log to the maintainer
     if EMAIL:
         # No mail route is configured yet; the report is written for a human to
         # collect or for cron to pipe onward.
         print(f"  (intended for {EMAIL} — no mail transport wired)")
 
-
     # This is section is here for testing purpose on the live db
-    # This won't be part of the cron job. 
+    # This won't be part of the cron job.
     protocol_names = active_protocols(db_name)
     with open(f"{DB_OUT}/fixture_names.json", "w") as f:
         json.dump(protocol_names, f)

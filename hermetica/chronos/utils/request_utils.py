@@ -118,7 +118,7 @@ def fetch_protocol_list(
             f"{total}; refusing to write a partial pull"
         )
     # Pull out protocol ids
-    
+
     return [i["id"] for i in protocols]
 
 
