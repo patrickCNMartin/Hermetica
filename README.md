@@ -14,15 +14,9 @@ NOTE: There is a protocols.io MCP server. Not sure what to do with this informat
 
 # Guardrails
 
-Hermetica use strict guardrails to avoid any unforseen issues pushed to production. 
+## Agent Rules
 
-## Whitelisting
-
-Always use a whitelist approach over a blacklist approach. For example, the `.gitignore` file will explicitely state which files/file types are allowed to be tracked. If you add a new file type, or a new directory, it will not be tracked by git by default. You will need to
-explicitely add it to the `.gitignore`. 
-
-The purpose of this approach is to avoid any "pushed by mistake" scenarioes. 
-Hopefully, you won't push secret keys, massive data sets, or anything else because you forgot that it was tracked by git. I'm looking at you Patrick...
+Will add some agent rules and context for agentic development in the future. I am still refining those rules.
 
 ## Environments
 

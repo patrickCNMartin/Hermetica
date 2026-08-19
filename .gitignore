@@ -1,43 +1,68 @@
-# Selective Git
-*
-!*/
-!.gitignore
-!.pre-commit-config.yaml
-!security/.baseline.security
-!README.md
+# Hermetica — .gitignore
+#
+# A denylist. New files are tracked by default and show up in `git status`;
+# anything that must not ship needs a rule here.
+#
+# The guard against committing a secret is `detect-secrets` in
+# .pre-commit-config.yaml and in CI, which reads file *contents*. This file only
+# handles paths: credentials, real protocol data, and build noise.
 
-# Black List - Make sure that variation on .env will be excluded no matter what 
+
+# --- Secrets ----------------------------------------------------------------
+# Matches a file named .env at any depth, so env/.env and security/.env are both
+# covered. security/.baseline.security is deliberately tracked: it is the record
+# of what detect-secrets has already reviewed, not a secret.
 .env
 .env.*
-security/.env
-security/.env.*
-env/.env
-env/.env.*
+*.env
 
-# Whitelisted Assets #
-## Nix Files ##
+
+# --- Real protocol data -----------------------------------------------------
+# The pull writes here (DB_OUT, LOGS). Real titles, authors, DOIs and bodies —
+# none of it leaves this machine.
+db/
+logs/
+protocol_list.json
+
+# Lock files carry pinned protocol bodies. The two dependency locks are not
+# protocol data and are tracked.
+*.lock
 !flake.lock
-!flake.nix
-# uv files
-!pyproject.toml
 !uv.lock
-## Python ##
-!*.py
 
-## CI ##
-# Narrow on purpose: the workflow directory only, not all YAML.
-!.github/workflows/*.yml
+# Rendered protocols and scanned lab documents.
+*.pdf
+*.db
 
-## Render config ##
-# The pandoc defaults file: engine and fonts, read by the render entry point.
-!hermetica/scribe/*.yaml
 
-## Test fixtures ##
-# Synthetic by-ID records. There is no generator: this file IS the source of
-# truth, and test_fixture.py guards its shape and its synthetic-ness.
-!tests/fixtures/*.json
+# --- Working notes ----------------------------------------------------------
+# Context and evidence for the coder. Not part of the project.
+CLAUDE.md
+docs/
+protocol-vc-context.md
 
-## Data base ##
-# Should be tracked but I don't want to export the actual data base on github.
-# Open the data base folder but not the actual db
-!db/
+
+# --- Python -----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+build/
+dist/
+
+
+# --- Nix --------------------------------------------------------------------
+result
+result-*
+
+
+# --- OS ---------------------------------------------------------------------
+.DS_Store
+Thumbs.db
