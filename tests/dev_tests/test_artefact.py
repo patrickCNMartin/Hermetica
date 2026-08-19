@@ -12,11 +12,13 @@ import pytest
 from seal.contract import (
     HASH_FIELDS,
     METADATA_FIELDS,
+    protocol_hash,
+)
+from sources.protocols_io.artefact import (
     build_protocol_artefact,
     get_step_chain,
     get_steps,
     get_unit_map,
-    protocol_hash,
 )
 from tests.conftest import ARCHETYPES
 

@@ -14,7 +14,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 import responses
 
-from chronos.utils.filemanager_utils import (
+from sources.protocols_io.discover import (
     FIRST_FOLDER_PAGE,
     IncompleteWalkError,
     fetch_folder_ids,

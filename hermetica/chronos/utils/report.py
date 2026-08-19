@@ -35,12 +35,15 @@ def _line(label: str, count, detail: str = "") -> str:
 
 def _header(entry: dict, outcome: str) -> list[str]:
     stamp = entry.get("pulled_at_iso") or as_iso(entry.get("pulled_at", 0))
-    return [
-        f"Hermetica pull — {stamp}",
-        "=" * WIDTH,
+    lines = [f"Hermetica pull — {stamp}", "=" * WIDTH]
+    # A run may cover several sources; naming it is what keeps them apart.
+    if entry.get("source"):
+        lines.append(f"  source                {entry['source']}")
+    lines += [
         f"  strategy              {entry.get('strategy', 'unknown')}",
         f"  outcome               {outcome}",
     ]
+    return lines
 
 
 def format_report(entry: dict) -> str:

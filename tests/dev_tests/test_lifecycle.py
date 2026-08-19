@@ -7,13 +7,13 @@ near miss is reported instead — `depricated` is loud rather than silently live
 
 import pytest
 
-from chronos.chronos import screen_deprecated
 from seal.lifecycle import (
     DEPRECATED_TOKENS,
     is_deprecated,
     near_miss_tokens,
     split_keywords,
 )
+from sources.protocols_io.lifecycle import screen_protocol
 
 
 # -----------------------------------------------------------------------------#
@@ -88,34 +88,21 @@ class TestNearMiss:
 # -----------------------------------------------------------------------------#
 # 4. SCREENING A PULL
 # -----------------------------------------------------------------------------#
-class TestScreenDeprecated:
-    def test_a_flagged_protocol_is_held_back(self):
-        protocols = [
-            {"id": 1, "keywords": "sp3"},
-            {"id": 2, "keywords": "sp3, deprecated"},
-        ]
+class TestScreenProtocol:
+    def test_a_flagged_protocol_is_retired(self):
+        assert screen_protocol({"id": 2, "keywords": "sp3, deprecated"}).retired
 
-        screened = screen_deprecated(protocols)
-
-        assert [p["id"] for p in screened.kept] == [1]
-        assert [p["id"] for p in screened.deprecated] == [2]
+    def test_an_unflagged_protocol_is_not(self):
+        assert not screen_protocol({"id": 1, "keywords": "sp3"}).retired
 
     def test_a_missing_keywords_field_is_not_a_flag(self):
-        screened = screen_deprecated([{"id": 1}])
-
-        assert [p["id"] for p in screened.kept] == [1]
+        assert not screen_protocol({"id": 1}).retired
 
     def test_a_near_miss_is_kept_and_warned_about(self):
-        screened = screen_deprecated([{"id": 7, "keywords": "depricated"}])
+        screened = screen_protocol({"id": 7, "keywords": "depricated"})
 
-        assert [p["id"] for p in screened.kept] == [7]
+        assert not screened.retired
         assert any("depricated" in w and "7" in w for w in screened.warnings)
 
-    def test_nothing_flagged_means_nothing_dropped(self):
-        protocols = [{"id": n, "keywords": "sp3"} for n in range(5)]
-
-        screened = screen_deprecated(protocols)
-
-        assert len(screened.kept) == 5
-        assert screened.deprecated == []
-        assert screened.warnings == []
+    def test_ordinary_keywords_are_quiet(self):
+        assert screen_protocol({"id": 1, "keywords": "sp3"}).warnings == []

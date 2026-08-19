@@ -9,7 +9,7 @@ import pytest
 import requests
 import responses
 
-from chronos.utils.request_utils import (
+from sources.protocols_io.client import (
     FIRST_PAGE,
     IncompletePullError,
     _call_api,

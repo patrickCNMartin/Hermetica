@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from chronos.utils.request_utils import _call_api
+from sources.protocols_io.client import _call_api
 
 FIXTURE = Path(__file__).parent / "fixtures" / "protocols_by_id.json"
 WALK_FIXTURE = Path(__file__).parent / "fixtures" / "filemanager_walk.json"

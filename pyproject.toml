@@ -40,4 +40,4 @@ select = ["E", "F", "I"]
 
 # The modules live under hermetica/ and import as top-level packages.
 [tool.ruff.lint.isort]
-known-first-party = ["chronos", "seal", "compose", "scribe"]
+known-first-party = ["chronos", "seal", "compose", "scribe", "sources"]

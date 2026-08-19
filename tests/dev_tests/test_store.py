@@ -14,7 +14,6 @@ import pytest
 
 from seal.contract import (
     METADATA_FIELDS,
-    build_protocol_artefact,
     canonical_json,
     hash_bytes,
     protocol_hash,
@@ -37,6 +36,7 @@ from seal.store import (
     verify_protocols,
     write_pull,
 )
+from sources.protocols_io.artefact import build_protocol_artefact
 
 PULLED_AT = to_epoch("2026-07-27")
 LATER = to_epoch("2026-08-03")

@@ -11,7 +11,6 @@ import json
 import pytest
 
 from scribe.hydrate import LockDriftError, hydrate_pins
-from seal.contract import build_protocol_artefact
 from seal.dates import to_epoch
 from seal.seal import export_pins, generate_protocol_lock
 from seal.store import (
@@ -22,6 +21,7 @@ from seal.store import (
     initialize_db,
     write_pull,
 )
+from sources.protocols_io.artefact import build_protocol_artefact
 
 PULLED_AT = to_epoch("2026-07-27")
 

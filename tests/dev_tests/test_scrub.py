@@ -8,7 +8,8 @@ a new version on every nightly pull — measured at two hashes 34 s apart."""
 import json
 import re
 
-from seal.contract import build_protocol_artefact, protocol_hash, scrub_signed_urls
+from seal.contract import protocol_hash
+from sources.protocols_io.artefact import build_protocol_artefact, scrub_signed_urls
 
 # Rotate the values a real re-request would change, leaving everything else alone.
 _ROTATE = re.compile(

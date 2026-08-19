@@ -3,27 +3,27 @@
 # -----------------------------------------------------------------------------#
 import json
 import os
+import sys
 from pathlib import Path
-from typing import NamedTuple
 
 from dotenv import load_dotenv
 
 # -----------------------------------------------------------------------------#
 # IMPORT GENERIC UTILS
 # -----------------------------------------------------------------------------#
-from chronos.utils.filemanager_utils import (
-    SelectedProtocols,
-    select_protocols,
-    walk_workspace,
-)
 from chronos.utils.pull_log import record_pull
 from chronos.utils.report import format_failure, format_report, write_report
-from chronos.utils.request_utils import fetch_protocol, fetch_protocol_list
 from compose.compose import active_protocols
-from seal.contract import build_protocol_artefact
 from seal.dates import get_timestamp
-from seal.lifecycle import is_deprecated, near_miss_tokens
 from seal.store import format_entry, initialize_db, write_pull
+
+# -----------------------------------------------------------------------------#
+# IMPORT SOURCE ADAPTERS
+# -----------------------------------------------------------------------------#
+# The only place a platform is named. A new one is a new module plus one branch
+# in build_sources, and the env vars it needs read beside the ones below.
+from sources import protocols_io
+from sources.contract import ProtocolSource, UnreadableProtocolError, check_source_name
 
 # -----------------------------------------------------------------------------#
 # SET ENV VARS
@@ -34,8 +34,8 @@ load_dotenv(dotenv_path=dotenv_path)
 
 API_KEY = os.getenv("API_KEY", "")
 BASE_URL = os.getenv("BASE_URL", "")
-PROTOCOL_LIST_URL = os.getenv("PROTOCOL_LIST_URL", f"{BASE_URL}/v3/protocols")
-PROTOCOL_URL = os.getenv("PROTOCOL_URL", f"{BASE_URL}/v4/protocols/")
+PROTOCOL_LIST_URL = os.getenv("PROTOCOL_LIST_URL", "")
+PROTOCOL_URL = os.getenv("PROTOCOL_URL", "")
 
 CLIENT_ID = os.getenv("CLIENT_ID", "")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET", "")
@@ -43,6 +43,9 @@ CLIENT_SECRET = os.getenv("CLIENT_SECRET", "")
 EMAIL = os.getenv("EMAIL", "")
 LOGS = os.getenv("LOGS", "logs")
 DB_OUT = os.getenv("DB", "db")
+
+# Which platforms tonight's run reads, in order. Comma separated.
+SOURCES = os.getenv("SOURCES", "protocols_io")
 
 # Walk uses old entry point which goes through folder - works but archived
 # filter uses the modern entry point - but sucks.
@@ -52,166 +55,96 @@ PULL_STRATEGY = os.getenv("PULL_STRATEGY", "walk")
 
 
 # -----------------------------------------------------------------------------#
-# DEFINE ILAB HEADERS
+# WHICH SOURCES TO PULL
 # -----------------------------------------------------------------------------#
-HEADERS = {"Authorization": f"Bearer {API_KEY}"}
-
-
-# -----------------------------------------------------------------------------#
-# ClASSES
-# -----------------------------------------------------------------------------#
-class DiscoveredProtocols(NamedTuple):
-    ids: list[int]
-    strategy: str  # this is only useful for the log
-    detail: dict
-
-
-class ScreenedProtocols(NamedTuple):
-    kept: list[dict]
-    deprecated: list[dict]
-    warnings: list[str]
-
-
-# -----------------------------------------------------------------------------#
-# UTIL FUNCTIONS
-# -----------------------------------------------------------------------------#
-def _selection_detail(selection: SelectedProtocols) -> dict:
-    return {
-        "selected": len(selection.selected),
-        "trashed": sorted(item.id for item in selection.trashed),
-        "excluded": sorted(item.id for item in selection.excluded),
-        "warnings": selection.warnings,
-    }
-
-
-def discover_by_walk(base_url: str, headers: dict) -> DiscoveredProtocols:
-    """Use folder structure to find protocols by id."""
-    items = walk_workspace(base_url, headers)
-    selection = select_protocols(items)
-    detail = {"workspace_items": len(items), **_selection_detail(selection)}
-    return DiscoveredProtocols([item.id for item in selection.selected], "walk", detail)
-
-
-def discover_by_filter(
-    list_url: str, headers: dict, page_size: int = 10, max_pull: int | None = None
-) -> DiscoveredProtocols:
-    """Use get list method to list protocol ids under
-    certain label (e.g 'shared_with_user)
-    """
-    params = {
-        "filter": "shared_with_user",
-        "key": " ",
-        "order_field": "id",
-        "peer_reviewed": 0,
-        "fields": "id",
-    }
-    ids = fetch_protocol_list(
-        list_url, headers, page_size=page_size, max_pull=max_pull, **params
-    )
-    return DiscoveredProtocols(ids, "filter", {"selected": len(ids), "degraded": True})
-
-
-def discover(
-    strategy: str,
+def build_sources(
+    names: list[str],
     base_url: str,
-    list_url: str,
-    headers: dict,
+    api_key: str,
+    strategy: str = "walk",
+    list_url: str = "",
+    protocol_url: str = "",
     page_size: int = 10,
     max_pull: int | None = None,
-) -> DiscoveredProtocols:
-    if strategy == "walk":
-        return discover_by_walk(base_url, headers)
-    if strategy == "filter":
-        return discover_by_filter(list_url, headers, page_size, max_pull)
-    raise ValueError(f"unknown PULL_STRATEGY {strategy!r}; expected 'walk' or 'filter'")
+    raw_dump: str = "",
+) -> list[ProtocolSource]:
+    """Turn source names into configured adapters.
 
-
-def screen_deprecated(protocols: list[dict]) -> ScreenedProtocols:
+    Every value arrives as an argument — the env is read once, in __main__, and
+    passed down. A new platform is one more branch here plus its own arguments.
     """
-    Check if protocols has been deprecated.
-    """
-    kept, deprecated, warnings = [], [], []
-    for protocol in protocols:
-        keywords = protocol.get("keywords")
-        for token in near_miss_tokens(keywords):
-            warnings.append(
-                f"protocol {protocol.get('id')} carries keyword {token!r}, which "
-                f"looks like a lifecycle flag but is not one!"
-                f"If you want to deprecate this protocol,"
-                f"Please make sure you use one of the allowed terms"
+    sources = []
+    for name in names:
+        if name == "protocols_io":
+            sources.append(
+                protocols_io.build_source(
+                    base_url=base_url,
+                    api_key=api_key,
+                    strategy=strategy,
+                    list_url=list_url,
+                    protocol_url=protocol_url,
+                    page_size=page_size,
+                    max_pull=max_pull,
+                    raw_dump=raw_dump,
+                )
             )
-        (deprecated if is_deprecated(keywords) else kept).append(protocol)
-    return ScreenedProtocols(kept, deprecated, warnings)
+        else:
+            raise ValueError(f"unknown source {name!r}")
+    return sources
 
 
 # -----------------------------------------------------------------------------#
-# ONE PULL
+# ONE PULL, ONE SOURCE
 # -----------------------------------------------------------------------------#
-def run_pull(
-    db_name: str,
-    pulled_at: int,
-    pull_strategy: str,
-    base_url: str,
-    protocol_list_url: str,
-    protocol_url: str,
-    headers: dict,
-    db_out: str,
-    page_size: int = 10,
-    max_pull: int | None = None,
-    dump_all: bool = True,
-) -> dict:
-    """Discover, fetch, screen, seal. Returns the entry written to the log."""
+def run_pull(db_name: str, pulled_at: int, source: ProtocolSource) -> dict:
+    """Discover, fetch, seal. Returns the entry written to the log.
 
-    # Get list of protocols for protocols.io
-    # Either walk or use filter strategy
-    discovery = discover(
-        pull_strategy, base_url, protocol_list_url, headers, page_size, max_pull
+    Knows no field names: whatever a platform calls things is settled by the
+    time an artefact arrives.
+    """
+    check_source_name(source.name)
+
+    discovery = source.discover()
+    print(
+        f"{source.name}: strategy={discovery.strategy} -> "
+        f"{len(discovery.ids)} protocols to fetch"
     )
-    print(f"strategy={discovery.strategy} -> {len(discovery.ids)} protocols to fetch")
     for warning in discovery.detail.get("warnings", []):
         print(f"  WARNING: {warning}")
 
-    # Now that we have the list of availble protocols
-    # we pull the protocols - the actual protocols with the relevant info
-    protocols = [fetch_protocol(p, protocol_url, headers) for p in discovery.ids]
-    # if dumpl_all is true we dump intermediate files.
-    # This is more use for manual verification
-    if dump_all:
-        with open(f"{db_out}/chronos_protocols.json", "w") as f:
-            json.dump(protocols, f)
+    artefacts, retired, warnings = [], [], []
+    for protocol_id in discovery.ids:
+        fetched = source.fetch(protocol_id)
+        warnings.extend(fetched.warnings)
+        for warning in fetched.warnings:
+            print(f"  WARNING: {warning}")
 
-    # Check if protocols have been deprecated
-    # NOTE: Trashed protocols can only be found when using walk
-    # and they are filtered out at that time.
-    # This is section is specifically for protcols that are placed
-    # in folder such as 'old' and contain the 'deprecated' keyword.
-    # If the core doesn't add that key word AND it is in OLD
-    # it will come up as active.
-    screened = screen_deprecated(protocols)
-    for warning in screened.warnings:
-        print(f"  WARNING: {warning}")
-    for protocol in screened.deprecated:
-        print(f"  deprecated, not sealed: {protocol.get('id')} {protocol.get('title')}")
+        if fetched.retired:
+            retired.append(protocol_id)
+            print(f"  retired, not sealed: {protocol_id}")
+            continue
+        # A read that failed is not evidence the protocol went away. Until the
+        # skipped set is subtracted inside _diff, the only safe answer is to
+        # stop: nothing is written, so nothing is deprecated by absence.
+        if fetched.artefact is None:
+            raise UnreadableProtocolError(
+                f"{source.name} returned no artefact for {protocol_id} and did "
+                f"not declare it retired"
+            )
+        artefacts.append(fetched.artefact)
 
-    # Build a protocol artefact/datatype which allows for some addition validation
-    # Also contains everything we need in the correct format
-    artefacts = [build_protocol_artefact(p) for p in screened.kept]
-    # reformat to something that can inserted into a data base
     rows = format_entry(artefacts, pulled_at)
-    # This will
     diff = write_pull(db_name, rows, pulled_at)
 
-    # Return some more info about the whole thing
-    # assumes that the writing to db went well otherwise it would
-    # have raised an error.
     return {
+        "source": source.name,
         "strategy": discovery.strategy,
         **discovery.detail,
-        "fetched": len(protocols),
-        "deprecated": sorted(p.get("id") for p in screened.deprecated),
+        "fetched": len(discovery.ids),
+        "deprecated": sorted(retired),
         "sealed": len(rows),
         "diff": {key: sorted(value) for key, value in diff.items()},
-        "warnings": discovery.detail.get("warnings", []) + screened.warnings,
+        "warnings": discovery.detail.get("warnings", []) + warnings,
     }
 
 
@@ -225,45 +158,53 @@ if __name__ == "__main__":
 
     # pull time stamp
     # This is when we start the pull - everything else follows this pull time
+    # One clock read for every source, so their intervals line up.
     pulled_at = get_timestamp()
-    # Testing if we can pull from the protocols.io database
-    try:
-        entry = run_pull(
-            db_name,
-            pulled_at,
-            PULL_STRATEGY,
-            BASE_URL,
-            PROTOCOL_LIST_URL,
-            PROTOCOL_URL,
-            HEADERS,
-            DB_OUT,
-            page_size=10,
-            max_pull=None,
-            dump_all=True,
-        )
-    except Exception as error:
-        # If the pull failed, the error is parsed to the log
-        entry = {
-            "strategy": PULL_STRATEGY,
-            "failed": True,
-            "error": f"{type(error).__name__}: {error}",
-        }
-        record_pull(LOGS, pulled_at, entry)
-        failure = format_failure({**entry, "pulled_at": pulled_at}, error)
-        write_report(LOGS, failure)
-        print("pull FAILED — Check pull logs")
-        raise
+    names = [name.strip() for name in SOURCES.split(",") if name.strip()]
 
-    # finally we write the pull logs
-    log = record_pull(LOGS, pulled_at, entry)
-    log_entry = format_report({**entry, "pulled_at": pulled_at})
-    report = write_report(LOGS, log_entry)
+    configured = build_sources(
+        names,
+        base_url=BASE_URL,
+        api_key=API_KEY,
+        strategy=PULL_STRATEGY,
+        list_url=PROTOCOL_LIST_URL,
+        protocol_url=PROTOCOL_URL,
+        raw_dump=DB_OUT,
+    )
+
+    reports, failed = [], False
+    for source in configured:
+        # Per source, not around the loop: one platform being down must not stop
+        # the others, and a source that raises writes nothing, so none of its
+        # protocols are deprecated by absence.
+        try:
+            entry = run_pull(db_name, pulled_at, source)
+        except Exception as error:
+            failed = True
+            entry = {
+                "source": source.name,
+                "strategy": PULL_STRATEGY,
+                "failed": True,
+                "error": f"{type(error).__name__}: {error}",
+            }
+            record_pull(LOGS, pulled_at, entry)
+            reports.append(format_failure({**entry, "pulled_at": pulled_at}, error))
+            print(f"{source.name}: pull FAILED — Check pull logs")
+            continue
+
+        record_pull(LOGS, pulled_at, entry)
+        reports.append(format_report({**entry, "pulled_at": pulled_at}))
+
+    write_report(LOGS, "\n".join(reports))
 
     # place holder to transfer log to the maintainer
     if EMAIL:
         # No mail route is configured yet; the report is written for a human to
         # collect or for cron to pipe onward.
         print(f"  (intended for {EMAIL} — no mail transport wired)")
+
+    if failed:
+        sys.exit(1)
 
     # This is section is here for testing purpose on the live db
     # This won't be part of the cron job.

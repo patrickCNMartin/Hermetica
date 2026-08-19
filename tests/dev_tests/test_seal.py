@@ -10,7 +10,6 @@ import os
 
 import pytest
 
-from seal.contract import build_protocol_artefact
 from seal.dates import to_epoch
 from seal.seal import (
     MalformedLockError,
@@ -30,6 +29,7 @@ from seal.store import (
     initialize_db,
     write_pull,
 )
+from sources.protocols_io.artefact import build_protocol_artefact
 
 PULLED_AT = to_epoch("2026-07-27")
 LAST_YEAR = to_epoch("2025-06-01")

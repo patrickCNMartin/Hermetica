@@ -13,7 +13,7 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
-from chronos.utils.request_utils import _call_api
+from sources.protocols_io.client import _call_api
 
 load_dotenv(dotenv_path=Path.cwd() / "env" / ".env")
 

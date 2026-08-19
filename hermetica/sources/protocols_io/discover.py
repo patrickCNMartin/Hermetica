@@ -3,7 +3,8 @@
 # -----------------------------------------------------------------------------#
 from typing import Iterable, NamedTuple
 
-from chronos.utils.request_utils import _call_api
+from sources.contract import DiscoveredProtocols
+from sources.protocols_io.client import _call_api, fetch_protocol_list
 
 # -----------------------------------------------------------------------------#
 # CONSTANTS & STORES
@@ -211,3 +212,57 @@ def select_protocols(items: Iterable[WalkItem]) -> SelectedProtocols:
         selected.append(item)
 
     return SelectedProtocols(selected, trashed, excluded, warnings)
+
+
+# -----------------------------------------------------------------------------#
+# THE TWO DISCOVERY ROUTES
+# -----------------------------------------------------------------------------#
+def _selection_detail(selection: SelectedProtocols) -> dict:
+    return {
+        "selected": len(selection.selected),
+        "trashed": sorted(item.id for item in selection.trashed),
+        "excluded": sorted(item.id for item in selection.excluded),
+        "warnings": selection.warnings,
+    }
+
+
+def discover_by_walk(base_url: str, headers: dict) -> DiscoveredProtocols:
+    """Use folder structure to find protocols by id."""
+    items = walk_workspace(base_url, headers)
+    selection = select_protocols(items)
+    detail = {"workspace_items": len(items), **_selection_detail(selection)}
+    return DiscoveredProtocols([item.id for item in selection.selected], "walk", detail)
+
+
+def discover_by_filter(
+    list_url: str, headers: dict, page_size: int = 10, max_pull: int | None = None
+) -> DiscoveredProtocols:
+    """Use get list method to list protocol ids under
+    certain label (e.g 'shared_with_user)
+    """
+    params = {
+        "filter": "shared_with_user",
+        "key": " ",
+        "order_field": "id",
+        "peer_reviewed": 0,
+        "fields": "id",
+    }
+    ids = fetch_protocol_list(
+        list_url, headers, page_size=page_size, max_pull=max_pull, **params
+    )
+    return DiscoveredProtocols(ids, "filter", {"selected": len(ids), "degraded": True})
+
+
+def discover(
+    strategy: str,
+    base_url: str,
+    list_url: str,
+    headers: dict,
+    page_size: int = 10,
+    max_pull: int | None = None,
+) -> DiscoveredProtocols:
+    if strategy == "walk":
+        return discover_by_walk(base_url, headers)
+    if strategy == "filter":
+        return discover_by_filter(list_url, headers, page_size, max_pull)
+    raise ValueError(f"unknown PULL_STRATEGY {strategy!r}; expected 'walk' or 'filter'")
