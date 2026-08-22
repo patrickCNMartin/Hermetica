@@ -1,0 +1,64 @@
+# yaml file for protocol templates
+# This is a simple way to bootstrap the data base. 
+# The structure will pull from the a live protocol database if one exists.
+# I am keeping this pretty minimal because it should also be able to be updated
+# Using a specific manifest hash.
+
+creator: "Homunculus Pat"
+created_on: "2026-08-21"
+pipelines:
+    CryPrep_biomek_base:
+        version_id : 0
+        pipeline_guid:  null
+        manifest_hash : null
+        root: null
+        executoror: null
+        protocol_dag : {}
+
+    FFPE_digestion_base:
+        version_id : 0
+        pipeline_guid:  null
+        manifest_hash : null
+        root: null
+        executoror: null
+        protocol_dag : {}
+
+    In_gel_digestion_base:
+        version_id : 0
+        pipeline_guid:  null
+        manifest_hash : null
+        root: null
+        executoror: null
+        protocol_dag : {}
+
+    IP_base:
+        version_id : 0
+        pipeline_guid:  null
+        manifest_hash : null
+        root: null
+        executoror: null
+        protocol_dag : {}
+
+    IPMS_base:
+        version_id : 0
+        pipeline_guid:  null
+        manifest_hash : null
+        root: null
+        executoror: null
+        protocol_dag : {}
+
+    FF_SDS_base:
+        version_id : 0
+        pipeline_guid:  null
+        manifest_hash : null
+        root: null
+        executoror: null
+        protocol_dag : {}
+
+    Frozen_tissue_base:
+        version_id : 0
+        pipeline_guid:  null
+        manifest_hash : null
+        root: null
+        executoror: null
+        protocol_dag : {}

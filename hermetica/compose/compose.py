@@ -2,42 +2,44 @@
 # IMPORT LIBS
 # -----------------------------------------------------------------------------#
 import sqlite3
+import uuid
 from dataclasses import asdict, dataclass
-
 from seal.store import active_hashes, connect
+from yaml import safe_load
 
 # -----------------------------------------------------------------------------#
 # CREATE COMPOSITION TEMPLATE
 # -----------------------------------------------------------------------------#
-HASH_FIELDS: tuple[str, ...] = ("id", "guid", "title", "manifest_hash", "DAG")
+HASH_FIELDS: tuple[str, ...] = (
+    "guid",
+    "title",
+    "manifest_hash",
+    "DAG",
+    "DAG_ids",
+    "executor",
+    "root")
 # Specify other in
 METADATA_FIELDS: tuple[str, ...] = (
     "created_on",
     "creator",
 )
 
+# Hashing algortihm
+HASH_ALGORITHM = "sha256"
 
 COMPOSITION_FIELDS: tuple[str, ...] = HASH_FIELDS + METADATA_FIELDS
 
 
-# Note on DAG and cat_DAG.
-# One thing that I have to figure out is how I can actually build the DAG
-# There are general categories and in those cats there are the actual protocols
-# sometimes there are a lot of them and sometimes they are empty.
-# So the cat_DAG is the easy flow since it represent the broad categories
-# but the actual protocols are nested within these categories and are conditional
-# Not too sure what the best way to work with this.
 @dataclass(frozen=True, slots=True)
-class ComposedProtocols:
+class ProtocolPipeline:
     # --- hashed (HASH_FIELDS) ---------------------------------------------- #
-    id: int
     guid: int
     title: str
     manifest_hash: str
     root: str  # starting material/ sample type
     executor: str  # human or robot?
-    cat_DAG: dict  # placeholder for now
     DAG: dict
+    DAG_ids: dict
     # --- retained, never hashed (METADATA_FIELDS) -------------------------- #
     created_on: int
     creator: dict
@@ -54,9 +56,6 @@ class ComposedProtocols:
         """Get meta data fields"""
         return {field: getattr(self, field) for field in METADATA_FIELDS}
 
-
-# Hashing algortihm
-HASH_ALGORITHM = "sha256"
 
 # -----------------------------------------------------------------------------#
 # FETCH PROTOCOLS
