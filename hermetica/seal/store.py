@@ -92,7 +92,7 @@ SCHEMA: tuple[str, ...] = (
 )
 
 
-def initialize_db(db: str) -> None:
+def initialize_protocol_db(db: str) -> None:
     """Create the content/history/snapshot tables and their indexes if absent."""
     with connect(db) as conn:
         for statement in SCHEMA:

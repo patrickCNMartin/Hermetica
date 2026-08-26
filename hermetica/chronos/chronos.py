@@ -13,9 +13,10 @@ from dotenv import load_dotenv
 # -----------------------------------------------------------------------------#
 from chronos.utils.pull_log import record_pull
 from chronos.utils.report import format_failure, format_report, write_report
-from compose.compose import active_protocols
+from compose.compose import active_protocols, initialize_pipeline_db
 from seal.dates import get_timestamp
-from seal.store import format_entry, initialize_db, write_pull
+from seal.store import format_entry, initialize_protocol_db, write_pull
+
 
 # -----------------------------------------------------------------------------#
 # IMPORT SOURCE ADAPTERS
@@ -153,8 +154,10 @@ def run_pull(db_name: str, pulled_at: int, source: ProtocolSource) -> dict:
 # -----------------------------------------------------------------------------#
 if __name__ == "__main__":
     # Initialize data base and create if does not exist (schema only).
-    db_name = f"{DB_OUT}/chronos.db"
-    initialize_db(db_name)
+    protcol_db = f"{DB_OUT}/chronos.db"
+    pipeline_db = f"{DB_OUT}/compose.db"
+    initialize_protocol_db(protcol_db)
+    initialize_pipeline_db(pipeline_db)
 
     # pull time stamp
     # This is when we start the pull - everything else follows this pull time
@@ -178,7 +181,7 @@ if __name__ == "__main__":
         # the others, and a source that raises writes nothing, so none of its
         # protocols are deprecated by absence.
         try:
-            entry = run_pull(db_name, pulled_at, source)
+            entry = run_pull(protcol_db, pulled_at, source)
         except Exception as error:
             failed = True
             entry = {
@@ -208,7 +211,7 @@ if __name__ == "__main__":
 
     # This is section is here for testing purpose on the live db
     # This won't be part of the cron job.
-    protocol_names = active_protocols(db_name)
+    protocol_names = active_protocols(protcol_db)
     with open(f"{DB_OUT}/fixture_names.json", "w") as f:
         json.dump(protocol_names, f)
 
@@ -216,11 +219,11 @@ if __name__ == "__main__":
     wanted = [h for h, title in protocol_names.items() if "SDS lysis" in title]
     from seal.seal import export_lock, export_pins, generate_protocol_lock
 
-    lock = generate_protocol_lock(wanted, db=db_name)
+    lock = generate_protocol_lock(wanted, db=protcol_db)
     export_pins(lock, f"{DB_OUT}/pins.lock")
     export_lock(lock, f"{DB_OUT}/lock.lock")
     from scribe.markdown import export_markdown, to_markdown
 
-    md = to_markdown(lock, db_name)
-    export_markdown(lock, f"{DB_OUT}/protocol_render_template_from_db.md", db_name)
+    md = to_markdown(lock, protcol_db)
+    export_markdown(lock, f"{DB_OUT}/protocol_render_template_from_db.md", protcol_db)
     export_markdown(lock, f"{DB_OUT}/protocol_render_template_from_lock.md")

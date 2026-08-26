@@ -2,10 +2,9 @@
 # IMPORT LIBS
 # -----------------------------------------------------------------------------#
 import sqlite3
-import uuid
 from dataclasses import asdict, dataclass
-from seal.store import active_hashes, connect
-from yaml import safe_load
+
+from seal.store import active_hashes, connect, initialize_db
 
 # -----------------------------------------------------------------------------#
 # CREATE COMPOSITION TEMPLATE
@@ -17,7 +16,8 @@ HASH_FIELDS: tuple[str, ...] = (
     "DAG",
     "DAG_ids",
     "executor",
-    "root")
+    "root",
+)
 # Specify other in
 METADATA_FIELDS: tuple[str, ...] = (
     "created_on",
@@ -39,7 +39,6 @@ class ProtocolPipeline:
     root: str  # starting material/ sample type
     executor: str  # human or robot?
     DAG: dict
-    DAG_ids: dict
     # --- retained, never hashed (METADATA_FIELDS) -------------------------- #
     created_on: int
     creator: dict
@@ -79,3 +78,30 @@ def active_protocols(db_path: str) -> dict[str, str]:
             )
         }
     return protocols
+
+# -----------------------------------------------------------------------------#
+# BUILD PROTOCOL PIPELINE DB
+# -----------------------------------------------------------------------------#
+SCHEMA: tuple[str, ...] = (
+    """
+    CREATE TABLE IF NOT EXISTS pipeline_content (
+        hash             TEXT PRIMARY KEY,
+        guid             TEXT NOT NULL
+        title            TEXT NOT NULL,
+        root             TEXT NOT NULL
+        executor         TEXT NOT NULL
+        DAG              TEXT NOT NULL
+        created_on       INTEGER,
+        creator          TEXT,
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_pipeline_content_id "
+    "ON pipeline_content (guid)",
+)
+
+
+def initialize_pipeline_db(db: str) -> None:
+    """Create the content/history/snapshot tables and their indexes if absent."""
+    with connect(db) as conn:
+        for statement in SCHEMA:
+            conn.execute(statement)

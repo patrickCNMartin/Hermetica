@@ -13,7 +13,8 @@ pipelines:
         manifest_hash : null
         root: null
         executoror: null
-        protocol_dag : {}
+        protocol_dag : {"A":["B","C"],"B":"D","C":"D"}
+        protocol_titles : {"A":"my first cool protocol","B":"second","C":"Third","D":"and the output"}
 
     FFPE_digestion_base:
         version_id : 0
@@ -22,6 +23,7 @@ pipelines:
         root: null
         executoror: null
         protocol_dag : {}
+        protocol_titles: {}
 
     In_gel_digestion_base:
         version_id : 0
@@ -30,6 +32,7 @@ pipelines:
         root: null
         executoror: null
         protocol_dag : {}
+        protocol_titles: {}
 
     IP_base:
         version_id : 0
@@ -38,6 +41,7 @@ pipelines:
         root: null
         executoror: null
         protocol_dag : {}
+        protocol_titles: {}
 
     IPMS_base:
         version_id : 0
@@ -46,6 +50,7 @@ pipelines:
         root: null
         executoror: null
         protocol_dag : {}
+        protocol_titles: {}
 
     FF_SDS_base:
         version_id : 0
@@ -54,6 +59,7 @@ pipelines:
         root: null
         executoror: null
         protocol_dag : {}
+        protocol_titles: {}
 
     Frozen_tissue_base:
         version_id : 0
@@ -62,3 +68,4 @@ pipelines:
         root: null
         executoror: null
         protocol_dag : {}
+        protocol_titles: {}

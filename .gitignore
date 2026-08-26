@@ -1,31 +1,20 @@
 # Hermetica — .gitignore
 #
-# A denylist. New files are tracked by default and show up in `git status`;
-# anything that must not ship needs a rule here.
-#
-# The guard against committing a secret is `detect-secrets` in
-# .pre-commit-config.yaml and in CI, which reads file *contents*. This file only
-# handles paths: credentials, real protocol data, and build noise.
+
 
 
 # --- Secrets ----------------------------------------------------------------
-# Matches a file named .env at any depth, so env/.env and security/.env are both
-# covered. security/.baseline.security is deliberately tracked: it is the record
-# of what detect-secrets has already reviewed, not a secret.
 .env
 .env.*
 *.env
 
 
 # --- Real protocol data -----------------------------------------------------
-# The pull writes here (DB_OUT, LOGS). Real titles, authors, DOIs and bodies —
-# none of it leaves this machine.
 db/
 logs/
-protocol_list.json
 
-# Lock files carry pinned protocol bodies. The two dependency locks are not
-# protocol data and are tracked.
+
+# just in case there are some protocol lock files 
 *.lock
 !flake.lock
 !uv.lock
@@ -36,11 +25,14 @@ protocol_list.json
 
 
 # --- Working notes ----------------------------------------------------------
-# Context and evidence for the coder. Not part of the project.
-CLAUDE.md
+AGENT.md
 docs/
-protocol-vc-context.md
+protocol_io_bundle/
+protocol_io_bundle.tar.gz
 
+# --- Agent stuff  ----------------------------------------------------------
+AGENT.md
+.continue/
 
 # --- Python -----------------------------------------------------------------
 __pycache__/
@@ -56,12 +48,6 @@ htmlcov/
 .mypy_cache/
 build/
 dist/
-
-
-# --- Nix --------------------------------------------------------------------
-result
-result-*
-
 
 # --- OS ---------------------------------------------------------------------
 .DS_Store
