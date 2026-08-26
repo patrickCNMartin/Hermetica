@@ -4,7 +4,7 @@
 import sqlite3
 from dataclasses import asdict, dataclass
 
-from seal.store import active_hashes, connect, initialize_db
+from seal.store import active_hashes, connect
 
 # -----------------------------------------------------------------------------#
 # CREATE COMPOSITION TEMPLATE
@@ -79,6 +79,7 @@ def active_protocols(db_path: str) -> dict[str, str]:
         }
     return protocols
 
+
 # -----------------------------------------------------------------------------#
 # BUILD PROTOCOL PIPELINE DB
 # -----------------------------------------------------------------------------#
@@ -95,8 +96,7 @@ SCHEMA: tuple[str, ...] = (
         creator          TEXT,
     )
     """,
-    "CREATE INDEX IF NOT EXISTS idx_pipeline_content_id "
-    "ON pipeline_content (guid)",
+    "CREATE INDEX IF NOT EXISTS idx_pipeline_content_id ON pipeline_content (guid)",
 )
 
 

@@ -17,7 +17,6 @@ from compose.compose import active_protocols, initialize_pipeline_db
 from seal.dates import get_timestamp
 from seal.store import format_entry, initialize_protocol_db, write_pull
 
-
 # -----------------------------------------------------------------------------#
 # IMPORT SOURCE ADAPTERS
 # -----------------------------------------------------------------------------#
