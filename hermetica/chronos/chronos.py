@@ -44,6 +44,9 @@ EMAIL = os.getenv("EMAIL", "")
 LOGS = os.getenv("LOGS", "logs")
 DB_OUT = os.getenv("DB", "db")
 
+# A set of pre-built pipelines.
+PIPE_TEMPLATE = os.getenv("PIPE_TEMPLATE", "")
+
 # Which platforms tonight's run reads, in order. Comma separated.
 SOURCES = os.getenv("SOURCES", "protocols_io")
 
@@ -156,7 +159,7 @@ if __name__ == "__main__":
     protcol_db = f"{DB_OUT}/chronos.db"
     pipeline_db = f"{DB_OUT}/compose.db"
     initialize_protocol_db(protcol_db)
-    initialize_pipeline_db(pipeline_db)
+    initialize_pipeline_db(pipeline_db, template=PIPE_TEMPLATE)
 
     # pull time stamp
     # This is when we start the pull - everything else follows this pull time

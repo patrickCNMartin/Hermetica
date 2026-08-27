@@ -17,6 +17,9 @@ from seal.contract import (
 from seal.dates import end_of_day, get_timestamp, start_of_day, to_epoch
 
 
+# -----------------------------------------------------------------------------#
+# ERROR TYPE
+# -----------------------------------------------------------------------------#
 class DuplicateProtocolIdError(ValueError):
     """One pull carried two different versions of the same protocol_id."""
 
@@ -30,10 +33,8 @@ class UnknownProtocolHashError(ValueError):
 # -----------------------------------------------------------------------------#
 @contextmanager
 def connect(db: str, read_only: bool = False) -> Iterator[sqlite3.Connection]:
-    """Open a connection, commit or roll back, and always close it.
-
-    `with sqlite3.connect(...)` commits but never closes; the close has to be
-    in a finally of our own.
+    """
+    Open a connection, commit or roll back, and always close it.
     """
     uri = f"file:{db}?mode=ro" if read_only else db
     conn = sqlite3.connect(uri, uri=read_only)
@@ -48,9 +49,6 @@ def connect(db: str, read_only: bool = False) -> Iterator[sqlite3.Connection]:
 # -----------------------------------------------------------------------------#
 # SCHEMA
 # -----------------------------------------------------------------------------#
-# Content is addressed by hash and never deleted; history carries the validity
-# intervals. Metadata rides on the content row: it is not hashed, but it does
-# not change without the content changing either.
 SCHEMA: tuple[str, ...] = (
     """
     CREATE TABLE IF NOT EXISTS protocol_content (
@@ -102,12 +100,8 @@ def initialize_protocol_db(db: str) -> None:
 # -----------------------------------------------------------------------------#
 # FORMATTING DB ENTRIES
 # -----------------------------------------------------------------------------#
-class ProtocolRow(NamedTuple):
-    """One pulled protocol, spanning protocol_content and protocol_history.
-
-    Field names match protocol_content's columns — the insert binds by name.
-    """
-
+# Type enforce a protocol entry
+class ProtocolEntry(NamedTuple):
     hash: str
     protocol_id: str
     protocol_guid: str
@@ -138,24 +132,26 @@ _CONTENT_COLUMNS: tuple[str, ...] = (
 
 
 def _as_column(value: Any) -> Any:
-    """Scalars bind directly; structured metadata is stored as canonical JSON."""
+    """
+    Just making sure that if it is not a straight forward value we convert it to
+    a canonical_json (essentially always in the same order and as ascii)
+    """
     if value is None or isinstance(value, (int, float, str)):
         return value
     return canonical_json(value).decode("ascii")
 
 
-def build_row(artefact: ProtocolArtefact, pulled_at: int | None = None) -> ProtocolRow:
-    """Build one row, hashing the exact bytes that get stored.
-
-    valid_from backdates to the protocol's own created_on so a protocol authored
-    before this store existed still resolves for earlier dates. write_pull
-    overrides this for a protocol_id that already has history — see there.
+def build_protocol_entry(
+    artefact: ProtocolArtefact, pulled_at: int | None = None
+) -> ProtocolEntry:
+    """
+    Just prepapring a new protocol entry from a ProtocolArtefact
     """
     pulled_at = pulled_at if pulled_at is not None else get_timestamp()
     blob = protocol_blob(artefact)
     metadata = {k: _as_column(v) for k, v in artefact.metadata().items()}
     created_on = metadata["created_on"]
-    return ProtocolRow(
+    return ProtocolEntry(
         hash=hash_bytes(blob),
         protocol_id=str(artefact.id),
         protocol_guid=str(artefact.guid),
@@ -169,25 +165,43 @@ def build_row(artefact: ProtocolArtefact, pulled_at: int | None = None) -> Proto
     )
 
 
-def format_entry(
+def format_db_entry(
     artefacts: Iterable[ProtocolArtefact], pulled_at: int | None = None
-) -> list[ProtocolRow]:
-    """Map protocol artefacts to rows, sharing one pull timestamp."""
+) -> list[ProtocolEntry]:
+    """make a list of entries from a bunch of protocols"""
     pulled_at = pulled_at if pulled_at is not None else get_timestamp()
-    return [build_row(artefact, pulled_at) for artefact in artefacts]
+    return [build_protocol_entry(artefact, pulled_at) for artefact in artefacts]
 
 
 # -----------------------------------------------------------------------------#
-# CHANGE DETECTION
+# CHANGE DETECTION UTILS
 # -----------------------------------------------------------------------------#
+# Type set enforcing
+class VersionInterval(NamedTuple):
+    hash: str
+    valid_from: int
+    deprecated_at: int | None
+
+
+class ContentEntry(NamedTuple):
+    hash: str
+    protocol_id: str
+    protocol_guid: str
+    title: str
+    doi: str | None
+    reserved_doi: str | None
+    uri: str | None
+    created_on: int | None
+    creator: str | None
+    authors: str | None
+    keywords: str | None
+    protocol: str | None = None
+
+
 def active_hashes(conn: sqlite3.Connection) -> dict[str, str]:
-    """protocol_id -> hash for every version not yet deprecated.
-
-    Takes a connection, not a path: write_pull needs this inside its open
-    transaction, and a caller holding only a path can wrap it in `connect`.
+    """which protocols are actully active using row factories
+    Some kind of way to access rows repeatidly in your db?
     """
-    # Scoped to the cursor, not the connection: this borrows write_pull's open
-    # transaction and must not change how its other reads come back.
     cursor = conn.cursor()
     cursor.row_factory = sqlite3.Row
     return {
@@ -198,49 +212,12 @@ def active_hashes(conn: sqlite3.Connection) -> dict[str, str]:
     }
 
 
-class VersionInterval(NamedTuple):
-    """One version's slot in a protocol's history. `deprecated_at` None = open."""
-
-    hash: str
-    valid_from: int
-    deprecated_at: int | None
-
-
-def protocols_on_date(
-    conn: sqlite3.Connection, when: int | float | str | date | datetime
-) -> dict[str, list[VersionInterval]]:
-    """protocol_id -> every version that held the active slot on `when`'s UTC day.
-
-    Dates are ISO only (`YYYY-MM-DD`); anything else raises. A date is coarser
-    than the second-resolution intervals it queries, so a protocol pushed twice
-    in one day has more than one entry, oldest first. They are reported rather
-    than resolved: picking a winner is the caller's policy, and a list makes the
-    ambiguity visible instead of silently dropping a version. Intervals are
-    half-open — [valid_from, deprecated_at) — so a version closing exactly at
-    midnight belongs to the day before.
-    """
-    opens, closes = start_of_day(when), end_of_day(when)
-    cursor = conn.cursor()
-    cursor.row_factory = sqlite3.Row
-    versions: dict[str, list[VersionInterval]] = {}
-    for row in cursor.execute(
-        "SELECT protocol_id, hash, valid_from, deprecated_at FROM protocol_history "
-        "WHERE valid_from <= ? "
-        "AND (deprecated_at IS NULL OR deprecated_at > ?) "
-        "ORDER BY protocol_id, valid_from",
-        (closes, opens),
-    ):
-        versions.setdefault(row["protocol_id"], []).append(
-            VersionInterval(row["hash"], row["valid_from"], row["deprecated_at"])
-        )
-    return versions
-
-
 def _diff(
-    conn: sqlite3.Connection, rows: Iterable[ProtocolRow]
+    conn: sqlite3.Connection, entries: Iterable[ProtocolEntry]
 ) -> dict[str, list[str]]:
+    """This is more for logging purposes than anything else."""
     active = active_hashes(conn)
-    incoming = {row.protocol_id: row.hash for row in rows}
+    incoming = {row.protocol_id: row.hash for row in entries}
 
     new, changed, unchanged = [], [], []
     for protocol_id, incoming_hash in incoming.items():
@@ -274,48 +251,17 @@ def _seen_before(conn: sqlite3.Connection, ids: list[str]) -> set[str]:
     }
 
 
-def diff_pull(db: str, rows: Iterable[ProtocolRow]) -> dict[str, list[str]]:
-    """Compare a pull against the active state.
-
-    Returns protocol_ids grouped as new / changed / unchanged / absent.
-    """
-    with connect(db, read_only=True) as conn:
-        return _diff(conn, rows)
-
-
 # -----------------------------------------------------------------------------#
-# CONTENT READS
+# GET CONTENT
 # -----------------------------------------------------------------------------#
-class ContentRow(NamedTuple):
-    """One stored protocol. `protocol` is the blob, omitted unless asked for."""
 
-    hash: str
-    protocol_id: str
-    protocol_guid: str
-    title: str
-    doi: str | None
-    reserved_doi: str | None
-    uri: str | None
-    created_on: int | None
-    creator: str | None
-    authors: str | None
-    keywords: str | None
-    protocol: str | None = None
-
-
-_READ_COLUMNS: tuple[str, ...] = ContentRow._fields[:-1]
+_READ_COLUMNS: tuple[str, ...] = ContentEntry._fields[:-1]
 
 
 def get_content(
     db: str, hashes: Iterable[str], with_blob: bool = True
-) -> list[ContentRow]:
-    """Fetch stored protocols by hash, in the order asked for.
-
-    The blob dwarfs every other column, so `with_blob=False` skips it for
-    callers that only need the pinned identity. Every requested hash must
-    resolve: a bad pin shrinking a lock silently is the failure this guards
-    against.
-    """
+) -> list[ContentEntry]:
+    # don't fetch actuall protocol if we only want the pins
     wanted = list(hashes)
     if not wanted:
         return []
@@ -323,7 +269,7 @@ def get_content(
     slots = ",".join("?" * len(wanted))
     with connect(db, read_only=True) as conn:
         found = {
-            row[0]: ContentRow(*row)
+            row[0]: ContentEntry(*row)
             for row in conn.execute(
                 f"SELECT {', '.join(columns)} "
                 f"FROM protocol_content WHERE hash IN ({slots})",
@@ -336,8 +282,38 @@ def get_content(
     return [found[h] for h in wanted]
 
 
+def protocols_on_date(
+    conn: sqlite3.Connection, when: int | float | str | date | datetime
+) -> dict[str, list[VersionInterval]]:
+    """protocol_id -> every version that held the active slot on `when`'s UTC day."""
+    opens, closes = start_of_day(when), end_of_day(when)
+    cursor = conn.cursor()
+    cursor.row_factory = sqlite3.Row
+    versions: dict[str, list[VersionInterval]] = {}
+    for row in cursor.execute(
+        "SELECT protocol_id, hash, valid_from, deprecated_at FROM protocol_history "
+        "WHERE valid_from <= ? "
+        "AND (deprecated_at IS NULL OR deprecated_at > ?) "
+        "ORDER BY protocol_id, valid_from",
+        (closes, opens),
+    ):
+        versions.setdefault(row["protocol_id"], []).append(
+            VersionInterval(row["hash"], row["valid_from"], row["deprecated_at"])
+        )
+    return versions
+
+
+def diff_pull(db: str, rows: Iterable[ProtocolEntry]) -> dict[str, list[str]]:
+    """Compare a pull against the active state.
+
+    Returns protocol_ids grouped as new / changed / unchanged / absent.
+    """
+    with connect(db, read_only=True) as conn:
+        return _diff(conn, rows)
+
+
 # -----------------------------------------------------------------------------#
-# WRITE PATH
+# WRITE CONTENT
 # -----------------------------------------------------------------------------#
 _INSERT_CONTENT = (
     f"INSERT OR IGNORE INTO protocol_content ({', '.join(_CONTENT_COLUMNS)}) "
@@ -356,33 +332,24 @@ _OPEN_INTERVAL = """
 
 
 def write_pull(
-    db: str, rows: list[ProtocolRow], pulled_at: int | None = None
+    db: str, entries: list[ProtocolEntry], pulled_at: int | None = None
 ) -> dict[str, list[str]]:
-    """Apply one pull and return its diff.
-
-    deprecate-on-change closes the prior interval and opens a new one;
-    deprecate-on-absence closes protocols that vanished from the pull.
-    Only a protocol_id's first-ever version may backdate to created_on — any
-    later one doing so would reopen inside a closed interval and leave two
-    versions resolving as active at the same instant. "First-ever" means no
-    history at all, not merely no live version: a protocol that disappears and
-    comes back must open at the pull that found it again.
-    """
+    """Apply one pull and return its diff."""
     pulled_at = pulled_at if pulled_at is not None else get_timestamp()
 
-    seen = {row.protocol_id for row in rows}
-    if len(seen) != len(rows):
+    seen = {row.protocol_id for row in entries}
+    if len(seen) != len(entries):
         raise DuplicateProtocolIdError(
             "a pull carried two versions of the same protocol_id; "
             "at most one version of a protocol may be active"
         )
 
     with connect(db) as conn:
-        diff = _diff(conn, rows)
+        diff = _diff(conn, entries)
         first_time = set(diff["new"]) - _seen_before(conn, diff["new"])
         opening = set(diff["new"]) | set(diff["changed"])
         closing = set(diff["changed"]) | set(diff["absent"])
-        fresh = [row for row in rows if row.protocol_id in opening]
+        fresh = [row for row in entries if row.protocol_id in opening]
 
         # Bound by name, so valid_from riding along unreferenced is harmless.
         conn.executemany(_INSERT_CONTENT, [row._asdict() for row in fresh])
@@ -402,7 +369,7 @@ def write_pull(
 
 
 # -----------------------------------------------------------------------------#
-# INTEGRITY
+# VERIFY CONTENT
 # -----------------------------------------------------------------------------#
 def verify_protocols(db: str) -> list[str]:
     """Return hashes whose stored blob no longer hashes to its own key."""
