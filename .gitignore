@@ -23,15 +23,14 @@ logs/
 *.pdf
 *.db
 
-
 # --- Working notes ----------------------------------------------------------
-AGENT.md
-docs/
+docs/*
+!docs/audit_log.md
 protocol_io_bundle/
 protocol_io_bundle.tar.gz
 
 # --- Agent stuff  ----------------------------------------------------------
-AGENT.md
+
 .continue/
 
 # --- Python -----------------------------------------------------------------
