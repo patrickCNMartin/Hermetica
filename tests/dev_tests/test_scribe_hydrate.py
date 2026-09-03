@@ -11,7 +11,6 @@ import json
 import pytest
 
 from scribe.hydrate import LockDriftError, hydrate_pins
-from seal.dates import to_epoch
 from seal.seal import export_pins, generate_protocol_lock
 from seal.store import (
     UnknownProtocolHashError,
@@ -22,6 +21,7 @@ from seal.store import (
     write_pull,
 )
 from sources.protocols_io.artefact import build_protocol_artefact
+from utils.dates import to_epoch
 
 PULLED_AT = to_epoch("2026-07-27")
 
@@ -82,7 +82,7 @@ class TestHydrate:
 
     def test_bodies_hash_to_their_pins(self, pins_file):
         """The point of hydrating: the result must verify like any other lock."""
-        from seal.contract import canonical_json, hash_bytes
+        from utils.hashing import canonical_json, hash_bytes
 
         path, db, _ = pins_file
         hydrated = hydrate_pins(path, db)

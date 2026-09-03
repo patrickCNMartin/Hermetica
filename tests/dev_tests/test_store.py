@@ -12,13 +12,7 @@ import unicodedata
 
 import pytest
 
-from seal.contract import (
-    METADATA_FIELDS,
-    canonical_json,
-    hash_bytes,
-    protocol_hash,
-)
-from seal.dates import as_date, end_of_day, to_epoch
+from seal.contract import METADATA_FIELDS, protocol_hash
 from seal.store import (
     _CONTENT_COLUMNS,
     DuplicateProtocolIdError,
@@ -37,6 +31,8 @@ from seal.store import (
     write_pull,
 )
 from sources.protocols_io.artefact import build_protocol_artefact
+from utils.dates import as_date, end_of_day, to_epoch
+from utils.hashing import canonical_json, hash_bytes
 
 PULLED_AT = to_epoch("2026-07-27")
 LATER = to_epoch("2026-08-03")
@@ -392,7 +388,9 @@ class TestMetadataColumns:
 class TestValidFrom:
     def test_backdates_to_created_on(self, protocol):
         """A protocol authored before this store existed opens at creation."""
-        row = build_protocol_entry(build_protocol_artefact(protocol(1)), pulled_at=PULLED_AT)
+        row = build_protocol_entry(
+            build_protocol_artefact(protocol(1)), pulled_at=PULLED_AT
+        )
         assert row.valid_from == CREATED_ON
         assert as_date(row.valid_from) == "2025-04-29"
 
@@ -421,7 +419,9 @@ class TestValidFrom:
 
     def test_dates_are_stored_as_integers(self, protocol):
         """The store holds epoch seconds only — no date strings."""
-        row = build_protocol_entry(build_protocol_artefact(protocol(1)), pulled_at=PULLED_AT)
+        row = build_protocol_entry(
+            build_protocol_artefact(protocol(1)), pulled_at=PULLED_AT
+        )
         assert isinstance(row.created_on, int)
         assert isinstance(row.valid_from, int)
 
@@ -465,7 +465,7 @@ class TestStoredHashIntegrity:
         assert build_protocol_entry(built).hash == protocol_hash(built)
 
     def test_the_blob_is_serialized_once(self, protocol):
-        """build_protocol_entry hashes the exact bytes it stores — no re-serialization."""
+        """The entry hashes the exact bytes it stores — no re-serialization."""
         built = build_protocol_artefact(protocol(1))
         row = build_protocol_entry(built)
         assert row.protocol.encode("ascii") == canonical_json(built.hashable())

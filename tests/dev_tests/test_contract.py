@@ -5,7 +5,7 @@ import unicodedata
 
 import pytest
 
-from seal.contract import HASH_ALGORITHM, canonical_json, hash_bytes
+from utils.hashing import HASH_ALGORITHM, canonical_json, hash_bytes
 
 
 def content_hash(obj) -> str:

@@ -10,7 +10,6 @@ import os
 
 import pytest
 
-from seal.dates import to_epoch
 from seal.seal import (
     MalformedLockError,
     export_lock,
@@ -30,6 +29,7 @@ from seal.store import (
     write_pull,
 )
 from sources.protocols_io.artefact import build_protocol_artefact
+from utils.dates import to_epoch
 
 PULLED_AT = to_epoch("2026-07-27")
 LAST_YEAR = to_epoch("2025-06-01")
@@ -165,7 +165,7 @@ class TestExport:
         assert set(written["bodies"]) == pinned
 
     def test_a_body_is_the_stored_blob(self, lock):
-        from seal.contract import canonical_json, hash_bytes
+        from utils.hashing import canonical_json, hash_bytes
 
         for stored_hash, body in lock["bodies"].items():
             assert hash_bytes(canonical_json(body)) == stored_hash

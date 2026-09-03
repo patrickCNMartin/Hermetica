@@ -19,7 +19,6 @@ from scribe.markdown import (
     resolve_order,
     to_markdown,
 )
-from seal.dates import to_epoch
 from seal.seal import generate_protocol_lock
 from seal.store import (
     active_hashes,
@@ -29,6 +28,7 @@ from seal.store import (
     write_pull,
 )
 from sources.protocols_io.artefact import build_protocol_artefact
+from utils.dates import to_epoch
 
 PULLED_AT = to_epoch("2026-07-27")
 LATER = to_epoch("2026-08-01")

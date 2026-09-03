@@ -15,7 +15,6 @@ from chronos.pull_log import record_pull
 from chronos.report import format_failure, format_report, write_report
 from compose.compose import active_protocols
 from compose.store import initialize_pipeline_db
-from seal.dates import get_timestamp
 from seal.store import format_db_entry, initialize_protocol_db, write_pull
 
 # -----------------------------------------------------------------------------#
@@ -25,6 +24,7 @@ from seal.store import format_db_entry, initialize_protocol_db, write_pull
 # in build_sources, and the env vars it needs read beside the ones below.
 from sources import protocols_io
 from sources.contract import ProtocolSource, UnreadableProtocolError, check_source_name
+from utils.dates import get_timestamp
 
 # -----------------------------------------------------------------------------#
 # SET ENV VARS

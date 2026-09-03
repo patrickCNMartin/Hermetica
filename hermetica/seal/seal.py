@@ -5,9 +5,9 @@ import json
 from collections.abc import Iterable
 from typing import Any
 
-from seal.contract import canonical_json, hash_bytes
-from seal.dates import as_iso, get_timestamp
 from seal.store import DuplicateProtocolIdError, get_content
+from utils.dates import as_iso, get_timestamp
+from utils.hashing import canonical_json, hash_bytes
 
 # -----------------------------------------------------------------------------#
 # LOCK DOCUMENT

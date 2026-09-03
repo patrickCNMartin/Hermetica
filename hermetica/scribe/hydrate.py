@@ -3,8 +3,8 @@
 # -----------------------------------------------------------------------------#
 import json
 
-from seal.dates import to_epoch
 from seal.seal import generate_protocol_lock, is_verified, verify_lock
+from utils.dates import to_epoch
 
 
 class LockDriftError(ValueError):

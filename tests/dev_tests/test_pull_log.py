@@ -8,7 +8,7 @@ on. Without the log those decisions are unauditable after the fact."""
 import json
 
 from chronos.pull_log import PULL_LOG_NAME, log_path, read_pulls, record_pull
-from seal.dates import as_iso
+from utils.dates import as_iso
 
 
 class TestRecordPull:

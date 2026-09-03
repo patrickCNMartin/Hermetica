@@ -1,11 +1,11 @@
 # -----------------------------------------------------------------------------#
 # IMPORT LIBS
 # -----------------------------------------------------------------------------#
-import hashlib
 import json
-import unicodedata
 from dataclasses import asdict, dataclass
 from typing import Any
+
+from utils.hashing import hash_of
 
 # -----------------------------------------------------------------------------#
 # CONTENT CONTRACT
@@ -85,10 +85,6 @@ class ProtocolArtefact:
         return {field: getattr(self, field) for field in METADATA_FIELDS}
 
 
-# Hashing algortihm
-HASH_ALGORITHM = "sha256"
-
-
 # -----------------------------------------------------------------------------#
 # RICH TEXT
 # -----------------------------------------------------------------------------#
@@ -107,51 +103,10 @@ def parse_rich_text(value: Any) -> dict | None:
 
 
 # -----------------------------------------------------------------------------#
-# CANONICAL FORM
-# -----------------------------------------------------------------------------#
-def _normalize(obj: Any) -> Any:
-    """Recursively NFC-normalize every string, key or value."""
-    if isinstance(obj, str):
-        return unicodedata.normalize("NFC", obj)
-    if isinstance(obj, dict):
-        return {_normalize(k): _normalize(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
-        return [_normalize(v) for v in obj]
-    return obj
-
-
-def canonical_json(obj: Any) -> bytes:
-    """Serialize to deterministic UTF-8 bytes.
-
-    Sorted keys, no whitespace, ASCII-escaped, NFC strings. Rejects NaN/Infinity.
-    """
-    return json.dumps(
-        _normalize(obj),
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=True,
-        allow_nan=False,
-    ).encode("utf-8")
-
-
-# -----------------------------------------------------------------------------#
 # HASHING
 # -----------------------------------------------------------------------------#
-def hash_bytes(blob: bytes) -> str:
-    """SHA256 hexdigest of already-canonical bytes."""
-    return f"{HASH_ALGORITHM}:{hashlib.sha256(blob).hexdigest()}"
-
-
-# actual protocol that is going to be stored
-def protocol_blob(artefact: ProtocolArtefact) -> bytes:
-    """Prepare protocol blob from protocol artefact"""
-    protocol = artefact.hashable()
-    return canonical_json(protocol)
-
-
-# Hash fingerprint for thhat protocol
-def protocol_hash(
-    artefact: ProtocolArtefact,
-) -> str:
+# Re-serializes. The write path does not use it: build_protocol_entry hashes the
+# exact bytes it stores, so blob and hash cannot drift.
+def protocol_hash(artefact: ProtocolArtefact) -> str:
     """Content hash of a selected protocol, metadata excluded."""
-    return hash_bytes(protocol_blob(artefact))
+    return hash_of(artefact.hashable())

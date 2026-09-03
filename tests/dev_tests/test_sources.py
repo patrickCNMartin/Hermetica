@@ -12,7 +12,6 @@ import pytest
 import responses
 
 from chronos.chronos import build_sources, run_pull
-from seal.dates import to_epoch
 from seal.store import active_hashes, connect, initialize_protocol_db
 from sources.contract import (
     DiscoveredProtocols,
@@ -23,6 +22,7 @@ from sources.contract import (
 )
 from sources.protocols_io import build_source
 from sources.protocols_io.artefact import build_protocol_artefact
+from utils.dates import to_epoch
 
 PULLED_AT = to_epoch("2026-07-27")
 

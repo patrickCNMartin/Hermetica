@@ -5,7 +5,7 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from seal.dates import (
+from utils.dates import (
     as_date,
     as_iso,
     end_of_day,

@@ -1,71 +1,60 @@
 # yaml file for protocol templates
-# This is a simple way to bootstrap the data base. 
+# This is a simple way to bootstrap the data base.
 # The structure will pull from the a live protocol database if one exists.
 # I am keeping this pretty minimal because it should also be able to be updated
 # Using a specific manifest hash.
+#
+# pipeline_guid is minted on first read and written to a _minted.yaml twin.
+# Each block's key is the pipeline title.
 
 creator: "Homunculus Pat"
 created_on: "2026-08-21"
 pipelines:
     CryPrep_biomek_base:
-        version_id : 0
-        pipeline_guid:  null
-        manifest_hash : null
+        pipeline_guid: null
+        manifest_hash: null
         root: null
-        executoror: null
-        protocol_dag : {"A":["B","C"],"B":"D","C":"D"}
-        protocol_titles : {"A":"my first cool protocol","B":"second","C":"Third","D":"and the output"}
+        executor: null
+        protocol_dag: {"A":["B","C"],"B":"D","C":"D"}
 
     FFPE_digestion_base:
-        version_id : 0
-        pipeline_guid:  null
-        manifest_hash : null
+        pipeline_guid: null
+        manifest_hash: null
         root: null
-        executoror: null
-        protocol_dag : {}
-        protocol_titles: {}
+        executor: null
+        protocol_dag: {}
 
     In_gel_digestion_base:
-        version_id : 0
-        pipeline_guid:  null
-        manifest_hash : null
+        pipeline_guid: null
+        manifest_hash: null
         root: null
-        executoror: null
-        protocol_dag : {}
-        protocol_titles: {}
+        executor: null
+        protocol_dag: {}
 
     IP_base:
-        version_id : 0
-        pipeline_guid:  null
-        manifest_hash : null
+        pipeline_guid: null
+        manifest_hash: null
         root: null
-        executoror: null
-        protocol_dag : {}
-        protocol_titles: {}
+        executor: null
+        protocol_dag: {}
 
     IPMS_base:
-        version_id : 0
-        pipeline_guid:  null
-        manifest_hash : null
+        pipeline_guid: null
+        manifest_hash: null
         root: null
-        executoror: null
-        protocol_dag : {}
-        protocol_titles: {}
+        executor: null
+        protocol_dag: {}
 
     FF_SDS_base:
-        version_id : 0
-        pipeline_guid:  null
-        manifest_hash : null
+        pipeline_guid: null
+        manifest_hash: null
         root: null
-        executoror: null
-        protocol_dag : {}
-        protocol_titles: {}
+        executor: null
+        protocol_dag: {}
 
     Frozen_tissue_base:
-        version_id : 0
-        pipeline_guid:  null
-        manifest_hash : null
+        pipeline_guid: null
+        manifest_hash: null
         root: null
-        executoror: null
-        protocol_dag : {}
-        protocol_titles: {}
+        executor: null
+        protocol_dag: {}

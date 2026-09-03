@@ -14,7 +14,6 @@ HASH_FIELDS: tuple[str, ...] = (
     "title",
     "manifest_hash",
     "DAG",
-    "DAG_ids",
     "executor",
     "root",
 )
@@ -24,24 +23,22 @@ METADATA_FIELDS: tuple[str, ...] = (
     "creator",
 )
 
-# Hashing algortihm
-HASH_ALGORITHM = "sha256"
-
 COMPOSITION_FIELDS: tuple[str, ...] = HASH_FIELDS + METADATA_FIELDS
 
 
 @dataclass(frozen=True, slots=True)
 class ProtocolPipeline:
     # --- hashed (HASH_FIELDS) ---------------------------------------------- #
-    guid: int
+    guid: str
     title: str
-    manifest_hash: str
-    root: str  # starting material/ sample type
-    executor: str  # human or robot?
+    # None until the pipeline is pinned to a manifest; a base template is not.
+    manifest_hash: str | None
+    root: str | None  # starting material/ sample type
+    executor: str | None  # human or robot?
     DAG: dict
     # --- retained, never hashed (METADATA_FIELDS) -------------------------- #
     created_on: int
-    creator: dict
+    creator: dict | str | None = None
 
     def to_dict(self) -> dict:
         """Full artefact as a plain dict — the stored/metadata-bearing form."""

@@ -8,9 +8,9 @@ import re
 from collections.abc import Sequence
 
 from scribe.richtext import render_document
-from seal.dates import as_iso
 from seal.seal import manifest_hash
 from seal.store import active_hashes, connect, get_content
+from utils.dates import as_iso
 
 # The entry point loads env/.env; a public view prefix is not a credential, so
 # unlike BASE_URL this carries a working default.
