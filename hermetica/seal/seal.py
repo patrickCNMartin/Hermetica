@@ -3,29 +3,16 @@
 # -----------------------------------------------------------------------------#
 import json
 from collections.abc import Iterable
-from typing import Any
 
-from seal.store import DuplicateProtocolIdError, get_content
+
+from seal.store import get_content
 from utils.dates import as_iso, get_timestamp
-from utils.hashing import canonical_json, hash_bytes
-
+from utils.hashing import canonical_json, hash_bytes, decode_entry
+from utils.error_handling import DuplicatedIdError, MalformedLockError
+from utils.constants import LOCK_KEYS,PINS_KEYS,DRIFT
 # -----------------------------------------------------------------------------#
 # LOCK DOCUMENT
 # -----------------------------------------------------------------------------#
-# manifest_hash covers `entries` alone — the rest of the document is display.
-_PINS_KEYS: tuple[str, ...] = (
-    "manifest_hash",
-    "as_of",
-    "created_at",
-    "provenance",
-    "entries",
-)
-_LOCK_KEYS: tuple[str, ...] = _PINS_KEYS + ("protocols", "bodies")
-
-
-def _decode(value: str | None) -> Any:
-    """Reverse of store._as_column for the JSON-encoded metadata columns."""
-    return None if value is None else json.loads(value)
 
 
 def manifest_hash(entries: dict[str, dict]) -> str:
@@ -53,7 +40,7 @@ def generate_protocol_lock(
     entries, display, bodies = {}, {}, {}
     for row in rows:
         if row.protocol_id in entries:
-            raise DuplicateProtocolIdError(
+            raise DuplicatedIdError(
                 f"two versions of protocol {row.protocol_id} in one lock; "
                 "at most one version of a protocol may be active"
             )
@@ -64,8 +51,8 @@ def generate_protocol_lock(
             "reserved_doi": row.reserved_doi,
             "uri": row.uri,
             "created_on": as_iso(row.created_on) if row.created_on else None,
-            "creator": _decode(row.creator),
-            "authors": _decode(row.authors),
+            "creator": decode_entry(row.creator),
+            "authors": decode_entry(row.authors),
         }
         if with_bodies:
             bodies[row.hash] = json.loads(row.protocol)
@@ -82,97 +69,3 @@ def generate_protocol_lock(
         document["bodies"] = bodies
     return document
 
-
-# -----------------------------------------------------------------------------#
-# EXPORT
-# -----------------------------------------------------------------------------#
-# Written human-readable, not as canonical bytes: verification re-canonicalizes
-# `entries` and re-hashes, so file layout can change without invalidating a lock.
-def _write(lock: dict, keys: Iterable[str], path: str) -> dict:
-    document = {key: lock[key] for key in keys}
-    with open(path, "w", encoding="utf-8") as handle:
-        json.dump(document, handle, indent=2, sort_keys=True, ensure_ascii=False)
-        handle.write("\n")
-    return document
-
-
-def export_pins(lock: dict, path: str) -> dict:
-    """Minimal: the envelope and the pin set, no protocol content."""
-    return _write(lock, _PINS_KEYS, path)
-
-
-def export_lock(lock: dict, path: str) -> dict:
-    """Default: pins plus display fields and full bodies — reproduces with no DB."""
-    if "bodies" not in lock:
-        raise ValueError(
-            "lock was built with with_bodies=False; a lock without bodies "
-            "cannot reproduce without the database — use export_pins"
-        )
-    return _write(lock, _LOCK_KEYS, path)
-
-
-def export_pipeline(lock: dict, path: str, graph: dict | None = None) -> dict:
-    """Pipeline flavour — structural hook only; the DAG shape is not settled."""
-    if graph is not None:
-        raise NotImplementedError(
-            "pipeline export needs the transmute DAG document shape (Phase 3)"
-        )
-    return export_lock(lock, path)
-
-
-# -----------------------------------------------------------------------------#
-# VERIFY
-# -----------------------------------------------------------------------------#
-class MalformedLockError(ValueError):
-    """The file is not a lock document — a key the format requires is missing."""
-
-
-_DRIFT: tuple[str, ...] = (
-    "manifest_hash",
-    "body_hash",
-    "missing_bodies",
-    "orphan_bodies",
-)
-
-
-def verify_lock(path: str) -> dict[str, list[str]]:
-    """Re-derive a lock file's hashes and report every disagreement.
-
-    Empty lists mean verified, matching store.verify_protocols — a verifier that
-    raised on the first problem could not report the whole picture. Body checks
-    only apply when the document carries `bodies`: a pins-only file never claimed
-    to hold content, so its absence is the format, not drift.
-    """
-    with open(path, encoding="utf-8") as handle:
-        document = json.load(handle)
-
-    missing = [key for key in ("manifest_hash", "entries") if key not in document]
-    if missing:
-        raise MalformedLockError(f"not a lock document: missing {', '.join(missing)}")
-
-    drift: dict[str, list[str]] = {key: [] for key in _DRIFT}
-    entries = document["entries"]
-
-    recomputed = manifest_hash(entries)
-    if recomputed != document["manifest_hash"]:
-        drift["manifest_hash"].append(
-            f"recorded {document['manifest_hash']}, recomputed {recomputed}"
-        )
-
-    if "bodies" not in document:
-        return drift
-
-    bodies = document["bodies"]
-    for stored_hash, body in sorted(bodies.items()):
-        if hash_bytes(canonical_json(body)) != stored_hash:
-            drift["body_hash"].append(stored_hash)
-
-    pinned = {entry["hash"] for entry in entries.values()}
-    drift["missing_bodies"] = sorted(pinned - set(bodies))
-    drift["orphan_bodies"] = sorted(set(bodies) - pinned)
-    return drift
-
-
-def is_verified(drift: dict[str, list[str]]) -> bool:
-    """True when verify_lock found nothing."""
-    return not any(drift.values())

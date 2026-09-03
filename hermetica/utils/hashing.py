@@ -5,11 +5,7 @@ import hashlib
 import json
 import unicodedata
 from typing import Any
-
-# Hashing algorithm
-HASH_ALGORITHM = "sha256"
-
-
+from utils.constants import HASH_ALGORITHM
 # -----------------------------------------------------------------------------#
 # CANONICAL FORM
 # -----------------------------------------------------------------------------#
@@ -54,8 +50,10 @@ def hash_of(payload: Any) -> str:
 # -----------------------------------------------------------------------------#
 # COLUMN COERCION
 # -----------------------------------------------------------------------------#
-def as_column(value: Any) -> Any:
-    """Anything sqlite cannot store natively becomes canonical JSON text."""
+def encode_entry(value: Any) -> Any:
     if value is None or isinstance(value, (int, float, str)):
         return value
     return canonical_json(value).decode("ascii")
+
+def decode_entry(value: str | None) -> Any:
+    return None if value is None else json.loads(value)

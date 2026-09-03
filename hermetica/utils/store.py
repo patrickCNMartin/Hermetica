@@ -2,12 +2,12 @@
 # IMPORT LIBS
 # -----------------------------------------------------------------------------#
 import sqlite3
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 
+from utils.dates import get_timestamp
 from utils.hashing import hash_bytes
-
-
+from utils.error_handling import MissingHash
 # -----------------------------------------------------------------------------#
 # CONNECTION
 # -----------------------------------------------------------------------------#
@@ -39,6 +39,15 @@ def initialize_db(db: str, schema: Iterable[str]) -> None:
 # -----------------------------------------------------------------------------#
 # READ
 # -----------------------------------------------------------------------------#
+def format_entries(
+    build: Callable,
+    artefacts: Iterable,
+    pulled_at: int | None
+) -> list:
+    pulled_at = pulled_at if pulled_at is not None else get_timestamp()
+    return [build(artefact, pulled_at) for artefact in artefacts]
+
+
 def insert_statement(table: str, columns: tuple[str, ...]) -> str:
     """INSERT OR IGNORE bound by name, so a reordered row cannot misalign."""
     return (
@@ -47,19 +56,35 @@ def insert_statement(table: str, columns: tuple[str, ...]) -> str:
     )
 
 
-def fetch_rows(
+def fetch_entries(
+    db: str,
+    table: str,
+    columns: tuple[str, ...],
+    key_column: str,
+    keys: Iterable[str],
+    entry_type: type
+) -> list:
+    wanted = list(keys)
+    if not wanted:
+        return []
+    with connect(db, read_only=True) as conn:
+        found = {
+            key: entry_type(*row)
+            for key, row in fetch_entry(conn, table, columns, key_column, wanted).items()
+        }
+    missing = sorted(set(wanted) - set(found))
+    if missing:
+        raise MissingHash(f"not in {table}: {', '.join(missing)}")
+    return [found[key] for key in wanted]
+
+
+def fetch_entry(
     conn: sqlite3.Connection,
     table: str,
     columns: tuple[str, ...],
     key_column: str,
     keys: list[str],
 ) -> dict[str, tuple]:
-    """Rows whose `key_column` is in `keys`, keyed by it.
-
-    `key_column` must be one of `columns` — the row is returned whole, so the
-    caller can hand it straight to a NamedTuple. Absences are the caller's to
-    name: this returns only what it found.
-    """
     at = columns.index(key_column)
     if not keys:
         return {}

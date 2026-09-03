@@ -12,17 +12,16 @@ import pytest
 from compose.compose import HASH_FIELDS, METADATA_FIELDS, ProtocolPipeline
 from compose.store import (
     _CONTENT_COLUMNS,
+    HISTORY_TABLE,
+    ID_COLUMN,
+    SCHEMA,
     DuplicatePipelineGuidError,
     PipelineEntry,
     UnknownPipelineHashError,
-    active_pipelines,
     build_pipeline_entry,
     diff_pipelines,
     format_db_entry,
     get_pipelines,
-    initialize_pipeline_db,
-    pipelines_on_date,
-    verify_pipelines,
     write_pipeline,
 )
 from compose.templates import (
@@ -33,7 +32,8 @@ from compose.templates import (
 )
 from utils.dates import to_epoch
 from utils.hashing import canonical_json
-from utils.store import connect
+from utils.intervals import active_hashes, versions_on_date
+from utils.store import connect, initialize_db, verify_blobs
 
 TEMPLATE = Path(__file__).parents[2] / "config" / "pg_core_templates.yaml"
 
@@ -70,7 +70,7 @@ def pipeline():
 
 @pytest.fixture
 def db(db_path):
-    initialize_pipeline_db(db_path)
+    initialize_db(db_path, SCHEMA)
     return db_path
 
 
@@ -81,7 +81,7 @@ def query(db: str, sql: str, *params):
 
 def live(db: str) -> dict[str, str]:
     with connect(db, read_only=True) as conn:
-        return active_pipelines(conn)
+        return active_hashes(conn, HISTORY_TABLE, ID_COLUMN)
 
 
 # -----------------------------------------------------------------------------#
@@ -154,8 +154,8 @@ class TestDatabaseBuild:
         assert set(PipelineEntry._fields) == set(_CONTENT_COLUMNS) | {"valid_from"}
 
     def test_initialize_is_idempotent(self, db_path):
-        initialize_pipeline_db(db_path)
-        initialize_pipeline_db(db_path)
+        initialize_db(db_path, SCHEMA)
+        initialize_db(db_path, SCHEMA)
         assert query(db_path, "SELECT COUNT(*) FROM pipeline_content") == [(0,)]
 
 
@@ -312,7 +312,7 @@ class TestPipelinesOnDate:
     def test_a_version_active_on_that_day_is_returned(self, db, pipeline):
         write_pipeline(db, format_db_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
         with connect(db, read_only=True) as conn:
-            versions = pipelines_on_date(conn, "2026-09-01")
+            versions = versions_on_date(conn, HISTORY_TABLE, ID_COLUMN, "2026-09-01")
         assert list(versions) == ["abc123"]
 
     def test_both_versions_are_returned_for_the_day_they_swapped(self, db, pipeline):
@@ -322,7 +322,7 @@ class TestPipelinesOnDate:
             db, format_db_entry([pipeline(DAG={"A": ["B"]})], EVENING), EVENING
         )
         with connect(db, read_only=True) as conn:
-            versions = pipelines_on_date(conn, SWAP_DAY)
+            versions = versions_on_date(conn, HISTORY_TABLE, ID_COLUMN, SWAP_DAY)
         assert len(versions["abc123"]) == 2
 
     def test_a_version_closed_at_midnight_is_not_active_that_day(self, db, pipeline):
@@ -331,13 +331,13 @@ class TestPipelinesOnDate:
         write_pipeline(db, format_db_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
         write_pipeline(db, format_db_entry([pipeline(DAG={"A": ["B"]})], LATER), LATER)
         with connect(db, read_only=True) as conn:
-            versions = pipelines_on_date(conn, "2026-09-08")
+            versions = versions_on_date(conn, HISTORY_TABLE, ID_COLUMN, "2026-09-08")
         assert len(versions["abc123"]) == 1
 
     def test_a_day_before_anything_existed_is_empty(self, db, pipeline):
         write_pipeline(db, format_db_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
         with connect(db, read_only=True) as conn:
-            assert pipelines_on_date(conn, "2020-01-01") == {}
+            assert versions_on_date(conn, HISTORY_TABLE, ID_COLUMN, "2020-01-01") == {}
 
 
 # -----------------------------------------------------------------------------#
@@ -346,7 +346,7 @@ class TestPipelinesOnDate:
 class TestVerifyPipelines:
     def test_an_untouched_store_is_clean(self, db, pipeline):
         write_pipeline(db, format_db_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
-        assert verify_pipelines(db) == []
+        assert verify_blobs(db, "pipeline_content", "hash", "pipeline") == []
 
     def test_a_tampered_blob_is_named(self, db, pipeline):
         write_pipeline(db, format_db_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
@@ -356,7 +356,7 @@ class TestVerifyPipelines:
                 "UPDATE pipeline_content SET pipeline = ? WHERE hash = ?",
                 ('{"tampered":true}', known),
             )
-        assert verify_pipelines(db) == [known]
+        assert verify_blobs(db, "pipeline_content", "hash", "pipeline") == [known]
 
 
 # -----------------------------------------------------------------------------#

@@ -1,53 +1,19 @@
 # -----------------------------------------------------------------------------#
 # IMPORT LIBS
 # -----------------------------------------------------------------------------#
-import sqlite3
 from collections.abc import Iterable
-from datetime import date, datetime
-from typing import NamedTuple
+from dataclasses import dataclass
 
-from seal.contract import METADATA_FIELDS, ProtocolArtefact
+from seal.contract import ProtocolArtefact
 from utils.dates import get_timestamp, to_epoch
-from utils.hashing import as_column, canonical_json, hash_bytes
-from utils.intervals import (
-    VersionInterval,
-    close_intervals,
-    diff_entries,
-    open_intervals,
-    seen_before,
-    versions_on_date,
-)
-from utils.intervals import (
-    active_hashes as _active_hashes,
-)
-from utils.store import (
-    connect,
-    fetch_rows,
-    initialize_db,
-    insert_statement,
-    verify_blobs,
-)
-
-# -----------------------------------------------------------------------------#
-# WHICH TABLES SEAL OWNS
-# -----------------------------------------------------------------------------#
-# Named here so nothing above seal — scribe, chronos, compose — has to learn a
-# table name to ask seal a question.
-CONTENT_TABLE = "protocol_content"
-HISTORY_TABLE = "protocol_history"
-ID_COLUMN = "protocol_id"
-
-
-# -----------------------------------------------------------------------------#
-# ERROR TYPE
-# -----------------------------------------------------------------------------#
-class DuplicateProtocolIdError(ValueError):
-    """One pull carried two different versions of the same protocol_id."""
-
-
-class UnknownProtocolHashError(ValueError):
-    """A requested hash is not in protocol_content."""
-
+from utils.hashing import encode_entry, canonical_json, hash_bytes
+from utils.intervals import diff_versioned, write_version_control
+from utils.store import fetch_entries, insert_statement
+from utils.constants import (
+    PROTOCOL_HISTORY,
+    PROTOCOL_CONTENT,
+    PROTOCOL_ID,
+    PROTOCOL_CONTENT_FIELDS)
 
 # -----------------------------------------------------------------------------#
 # SCHEMA
@@ -93,16 +59,12 @@ SCHEMA: tuple[str, ...] = (
 )
 
 
-def initialize_protocol_db(db: str) -> None:
-    """Create the content/history/snapshot tables and their indexes if absent."""
-    initialize_db(db, SCHEMA)
-
-
 # -----------------------------------------------------------------------------#
 # FORMATTING DB ENTRIES
 # -----------------------------------------------------------------------------#
 # Type enforce a protocol entry
-class ProtocolEntry(NamedTuple):
+@dataclass(frozen= True)
+class ProtocolEntry:
     hash: str
     protocol_id: str
     protocol_guid: str
@@ -118,18 +80,8 @@ class ProtocolEntry(NamedTuple):
     valid_from: int
 
 
-# Derived, not restated: METADATA_FIELDS drives the metadata columns, so a field
-# added there cannot silently misalign the insert.
-_CONTENT_COLUMNS: tuple[str, ...] = (
-    "hash",
-    "protocol_id",
-    "protocol_guid",
-    "title",
-    "doi",
-    "reserved_doi",
-    "uri",
-    "protocol",
-) + METADATA_FIELDS
+
+
 
 
 def build_protocol_entry(
@@ -140,7 +92,7 @@ def build_protocol_entry(
     """
     pulled_at = pulled_at if pulled_at is not None else get_timestamp()
     blob = canonical_json(artefact.hashable())
-    metadata = {k: as_column(v) for k, v in artefact.metadata().items()}
+    metadata = {k: encode_entry(v) for k, v in artefact.metadata().items()}
     created_on = metadata["created_on"]
     return ProtocolEntry(
         hash=hash_bytes(blob),
@@ -156,7 +108,7 @@ def build_protocol_entry(
     )
 
 
-def format_db_entry(
+def format_protocol_entry(
     artefacts: Iterable[ProtocolArtefact], pulled_at: int | None = None
 ) -> list[ProtocolEntry]:
     """make a list of entries from a bunch of protocols"""
@@ -167,7 +119,8 @@ def format_db_entry(
 # -----------------------------------------------------------------------------#
 # CHANGE DETECTION UTILS
 # -----------------------------------------------------------------------------#
-class ContentEntry(NamedTuple):
+@dataclass(frozen=True)
+class ProtocolContentEntry:
     hash: str
     protocol_id: str
     protocol_guid: str
@@ -182,114 +135,66 @@ class ContentEntry(NamedTuple):
     protocol: str | None = None
 
 
-def active_hashes(conn: sqlite3.Connection) -> dict[str, str]:
-    """protocol_id -> hash for every version currently active."""
-    return _active_hashes(conn, HISTORY_TABLE, ID_COLUMN)
-
-
-def _diff(
-    conn: sqlite3.Connection, entries: Iterable[ProtocolEntry]
-) -> dict[str, list[str]]:
-    """This is more for logging purposes than anything else."""
-    return diff_entries(
-        active_hashes(conn), {row.protocol_id: row.hash for row in entries}
-    )
-
-
 # -----------------------------------------------------------------------------#
 # GET CONTENT
 # -----------------------------------------------------------------------------#
-
-_READ_COLUMNS: tuple[str, ...] = ContentEntry._fields[:-1]
-
-
-def get_content(
-    db: str, hashes: Iterable[str], with_blob: bool = True
-) -> list[ContentEntry]:
-    # don't fetch actuall protocol if we only want the pins
-    wanted = list(hashes)
-    if not wanted:
-        return []
-    columns = _READ_COLUMNS + ("protocol",) if with_blob else _READ_COLUMNS
-    with connect(db, read_only=True) as conn:
-        found = {
-            key: ContentEntry(*row)
-            for key, row in fetch_rows(
-                conn, CONTENT_TABLE, columns, "hash", wanted
-            ).items()
-        }
-    missing = sorted(set(wanted) - set(found))
-    if missing:
-        raise UnknownProtocolHashError(f"not in protocol_content: {', '.join(missing)}")
-    return [found[h] for h in wanted]
+def read_protocol_content():
+    return ProtocolContentEntry._fields[:-1] 
 
 
-def protocols_on_date(
-    conn: sqlite3.Connection, when: int | float | str | date | datetime
-) -> dict[str, list[VersionInterval]]:
-    """protocol_id -> every version that held the active slot on `when`'s UTC day."""
-    return versions_on_date(conn, HISTORY_TABLE, ID_COLUMN, when)
+
+def get_protocols(
+    db: str,
+    hashes: Iterable[str],
+    with_blob: bool = True,
+    protocol_content: str = PROTOCOL_CONTENT,
+) -> list[ProtocolContentEntry]:
+    READ_COLUMNS = read_protocol_content()
+    columns = READ_COLUMNS + ("protocol",) if with_blob else READ_COLUMNS
+    return fetch_entries(
+        db,
+        protocol_content,
+        columns,
+        "hash",
+        hashes,
+        ProtocolContentEntry
+    )
 
 
-def diff_pull(db: str, rows: Iterable[ProtocolEntry]) -> dict[str, list[str]]:
+def diff_protocols(
+    db: str,
+    protocols: Iterable[ProtocolEntry],
+    protocol_history: str = PROTOCOL_HISTORY,
+    protocol_id: str = PROTOCOL_ID
+) -> dict[str, list[str]]:
     """Compare a pull against the active state.
 
     Returns protocol_ids grouped as new / changed / unchanged / absent.
     """
-    with connect(db, read_only=True) as conn:
-        return _diff(conn, rows)
+    return diff_versioned(db, protocol_history, protocol_id, protocols)
 
 
 # -----------------------------------------------------------------------------#
 # WRITE CONTENT
 # -----------------------------------------------------------------------------#
-_INSERT_CONTENT = insert_statement(CONTENT_TABLE, _CONTENT_COLUMNS)
 
-
-def write_pull(
-    db: str, entries: list[ProtocolEntry], pulled_at: int | None = None
+# personal pref - explicit argument naming
+# Is it necessary? Not really. Do I find this more readable? Yes
+def write_protocols(
+    db: str,
+    entries: list[ProtocolEntry],
+    pulled_at: int | None = None,
+    protocol_content: str = PROTOCOL_CONTENT,
+    protocol_content_fields : Iterable[str] = PROTOCOL_CONTENT_FIELDS,
+    protocol_history : str = PROTOCOL_HISTORY,
+    protocol_id: str = PROTOCOL_ID
 ) -> dict[str, list[str]]:
-    """Apply one pull and return its diff."""
-    pulled_at = pulled_at if pulled_at is not None else get_timestamp()
-
-    seen = {row.protocol_id for row in entries}
-    if len(seen) != len(entries):
-        raise DuplicateProtocolIdError(
-            "a pull carried two versions of the same protocol_id; "
-            "at most one version of a protocol may be active"
-        )
-
-    with connect(db) as conn:
-        diff = _diff(conn, entries)
-        first_time = set(diff["new"]) - seen_before(
-            conn, HISTORY_TABLE, ID_COLUMN, diff["new"]
-        )
-        opening = set(diff["new"]) | set(diff["changed"])
-        closing = set(diff["changed"]) | set(diff["absent"])
-        fresh = [row for row in entries if row.protocol_id in opening]
-
-        # Bound by name, so valid_from riding along unreferenced is harmless.
-        conn.executemany(_INSERT_CONTENT, [row._asdict() for row in fresh])
-        close_intervals(conn, HISTORY_TABLE, ID_COLUMN, closing, pulled_at)
-        open_intervals(
-            conn,
-            HISTORY_TABLE,
-            ID_COLUMN,
-            [
-                (
-                    row.protocol_id,
-                    row.hash,
-                    row.valid_from if row.protocol_id in first_time else pulled_at,
-                )
-                for row in fresh
-            ],
-        )
-    return diff
-
-
-# -----------------------------------------------------------------------------#
-# VERIFY CONTENT
-# -----------------------------------------------------------------------------#
-def verify_protocols(db: str) -> list[str]:
-    """Return hashes whose stored blob no longer hashes to its own key."""
-    return verify_blobs(db, CONTENT_TABLE, "hash", "protocol")
+    insert = insert_statement(protocol_content,protocol_content_fields)
+    return write_version_control(
+        db,
+        protocol_history,
+        protocol_id,
+        insert,
+        entries,
+        pulled_at
+    )

@@ -12,7 +12,7 @@ import pytest
 import responses
 
 from chronos.chronos import build_sources, run_pull
-from seal.store import active_hashes, connect, initialize_protocol_db
+from seal.store import HISTORY_TABLE, ID_COLUMN, SCHEMA
 from sources.contract import (
     DiscoveredProtocols,
     FetchedProtocol,
@@ -23,6 +23,8 @@ from sources.contract import (
 from sources.protocols_io import build_source
 from sources.protocols_io.artefact import build_protocol_artefact
 from utils.dates import to_epoch
+from utils.intervals import active_hashes
+from utils.store import connect, initialize_db
 
 PULLED_AT = to_epoch("2026-07-27")
 
@@ -79,23 +81,23 @@ class TestCheckSourceName:
 # -----------------------------------------------------------------------------#
 class TestRunPull:
     def test_every_artefact_is_sealed(self, db_path, artefacts):
-        initialize_protocol_db(db_path)
+        initialize_db(db_path, SCHEMA)
 
         entry = run_pull(db_path, PULLED_AT, fake_source(artefacts))
 
         assert entry["sealed"] == len(artefacts)
         with connect(db_path) as conn:
-            assert len(active_hashes(conn)) == len(artefacts)
+            assert len(active_hashes(conn, HISTORY_TABLE, ID_COLUMN)) == len(artefacts)
 
     def test_the_entry_names_its_source(self, db_path, artefacts):
-        initialize_protocol_db(db_path)
+        initialize_db(db_path, SCHEMA)
 
         entry = run_pull(db_path, PULLED_AT, fake_source(artefacts, name="kantele"))
 
         assert entry["source"] == "kantele"
 
     def test_a_retired_protocol_is_not_sealed(self, db_path, artefacts):
-        initialize_protocol_db(db_path)
+        initialize_db(db_path, SCHEMA)
 
         entry = run_pull(db_path, PULLED_AT, fake_source(artefacts, retired=[9001]))
 
@@ -103,7 +105,7 @@ class TestRunPull:
         assert entry["sealed"] == len(artefacts)
 
     def test_warnings_reach_the_entry(self, db_path, artefacts):
-        initialize_protocol_db(db_path)
+        initialize_db(db_path, SCHEMA)
 
         entry = run_pull(
             db_path, PULLED_AT, fake_source(artefacts[:1], warnings=["look at me"])
@@ -115,22 +117,22 @@ class TestRunPull:
         """Failing to read one is not evidence it went away, and nothing may
         deprecate it by absence. Until skipped is wired through _diff, the only
         safe answer is to write nothing."""
-        initialize_protocol_db(db_path)
+        initialize_db(db_path, SCHEMA)
 
         with pytest.raises(UnreadableProtocolError):
             run_pull(db_path, PULLED_AT, fake_source(artefacts, unreadable=[9002]))
 
     def test_a_stopped_pull_writes_nothing(self, db_path, artefacts):
-        initialize_protocol_db(db_path)
+        initialize_db(db_path, SCHEMA)
 
         with pytest.raises(UnreadableProtocolError):
             run_pull(db_path, PULLED_AT, fake_source(artefacts, unreadable=[9002]))
 
         with connect(db_path) as conn:
-            assert active_hashes(conn) == {}
+            assert active_hashes(conn, HISTORY_TABLE, ID_COLUMN) == {}
 
     def test_a_source_name_that_breaks_uids_is_refused(self, db_path, artefacts):
-        initialize_protocol_db(db_path)
+        initialize_db(db_path, SCHEMA)
 
         with pytest.raises(ValueError):
             run_pull(db_path, PULLED_AT, fake_source(artefacts, name="bad:name"))
@@ -195,7 +197,7 @@ class TestBuildSource:
         """The whole seam, end to end: chronos drives protocols.io the same way
         it drives the fake."""
         self.mount([copy.deepcopy(r) for r in by_id_records.values()])
-        initialize_protocol_db(db_path)
+        initialize_db(db_path, SCHEMA)
 
         entry = run_pull(db_path, PULLED_AT, self.source())
 

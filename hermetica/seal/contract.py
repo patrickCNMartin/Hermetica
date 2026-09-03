@@ -6,47 +6,11 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from utils.hashing import hash_of
-
+from utils.constants import PROTOCOL_HASH_FIELDS, PROTOCOL_METADATA_FIELDS
 # -----------------------------------------------------------------------------#
 # CONTENT CONTRACT
 # -----------------------------------------------------------------------------#
-# Specify the fields that are going to hashed and version controlled
-# Essentially my whitelisted .gitignroe contract
-HASH_FIELDS: tuple[str, ...] = (
-    "doi",
-    "reserved_doi",
-    "id",
-    "guid",
-    "title",
-    "description",
-    "guidelines",
-    "before_start",
-    "disclaimer",
-    "warning",
-    "materials",
-    "steps",
-    "chain",
-    "units",
-    "uri",
-    "version_class",
-    "protocol_references",
-)
-# Specify other in
-METADATA_FIELDS: tuple[str, ...] = (
-    "created_on",
-    "creator",
-    "authors",
-    "keywords",
-)
-
-# A source adapter reshapes its platform's response into this template; the
-# nested requests needed to fill it are the adapter's problem, not seal's.
-PROTOCOL_FIELDS: tuple[str, ...] = HASH_FIELDS + METADATA_FIELDS
-
-
-# The template itself. Frozen: an artefact is a snapshot of upstream content,
-# not a working buffer — mutating one after hashing would desync blob and hash.
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class ProtocolArtefact:
     # --- hashed (HASH_FIELDS) ---------------------------------------------- #
     id: int
@@ -78,35 +42,28 @@ class ProtocolArtefact:
 
     def hashable(self) -> dict:
         """Only the fields HASH_FIELDS declares — the form that gets hashed."""
-        return {field: getattr(self, field) for field in HASH_FIELDS}
+        return {field: getattr(self, field) for field in PROTOCOL_HASH_FIELDS}
 
     def metadata(self) -> dict:
         """Get meta data fields"""
-        return {field: getattr(self, field) for field in METADATA_FIELDS}
+        return {field: getattr(self, field) for field in PROTOCOL_METADATA_FIELDS}
 
 
 # -----------------------------------------------------------------------------#
 # RICH TEXT
 # -----------------------------------------------------------------------------#
-# Shared by the writer and the reader: a source adapter parses envelopes to find
-# the units it must resolve at pull time, and scribe parses the same envelopes to
-# render them. Kept here so neither has to import the other.
 def parse_rich_text(value: Any) -> dict | None:
     """A Draft.js envelope, or None when the field holds no rich text."""
     if isinstance(value, dict):
         return value
     if not isinstance(value, str) or not value.strip().startswith("{"):
         return None
-    # Anything shaped like an envelope but unparseable is corrupt: silently
-    # skipping it would drop units from a hashed field.
     return json.loads(value)
 
 
 # -----------------------------------------------------------------------------#
 # HASHING
 # -----------------------------------------------------------------------------#
-# Re-serializes. The write path does not use it: build_protocol_entry hashes the
-# exact bytes it stores, so blob and hash cannot drift.
 def protocol_hash(artefact: ProtocolArtefact) -> str:
     """Content hash of a selected protocol, metadata excluded."""
     return hash_of(artefact.hashable())

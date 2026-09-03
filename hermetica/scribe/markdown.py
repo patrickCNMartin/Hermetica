@@ -9,8 +9,10 @@ from collections.abc import Sequence
 
 from scribe.richtext import render_document
 from seal.seal import manifest_hash
-from seal.store import active_hashes, connect, get_content
+from seal.store import HISTORY_TABLE, ID_COLUMN, get_content
 from utils.dates import as_iso
+from utils.intervals import active_hashes
+from utils.store import connect
 
 # The entry point loads env/.env; a public view prefix is not a credential, so
 # unlike BASE_URL this carries a working default.
@@ -58,7 +60,7 @@ def linkable(entries: dict, db: str | None) -> set[str]:
     if not db:
         return set()
     with connect(db, read_only=True) as conn:
-        active = active_hashes(conn)
+        active = active_hashes(conn, HISTORY_TABLE, ID_COLUMN)
     return {pid for pid, entry in entries.items() if active.get(pid) == entry["hash"]}
 
 

@@ -13,15 +13,17 @@ import pytest
 from scribe.hydrate import LockDriftError, hydrate_pins
 from seal.seal import export_pins, generate_protocol_lock
 from seal.store import (
+    HISTORY_TABLE,
+    ID_COLUMN,
+    SCHEMA,
     UnknownProtocolHashError,
-    active_hashes,
-    connect,
     format_db_entry,
-    initialize_protocol_db,
     write_pull,
 )
 from sources.protocols_io.artefact import build_protocol_artefact
 from utils.dates import to_epoch
+from utils.intervals import active_hashes
+from utils.store import connect, initialize_db
 
 PULLED_AT = to_epoch("2026-07-27")
 
@@ -29,13 +31,13 @@ PULLED_AT = to_epoch("2026-07-27")
 @pytest.fixture
 def store(db_path, by_id_records):
     """A populated store plus the hashes active in it."""
-    initialize_protocol_db(db_path)
+    initialize_db(db_path, SCHEMA)
     artefacts = [
         build_protocol_artefact(copy.deepcopy(r)) for r in by_id_records.values()
     ]
     write_pull(db_path, format_db_entry(artefacts, PULLED_AT), PULLED_AT)
     with connect(db_path, read_only=True) as conn:
-        return db_path, list(active_hashes(conn).values())
+        return db_path, list(active_hashes(conn, HISTORY_TABLE, ID_COLUMN).values())
 
 
 @pytest.fixture

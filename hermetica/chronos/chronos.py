@@ -13,18 +13,17 @@ from dotenv import load_dotenv
 # -----------------------------------------------------------------------------#
 from chronos.pull_log import record_pull
 from chronos.report import format_failure, format_report, write_report
-from compose.compose import active_protocols
-from compose.store import initialize_pipeline_db
-from seal.store import format_db_entry, initialize_protocol_db, write_pull
-
+from compose.store import SCHEMA as PIPELINE_SCHEMA
+from seal.store import SCHEMA as PROTOCOL_SCHEMA
+from seal.store import format_protocol_entry, write_protocols
+from utils.error_handling import UnreadableProtocolError
 # -----------------------------------------------------------------------------#
 # IMPORT SOURCE ADAPTERS
 # -----------------------------------------------------------------------------#
-# The only place a platform is named. A new one is a new module plus one branch
-# in build_sources, and the env vars it needs read beside the ones below.
 from sources import protocols_io
-from sources.contract import ProtocolSource, UnreadableProtocolError, check_source_name
+from sources.contract import ProtocolSource, check_source_name
 from utils.dates import get_timestamp
+from utils.store import initialize_db
 
 # -----------------------------------------------------------------------------#
 # SET ENV VARS
@@ -100,7 +99,7 @@ def build_sources(
 # -----------------------------------------------------------------------------#
 # ONE PULL, ONE SOURCE
 # -----------------------------------------------------------------------------#
-def run_pull(db_name: str, pulled_at: int, source: ProtocolSource) -> dict:
+def run_protocol_pull(db_name: str, pulled_at: int, source: ProtocolSource) -> dict:
     """Discover, fetch, seal. Returns the entry written to the log.
 
     Knows no field names: whatever a platform calls things is settled by the
@@ -137,8 +136,8 @@ def run_pull(db_name: str, pulled_at: int, source: ProtocolSource) -> dict:
             )
         artefacts.append(fetched.artefact)
 
-    rows = format_db_entry(artefacts, pulled_at)
-    diff = write_pull(db_name, rows, pulled_at)
+    protocol_entries = format_protocol_entry(artefacts, pulled_at)
+    diff_protocols = write_protocols(db_name, protocol_entries, pulled_at)
 
     return {
         "source": source.name,
@@ -146,8 +145,8 @@ def run_pull(db_name: str, pulled_at: int, source: ProtocolSource) -> dict:
         **discovery.detail,
         "fetched": len(discovery.ids),
         "deprecated": sorted(retired),
-        "sealed": len(rows),
-        "diff": {key: sorted(value) for key, value in diff.items()},
+        "sealed": len(protocol_entries),
+        "diff": {key: sorted(value) for key, value in diff_protocols.items()},
         "warnings": discovery.detail.get("warnings", []) + warnings,
     }
 
@@ -159,8 +158,8 @@ if __name__ == "__main__":
     # Initialize data base and create if does not exist (schema only).
     protcol_db = f"{DB_OUT}/chronos.db"
     pipeline_db = f"{DB_OUT}/compose.db"
-    initialize_protocol_db(protcol_db)
-    initialize_pipeline_db(pipeline_db)
+    initialize_db(protcol_db, PROTOCOL_SCHEMA)
+    initialize_db(pipeline_db, PIPELINE_SCHEMA)
 
     # pull time stamp
     # This is when we start the pull - everything else follows this pull time
@@ -184,7 +183,7 @@ if __name__ == "__main__":
         # the others, and a source that raises writes nothing, so none of its
         # protocols are deprecated by absence.
         try:
-            entry = run_pull(protcol_db, pulled_at, source)
+            entry = run_protocol_pull(protcol_db, pulled_at, source)
         except Exception as error:
             failed = True
             entry = {
@@ -212,21 +211,3 @@ if __name__ == "__main__":
     if failed:
         sys.exit(1)
 
-    # This is section is here for testing purpose on the live db
-    # This won't be part of the cron job.
-    protocol_names = active_protocols(protcol_db)
-    with open(f"{DB_OUT}/fixture_names.json", "w") as f:
-        json.dump(protocol_names, f)
-
-    # exporting locks and testing to see things
-    wanted = [h for h, title in protocol_names.items() if "SDS lysis" in title]
-    from seal.seal import export_lock, export_pins, generate_protocol_lock
-
-    lock = generate_protocol_lock(wanted, db=protcol_db)
-    export_pins(lock, f"{DB_OUT}/pins.lock")
-    export_lock(lock, f"{DB_OUT}/lock.lock")
-    from scribe.markdown import export_markdown, to_markdown
-
-    md = to_markdown(lock, protcol_db)
-    export_markdown(lock, f"{DB_OUT}/protocol_render_template_from_db.md", protcol_db)
-    export_markdown(lock, f"{DB_OUT}/protocol_render_template_from_lock.md")

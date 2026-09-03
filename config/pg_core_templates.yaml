@@ -3,9 +3,7 @@
 # The structure will pull from the a live protocol database if one exists.
 # I am keeping this pretty minimal because it should also be able to be updated
 # Using a specific manifest hash.
-#
-# pipeline_guid is minted on first read and written to a _minted.yaml twin.
-# Each block's key is the pipeline title.
+
 
 creator: "Homunculus Pat"
 created_on: "2026-08-21"

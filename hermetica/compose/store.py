@@ -1,54 +1,19 @@
 # -----------------------------------------------------------------------------#
 # IMPORT LIBS
 # -----------------------------------------------------------------------------#
-import sqlite3
 from collections.abc import Iterable
-from datetime import date, datetime
-from typing import NamedTuple
+from dataclasses import dataclass
 
-from compose.compose import METADATA_FIELDS, ProtocolPipeline
+from compose.compose import PipelineArtefact
 from utils.dates import get_timestamp, to_epoch
 from utils.hashing import as_column, canonical_json, hash_bytes
-from utils.intervals import (
-    VersionInterval,
-    close_intervals,
-    diff_entries,
-    open_intervals,
-    seen_before,
-    versions_on_date,
-)
-from utils.intervals import (
-    active_hashes as _active_hashes,
-)
-from utils.store import (
-    connect,
-    fetch_rows,
-    initialize_db,
-    insert_statement,
-    verify_blobs,
-)
-
-# -----------------------------------------------------------------------------#
-# WHICH TABLES COMPOSE OWNS
-# -----------------------------------------------------------------------------#
-# A pipeline is versioned by the same interval rules as a protocol; only the
-# table names and the id column differ.
-CONTENT_TABLE = "pipeline_content"
-HISTORY_TABLE = "pipeline_history"
-ID_COLUMN = "pipeline_guid"
-
-
-# -----------------------------------------------------------------------------#
-# ERROR TYPE
-# -----------------------------------------------------------------------------#
-class DuplicatePipelineGuidError(ValueError):
-    """One write carried two different versions of the same pipeline_guid."""
-
-
-class UnknownPipelineHashError(ValueError):
-    """A requested hash is not in pipeline_content."""
-
-
+from utils.intervals import diff_versioned, write_version_control
+from utils.store import fetch_entries, insert_statement
+from utils.constants import (
+    PIPELINE_HISTORY,
+    PIPELINE_CONTENT,
+    PIPELINE_GUID,
+    PIPELINE_CONTENT_FIELDS)
 # -----------------------------------------------------------------------------#
 # BUILD PROTOCOL PIPELINE DB
 # -----------------------------------------------------------------------------#
@@ -84,16 +49,12 @@ SCHEMA: tuple[str, ...] = (
 )
 
 
-def initialize_pipeline_db(db: str) -> None:
-    """Create the pipeline content/history tables and their indexes if absent."""
-    initialize_db(db, SCHEMA)
-
-
 # -----------------------------------------------------------------------------#
 # FORMATTING DB ENTRIES
 # -----------------------------------------------------------------------------#
 # Type enforce a pipeline entry
-class PipelineEntry(NamedTuple):
+@dataclass(frozen=True)
+class PipelineEntry:
     hash: str
     pipeline_guid: str
     title: str
@@ -107,21 +68,11 @@ class PipelineEntry(NamedTuple):
     valid_from: int
 
 
-# Derived, not restated — same guard as seal's.
-_CONTENT_COLUMNS: tuple[str, ...] = (
-    "hash",
-    "pipeline_guid",
-    "title",
-    "manifest_hash",
-    "root",
-    "executor",
-    "DAG",
-    "pipeline",
-) + METADATA_FIELDS
 
 
 def build_pipeline_entry(
-    artefact: ProtocolPipeline, pulled_at: int | None = None
+    artefact: PipelineArtefact,
+    pulled_at: int | None = None
 ) -> PipelineEntry:
     """Prepare one pipeline entry from a ProtocolPipeline."""
     pulled_at = pulled_at if pulled_at is not None else get_timestamp()
@@ -142,18 +93,19 @@ def build_pipeline_entry(
     )
 
 
-def format_db_entry(
-    artefacts: Iterable[ProtocolPipeline], pulled_at: int | None = None
-) -> list[PipelineEntry]:
-    """Make a list of entries from a bunch of pipelines."""
+def format_pipeline_entry(
+    artefacts: Iterable[PipelineArtefact],
+    pulled_at: int | None = None
+) -> list[PipelineArtefact]:
+    """make a list of entries from a bunch of protocols"""
     pulled_at = pulled_at if pulled_at is not None else get_timestamp()
     return [build_pipeline_entry(artefact, pulled_at) for artefact in artefacts]
-
 
 # -----------------------------------------------------------------------------#
 # CHANGE DETECTION UTILS
 # -----------------------------------------------------------------------------#
-class PipelineContentEntry(NamedTuple):
+@dataclass(frozen=True)
+class PipelineContentEntry:
     hash: str
     pipeline_guid: str
     title: str
@@ -166,110 +118,63 @@ class PipelineContentEntry(NamedTuple):
     pipeline: str | None = None
 
 
-def active_pipelines(conn: sqlite3.Connection) -> dict[str, str]:
-    """pipeline_guid -> hash for every version currently active."""
-    return _active_hashes(conn, HISTORY_TABLE, ID_COLUMN)
-
-
-def _diff(
-    conn: sqlite3.Connection, entries: Iterable[PipelineEntry]
-) -> dict[str, list[str]]:
-    """Group a write against the active state, for the log."""
-    return diff_entries(
-        active_pipelines(conn), {row.pipeline_guid: row.hash for row in entries}
-    )
-
-
 # -----------------------------------------------------------------------------#
 # GET CONTENT
 # -----------------------------------------------------------------------------#
-_READ_COLUMNS: tuple[str, ...] = PipelineContentEntry._fields[:-1]
+# don't like this but I hate the constant approach even more.
+def read_pipeline_content():
+    return PipelineContentEntry._fields[:-1] 
 
-
+# I know I don't need to parse pipeline content as an argument
+# But I hate when function pull something out of nothing instead of
+# parsing it as an argument.
+# explicit IN and explicit OUT
 def get_pipelines(
-    db: str, hashes: Iterable[str], with_blob: bool = True
+    db: str, hashes: Iterable[str],
+    with_blob: bool = True,
+    content_table : str = PIPELINE_CONTENT,
 ) -> list[PipelineContentEntry]:
-    """Pipelines by hash, in the order asked for. Any absence raises."""
-    wanted = list(hashes)
-    if not wanted:
-        return []
-    columns = _READ_COLUMNS + ("pipeline",) if with_blob else _READ_COLUMNS
-    with connect(db, read_only=True) as conn:
-        found = {
-            key: PipelineContentEntry(*row)
-            for key, row in fetch_rows(
-                conn, CONTENT_TABLE, columns, "hash", wanted
-            ).items()
-        }
-    missing = sorted(set(wanted) - set(found))
-    if missing:
-        raise UnknownPipelineHashError(f"not in pipeline_content: {', '.join(missing)}")
-    return [found[h] for h in wanted]
+    READ_COLUMNS = read_pipeline_content()
+    columns = READ_COLUMNS + ("pipeline",) if with_blob else READ_COLUMNS
+    return fetch_entries(
+        db,
+        content_table,
+        columns,
+        "hash",
+        hashes,
+        PipelineContentEntry
+    )
 
 
-def pipelines_on_date(
-    conn: sqlite3.Connection, when: int | float | str | date | datetime
-) -> dict[str, list[VersionInterval]]:
-    """pipeline_guid -> every version active on `when`'s UTC day."""
-    return versions_on_date(conn, HISTORY_TABLE, ID_COLUMN, when)
-
-
-def diff_pipelines(db: str, rows: Iterable[PipelineEntry]) -> dict[str, list[str]]:
+def diff_pipelines(
+    db: str,
+    pipelines: Iterable[PipelineEntry],
+    pipeline_history: str = PIPELINE_HISTORY,
+    pipeline_guid: str = PIPELINE_GUID
+) -> dict[str, list[str]]:
     """Compare a set of pipelines against the active state."""
-    with connect(db, read_only=True) as conn:
-        return _diff(conn, rows)
+    return diff_versioned(db, pipeline_history, pipeline_guid, pipelines)
 
 
 # -----------------------------------------------------------------------------#
 # WRITE CONTENT
 # -----------------------------------------------------------------------------#
-_INSERT_CONTENT = insert_statement(CONTENT_TABLE, _CONTENT_COLUMNS)
-
-
 def write_pipeline(
-    db: str, entries: list[PipelineEntry], pulled_at: int | None = None
+    db: str,
+    entries: list[PipelineEntry],
+    pulled_at: int | None = None,
+    pipeline_content: str = PIPELINE_CONTENT,
+    pipleline_content_fields : Iterable[str] = PIPELINE_CONTENT_FIELDS,
+    pipeline_history: str = PIPELINE_HISTORY,
+    pipeline_guid : str = PIPELINE_GUID
 ) -> dict[str, list[str]]:
     """Apply one set of pipelines and return its diff."""
-    pulled_at = pulled_at if pulled_at is not None else get_timestamp()
-
-    seen = {row.pipeline_guid for row in entries}
-    if len(seen) != len(entries):
-        raise DuplicatePipelineGuidError(
-            "a write carried two versions of the same pipeline_guid; "
-            "at most one version of a pipeline may be active"
-        )
-
-    with connect(db) as conn:
-        diff = _diff(conn, entries)
-        first_time = set(diff["new"]) - seen_before(
-            conn, HISTORY_TABLE, ID_COLUMN, diff["new"]
-        )
-        opening = set(diff["new"]) | set(diff["changed"])
-        closing = set(diff["changed"]) | set(diff["absent"])
-        fresh = [row for row in entries if row.pipeline_guid in opening]
-
-        # Bound by name, so valid_from riding along unreferenced is harmless.
-        conn.executemany(_INSERT_CONTENT, [row._asdict() for row in fresh])
-        close_intervals(conn, HISTORY_TABLE, ID_COLUMN, closing, pulled_at)
-        open_intervals(
-            conn,
-            HISTORY_TABLE,
-            ID_COLUMN,
-            [
-                (
-                    row.pipeline_guid,
-                    row.hash,
-                    row.valid_from if row.pipeline_guid in first_time else pulled_at,
-                )
-                for row in fresh
-            ],
-        )
-    return diff
-
-
-# -----------------------------------------------------------------------------#
-# VERIFY CONTENT
-# -----------------------------------------------------------------------------#
-def verify_pipelines(db: str) -> list[str]:
-    """Return hashes whose stored blob no longer hashes to its own key."""
-    return verify_blobs(db, CONTENT_TABLE, "hash", "pipeline")
+    insert = insert_statement(pipeline_content,pipleline_content_fields)
+    return write_version_control(
+        db,
+        pipeline_history,
+        pipeline_guid,
+        insert,
+        entries,
+        pulled_at
+    )
