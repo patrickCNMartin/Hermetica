@@ -7,7 +7,7 @@ stops running silently is the outcome this exists to prevent."""
 
 import pytest
 
-from chronos.utils.report import (
+from chronos.report import (
     PULL_REPORT_NAME,
     format_failure,
     format_report,

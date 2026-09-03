@@ -11,11 +11,12 @@ from dotenv import load_dotenv
 # -----------------------------------------------------------------------------#
 # IMPORT GENERIC UTILS
 # -----------------------------------------------------------------------------#
-from chronos.utils.pull_log import record_pull
-from chronos.utils.report import format_failure, format_report, write_report
-from compose.compose import active_protocols, initialize_pipeline_db
+from chronos.pull_log import record_pull
+from chronos.report import format_failure, format_report, write_report
+from compose.compose import active_protocols
+from compose.store import initialize_pipeline_db
 from seal.dates import get_timestamp
-from seal.store import format_entry, initialize_protocol_db, write_pull
+from seal.store import format_db_entry, initialize_protocol_db, write_pull
 
 # -----------------------------------------------------------------------------#
 # IMPORT SOURCE ADAPTERS
@@ -136,7 +137,7 @@ def run_pull(db_name: str, pulled_at: int, source: ProtocolSource) -> dict:
             )
         artefacts.append(fetched.artefact)
 
-    rows = format_entry(artefacts, pulled_at)
+    rows = format_db_entry(artefacts, pulled_at)
     diff = write_pull(db_name, rows, pulled_at)
 
     return {
@@ -159,7 +160,7 @@ if __name__ == "__main__":
     protcol_db = f"{DB_OUT}/chronos.db"
     pipeline_db = f"{DB_OUT}/compose.db"
     initialize_protocol_db(protcol_db)
-    initialize_pipeline_db(pipeline_db, template=PIPE_TEMPLATE)
+    initialize_pipeline_db(pipeline_db)
 
     # pull time stamp
     # This is when we start the pull - everything else follows this pull time

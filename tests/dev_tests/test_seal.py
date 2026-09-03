@@ -25,8 +25,8 @@ from seal.store import (
     DuplicateProtocolIdError,
     active_hashes,
     connect,
-    format_entry,
-    initialize_db,
+    format_db_entry,
+    initialize_protocol_db,
     write_pull,
 )
 from sources.protocols_io.artefact import build_protocol_artefact
@@ -44,11 +44,11 @@ LOCK_KEYS = PINS_KEYS | {"protocols", "bodies"}
 @pytest.fixture
 def store(db_path, by_id_records):
     """A populated store plus the hashes active in it."""
-    initialize_db(db_path)
+    initialize_protocol_db(db_path)
     artefacts = [
         build_protocol_artefact(copy.deepcopy(r)) for r in by_id_records.values()
     ]
-    write_pull(db_path, format_entry(artefacts, PULLED_AT), PULLED_AT)
+    write_pull(db_path, format_db_entry(artefacts, PULLED_AT), PULLED_AT)
     with connect(db_path, read_only=True) as conn:
         return db_path, list(active_hashes(conn).values())
 
@@ -123,13 +123,13 @@ class TestGenerate:
 
     def test_two_versions_of_one_protocol_raise(self, db_path, by_id_records):
         """One protocol, one active version — a lock may not violate it either."""
-        initialize_db(db_path)
+        initialize_protocol_db(db_path)
         record = copy.deepcopy(next(iter(by_id_records.values())))
         edited = copy.deepcopy(record)
         edited["title"] = "A different title"
 
-        first = format_entry([build_protocol_artefact(record)], PULLED_AT)
-        second = format_entry([build_protocol_artefact(edited)], PULLED_AT + 1)
+        first = format_db_entry([build_protocol_artefact(record)], PULLED_AT)
+        second = format_db_entry([build_protocol_artefact(edited)], PULLED_AT + 1)
         write_pull(db_path, first, PULLED_AT)
         write_pull(db_path, second, PULLED_AT + 1)
 

@@ -17,8 +17,8 @@ from seal.store import (
     UnknownProtocolHashError,
     active_hashes,
     connect,
-    format_entry,
-    initialize_db,
+    format_db_entry,
+    initialize_protocol_db,
     write_pull,
 )
 from sources.protocols_io.artefact import build_protocol_artefact
@@ -29,11 +29,11 @@ PULLED_AT = to_epoch("2026-07-27")
 @pytest.fixture
 def store(db_path, by_id_records):
     """A populated store plus the hashes active in it."""
-    initialize_db(db_path)
+    initialize_protocol_db(db_path)
     artefacts = [
         build_protocol_artefact(copy.deepcopy(r)) for r in by_id_records.values()
     ]
-    write_pull(db_path, format_entry(artefacts, PULLED_AT), PULLED_AT)
+    write_pull(db_path, format_db_entry(artefacts, PULLED_AT), PULLED_AT)
     with connect(db_path, read_only=True) as conn:
         return db_path, list(active_hashes(conn).values())
 
