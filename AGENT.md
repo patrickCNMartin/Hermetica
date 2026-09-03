@@ -6,7 +6,8 @@ When I deviate, I say so and why.
 
 > **This file carries only the essentials — what Hermetica is, what to do, and how I am
 > expected to behave. Every specific lives in `docs/`.** If a rule here looks arbitrary or
-> thin, the detail is over there; do not restate it here. All files below are git-ignored.
+> thin, the detail is over there; do not restate it here. This file and `docs/audit_log.md`
+> are tracked; the three `protocols_io_*` files below are git-ignored.
 >
 > **This file is the current state, at its most compact. It carries no history.** No dates,
 > no "decided on", no record of what a rule replaced. An audit trail runs for pages and
@@ -61,19 +62,31 @@ content, so the two stages cannot disagree about what a protocol is.
 | `seal` | **Hashing, version control & lock files** — canonical serialization, the content contract, the append-only log + snapshots, epoch/date conversion, lifecycle tokens, lock generation & verification. |
 | `compose` | Composition — pipeline templates & pinned instances, DAG versioning + lineage, resolving graphs against a dated manifest (`compose.db`). |
 | `scribe` | **Presentation** — a lock back into something a human reads. Owns no identity, time or storage rules; it only reads. |
+| `utils` | **Shared mechanics** — canonical form, hashing, epoch/date conversion, the sqlite connection and schema helpers, and the version-interval machinery. Knows no platform, owns no error vocabulary, and names no table: every function takes its table and id column as arguments. |
 | *(planned)* | **Prose generation** — materials-and-methods from a lock + template, optionally LLM-assisted. A **sixth module, not part of `scribe`**: an LLM is a heavy dependency that cannot be assumed present, so generation sits *above* the lock, never inside the path that produces it (Principle 2). |
 
 The split: **`chronos` decides *when* to look; a `sources` adapter knows *what one
-platform's bytes are*; `seal` decides *what those bytes mean*.** A rule about identity or
-time belongs in `seal` even if the cron job calls it. A rule about a platform's response
+platform's bytes are*; `seal` decides *what those bytes mean*.** A rule about identity
+belongs in `seal` even if the cron job calls it. A rule about a platform's response
 shape belongs in that platform's adapter even if hashing depends on it.
+
+**`utils` is the exception that proves the split: it holds mechanics, never rules.**
+`to_epoch` converts; *what `valid_from` means* is seal's. `hash_bytes` digests; *which
+fields get hashed* is `HASH_FIELDS`. `diff_entries` groups two maps; *that an absence
+deprecates* is seal's. The test is whether a function can be read without knowing what a
+protocol is — if not, it does not belong here.
 
 ```
 hermetica/
+  utils/hashing.py                    canonical_json, hash_bytes/hash_of, as_column
+  utils/dates.py                      epoch <-> human at the call boundary
+  utils/store.py                      connect, initialize_db, insert_statement,
+                                      fetch_rows, verify_blobs
+  utils/intervals.py                  active_hashes, seen_before, diff_entries,
+                                      open/close_intervals, versions_on_date
   chronos/chronos.py                  the loop; build_sources -> run_pull -> log
-  chronos/utils/pull_log.py           append-only record of what each pull did
-  chronos/utils/report.py             the human-readable twin of the log
-  chronos/scratch.py                  live API probes; NOT part of the pull path
+  chronos/pull_log.py                 append-only record of what each pull did
+  chronos/report.py                   the human-readable twin of the log
   sources/contract.py                 DiscoveredProtocols, FetchedProtocol,
                                       ProtocolSource, check_source_name
   sources/protocols_io/__init__.py    build_source — wires discover + fetch
@@ -85,20 +98,25 @@ hermetica/
                                       scrub_signed_urls, steps, chain, units
   sources/protocols_io/lifecycle.py   screen_protocol — the deprecated keyword
   seal/contract.py                    ProtocolArtefact, HASH_FIELDS/METADATA_FIELDS,
-                                      parse_rich_text, canonical_json, hashing
+                                      parse_rich_text, protocol_hash
   seal/lifecycle.py                   deprecated-keyword alias table + predicate
-  seal/store.py                       schema, connect, build_row/format_entry,
+  seal/store.py                       schema, build_protocol_entry/format_db_entry,
                                       diff_pull, write_pull, get_content, verify_protocols
-  seal/dates.py                       epoch <-> human at the call boundary
   seal/seal.py                        lock documents — generate, export, verify_lock
-  compose/compose.py                  active_protocols; ComposedProtocols dataclass
-  compose/templates.py                placeholder for base DAG templates
+  compose/compose.py                  active_protocols; ProtocolPipeline dataclass
+  compose/store.py                    pipeline schema, build_pipeline_entry,
+                                      write_pipeline, get_pipelines, verify_pipelines
+  compose/templates.py                YAML base DAG templates; guid minting
   scribe/hydrate.py                   hydrate_pins — pins-only lock -> full document
   scribe/richtext.py                  Draft.js -> text; entities + unit resolution
   scribe/markdown.py                  to_markdown/export_markdown
   scribe/pandoc.yaml                  PDF look: engine + fonts. Config, not code.
-tests/dev_tests/                      509 passing
+config/pg_core_templates.yaml         the seven base pipelines, unminted
+tests/dev_tests/                      584 passing
 ```
+
+The probe script (`scratch.py`) lives in the git-ignored `protocol_io_bundle/` and is
+**not part of the pull path**.
 
 Three content-addressed levels — **protocol -> manifest -> pipeline** — across two SQLite
 files (`db/chronos.db`, `db/compose.db`).
@@ -258,16 +276,23 @@ not a tweak**.
 
 ### Canonical form & hashing
 
+All of this lives in `utils/hashing.py` — one definition, used by protocols and pipelines
+alike.
+
 `canonical_json` → sorted keys, no whitespace, ASCII-escaped, **NFC-normalized**,
 `allow_nan=False`. NFC matters: `café` has two valid encodings that look identical and
 hash differently. Altering the serializer invalidates every hash on disk.
 
-- `protocol_blob(artefact)` → canonical bytes of `hashable()`. **This is the exact byte
-  string stored** in `protocol_content.protocol`.
+- `canonical_json(artefact.hashable())` → **the exact byte string stored** in
+  `protocol_content.protocol` and `pipeline_content.pipeline`.
 - `hash_bytes(blob)` → `sha256:<hexdigest>`; the algorithm prefix is part of the hash.
+- `hash_of(payload)` = `hash_bytes(canonical_json(payload))`, for a caller holding a dict
+  rather than bytes: `protocol_hash` and `seal.manifest_hash`.
 - `protocol_hash(artefact)` re-serializes — **the write path does not use it**.
-  `build_row` calls `protocol_blob` once and feeds both `hash_bytes` and the stored text,
-  so blob and hash cannot drift.
+  `build_protocol_entry` serializes once and feeds both `hash_bytes` and the stored text,
+  so blob and hash cannot drift. `build_pipeline_entry` does the same.
+- `as_column(value)` → anything sqlite cannot store natively becomes canonical JSON text,
+  so a stored dict is byte-stable too.
 
 Sorted keys mean output does not depend on Python's per-process hash seed (verified under
 `PYTHONHASHSEED=1` and `999`).
@@ -275,7 +300,7 @@ Sorted keys mean output does not depend on Python's per-process hash seed (verif
 ### Temporal model (the "as of date T" contract)
 
 - **All timestamps are unix epoch integers (UTC), never date strings.** Human-readable
-  forms are produced at the call boundary by `seal/dates.py`. `get_timestamp` is the
+  forms are produced at the call boundary by `utils/dates.py`. `get_timestamp` is the
   single clock read — nothing else calls `datetime.now`. Seconds, not days, so two pulls
   on the same day still order correctly. (`to_epoch` rejects `bool` explicitly: it
   subclasses `int`, so `True` would otherwise become epoch 1.)
@@ -439,13 +464,23 @@ pandoc <lock>.md -o <lock>.pdf -d hermetica/scribe/pandoc.yaml
 ### Pipelines (composition)
 
 - Every stored pipeline state is a **pinned instance** — a canonical DAG document (nodes
-  = protocol hashes, plus edges + metadata) addressed by `graph_hash`. Pinned to hashes,
-  so it reproduces even if a protocol is later deprecated.
-- A pipeline has its own identity + version history with a **parent link** for lineage.
-- **Fork-on-edit:** editing a blessed pipeline forks to a new `pipeline_id`; the original
-  stays as a read-only template.
+  = protocol hashes, plus edges + metadata) addressed by its content hash. Pinned to
+  hashes, so it reproduces even if a protocol is later deprecated.
+- **`pipeline_guid` is the identity; the hash is the version.** The guid is minted once,
+  in the template, and survives every edit — that is what lets `pipeline_history` say
+  which version of *this* pipeline was active when.
+- **Hashed:** `guid`, `title`, `manifest_hash`, `DAG`, `executor`, `root`. Not hashed:
+  `created_on`, `creator`. Node ids are **not** hashed separately — they are already
+  inside the `DAG`.
+- **Templates are YAML, minted once.** `config/pg_core_templates.yaml` ships unminted;
+  `mint_template` fills each `pipeline_guid` and writes a `_minted.yaml` twin.
+  **Reading never mints** — `pipelines_from_template` raises on an unminted file unless
+  told `mint=True`, because minting fixes identity forever and a silent re-mint would
+  orphan everything already stored under the old guid.
 - A new graph is **validated against the read-only VC** before storage — it may only
-  reference hashes that exist and were active at its authoring date.
+  reference hashes that exist and were active at its authoring date. **Not built yet.**
+- **Fork-on-edit** and the **parent link** for lineage are **not built yet**. Editing a
+  pipeline today versions it in place under the same guid.
 - Store DAGs as **canonical JSON documents, hashed**. Do **not** introduce a graph
   database (violates the local/sovereign/no-heavy-dep principles).
 
@@ -454,7 +489,7 @@ pandoc <lock>.md -o <lock>.pdf -d hermetica/scribe/pandoc.yaml
 Metadata rides on the **content** row — not hashed, but it does not change without the
 content changing either, so first-seen-wins under `INSERT OR IGNORE` is intended.
 
-`seal.store.connect` is the single connection helper: `PRAGMA foreign_keys=ON`, commit or
+`utils.store.connect` is the single connection helper: `PRAGMA foreign_keys=ON`, commit or
 rollback, and **close in a `finally`** — plain `with sqlite3.connect(...)` commits but
 leaks the handle. `read_only=True` opens `file:...?mode=ro`.
 
@@ -462,27 +497,35 @@ leaks the handle. `read_only=True` opens `file:...?mode=ro`.
 `protocol_content` alongside `title` — a **denormalized copy for display and querying**,
 so listing never parses blobs. Duplicated, never authoritative.
 
-`get_content(db, hashes, with_blob=True)` returns `ContentRow`s **in the order asked for**
-and raises `UnknownProtocolHashError` if *any* hash is absent — a pin silently dropping
-out of a lock is the failure this prevents.
+`get_content(db, hashes, with_blob=True)` returns `ContentEntry`s **in the order asked
+for** and raises `UnknownProtocolHashError` if *any* hash is absent — a pin silently
+dropping out of a lock is the failure this prevents. `compose.get_pipelines` is the same
+function over `pipeline_content`, with `UnknownPipelineHashError`. The shared half is
+`utils.store.fetch_rows`, which returns only what it found: **naming an absence is the
+caller's job, because utils owns no error vocabulary.**
 
-`active_hashes(conn)` takes a **connection, not a path** (`write_pull` needs it inside its
-own transaction) and sets `row_factory` on a **cursor it opens itself, never on the
-connection** — connection-wide would change the row type every other read gets back.
-`compose.active_protocols` follows the identical pattern.
+`active_hashes(conn, table, id_column)` takes a **connection, not a path** (`write_pull`
+needs it inside its own transaction) and sets `row_factory` on a **cursor it opens itself,
+never on the connection** — connection-wide would change the row type every other read
+gets back. `compose.active_protocols` follows the identical pattern.
 
-**The store takes artefacts, not dicts.** `build_row(artefact, pulled_at)` → `ProtocolRow`
-whose field names are *exactly* `protocol_content`'s column names.
+**Both stores name their own tables.** `seal.store` and `compose.store` each declare
+`CONTENT_TABLE` / `HISTORY_TABLE` / `ID_COLUMN` and pass them into the utils, so `scribe`
+and `chronos` never learn a table name to ask a question.
+
+**The store takes artefacts, not dicts.** `build_protocol_entry(artefact, pulled_at)` →
+`ProtocolEntry` whose field names are *exactly* `protocol_content`'s column names.
+`build_pipeline_entry` → `PipelineEntry` does the same for `pipeline_content`.
 
 **Columns are derived, never restated.** `_CONTENT_COLUMNS` is the fixed columns +
-`METADATA_FIELDS`, and the `INSERT` and its **named** parameters are generated from it.
-Three failure modes become loud instead of silent:
+`METADATA_FIELDS`, and the `INSERT` and its **named** parameters are generated from it by
+`utils.store.insert_statement`. Three failure modes become loud instead of silent:
 
 | drift | what happens |
 |---|---|
-| field added to `METADATA_FIELDS`, not to `ProtocolRow` | `TypeError` on first `build_row` |
+| field added to `METADATA_FIELDS`, not to the entry | `TypeError` on first build |
 | added to both, no column | `sqlite3.ProgrammingError` on the insert |
-| `ProtocolRow` or the schema reordered | nothing — binding is by name |
+| the entry or the schema reordered | nothing — binding is by name |
 
 - **Two SQLite files, deliberately separate:**
   - `chronos.db` — `protocol_content(hash PK, protocol_id, protocol_guid, title, doi,
@@ -490,7 +533,11 @@ Three failure modes become loud instead of silent:
     `protocol_history(protocol_id, hash, valid_from, deprecated_at)` |
     `snapshots(manifest_hash PK, created_at, provenance)`. Append-only; the **cron writer
     is the sole writer**. `snapshots` is schema only — nothing writes it yet.
-  - `compose.db` — pinned graph documents | `pipeline_history` | parent links.
+  - `compose.db` — `pipeline_content(hash PK, pipeline_guid, title, manifest_hash, root,
+    executor, DAG, pipeline, created_on, creator)` |
+    `pipeline_history(pipeline_guid, hash, valid_from, deprecated_at)`. Same interval
+    rules as protocols, through the same `utils/intervals.py`. Parent links for lineage
+    are **not built yet**.
 - **The store must refuse to overwrite or delete history** — content rows insert-only,
   `deprecated_at` set once and never unset. To be enforced by sqlite triggers so the rule
   holds whoever opens the file. **Not yet implemented.**
@@ -793,12 +840,16 @@ path, readability usually wins. State the trade-off and let us decide together.
   needs it under lualatex). In `system_deps` and `oci_deps` both. Nothing builds an
   image yet — `oci_deps` is a declared list with no output consuming it.
 - **Tests:** `pytest` with `pytest-cov`; mock HTTP with `responses`, **never hit the live
-  API in tests**. Live probes are for diagnosing API behaviour only. **Green — 509
+  API in tests**. Live probes are for diagnosing API behaviour only. **Green — 584
   passing.** One file per concern: `test_dates.py` · `test_contract.py` ·
-  `test_scrub.py` · `test_artefact.py` · `test_request.py` · `test_walk.py` ·
-  `test_sources.py` · `test_lifecycle.py` · `test_pull_log.py` · `test_report.py` ·
-  `test_store.py` · `test_seal.py` · `test_scribe_richtext.py` ·
-  `test_scribe_hydrate.py` · `test_scribe_markdown.py` · `test_fixture.py`.
+  `test_utils.py` · `test_scrub.py` · `test_artefact.py` · `test_request.py` ·
+  `test_walk.py` · `test_sources.py` · `test_lifecycle.py` · `test_pull_log.py` ·
+  `test_report.py` · `test_store.py` · `test_compose.py` · `test_seal.py` ·
+  `test_scribe_richtext.py` · `test_scribe_hydrate.py` · `test_scribe_markdown.py` ·
+  `test_fixture.py`.
+- **A test never writes into the repo.** `mint_template` drops a file beside its source,
+  so the template tests copy `config/` into `tmp_path` first. A suite that litters the
+  working tree makes `git status` useless for reviewing what a change did.
   `test_compose.py` is an **empty file** — `compose/` is untested.
 - **Entry point:** run as `python -m chronos.chronos`, never by file path. By path Python
   puts the file's own directory on `sys.path`, so `chronos` resolves to the module
@@ -992,18 +1043,23 @@ deployed. It stops being free at deployment.
   other tools request a file here and hand it back to the user, which makes this the
   concrete seam Phase 4 formalises.
 
-### Phase 3 — `compose`: pipelines *(started — `active_protocols` exists)*
-- [ ] **`ComposedProtocols` is a sketch, not a contract.** `root` and `executor` are
-  fields but appear in neither `HASH_FIELDS` nor `METADATA_FIELDS`, so `to_dict()` and
-  `hashable()`+`metadata()` disagree; `COMPOSITION_FIELDS` and `HASH_ALGORITHM` are
-  unreferenced; `id`/`guid` are typed `int` where the protocol side uses a string guid.
-- [ ] **`tests/dev_tests/test_compose.py` is an empty file.**
-- [ ] **[Decision]** The **DAG document shape** to be hashed. `templates.py` is the
-  placeholder, leaning toward JSON files over Python constructors.
-- [ ] `compose.db` schema; `graph_hash` over the canonical DAG; build a pinned instance
-  from the active manifest and **validate against the read-only VC**; fork-on-edit +
-  lineage.
-- [ ] **[Decision]** The blessed starter pipelines to seed.
+### Phase 3 — `compose`: pipelines *(storage built; composition rules are not)*
+
+`compose.db` stores and versions pipelines through the same interval machinery as
+protocols. What is missing is everything that decides *what a valid pipeline is*.
+
+- [ ] **[Decision]** The **DAG document shape** to be hashed. The store treats `DAG` as
+  an opaque canonical-JSON blob, so nothing yet says a node is a protocol hash rather
+  than the placeholder `{"A": ["B", "C"]}` the template ships. **Settle this before
+  seeding real pipelines** — it changes every pipeline hash.
+- [ ] **Validate a graph against the read-only VC before storage.** It may only reference
+  hashes that exist and were active at its authoring date. Nothing checks this today, so
+  a pipeline can pin a protocol that was never sealed.
+- [ ] **`manifest_hash` is a nullable column nothing fills.** Resolving a pipeline against
+  a dated manifest is blocked on the Phase 2 day→manifest resolver.
+- [ ] Fork-on-edit + the parent link for lineage.
+- [ ] **[Decision]** The blessed starter pipelines to seed. The seven blocks in
+  `config/pg_core_templates.yaml` are names and one placeholder DAG, not content.
 
 ### Phase 4 — ports & container boundary
 - [ ] Define the **query port** (read-only) and **compose port** (validated write).
@@ -1040,14 +1096,6 @@ guesswork — the wrong artefact to ship from a project selling provenance.
 named human currently understands and stands behind a module. Same audit any inherited
 code gets when its author is gone; the author being a model changes nothing about it.
 
-- [ ] **Track `docs/audit_log.md`.** Today it is an untracked file asserting claims about
-  tracked commit hashes, with nothing binding the two — tamper-evidence given up to dodge
-  a trivial ordering problem. Committing an entry in the *following* commit solves the
-  ordering anyway, which is already what happens in time. Tracked, every
-  `## YYYY-MM-DD — <hash> —` header becomes checkable: the commit exists and contains
-  what the entry claims.
-- [ ] Its header names `CLAUDE.md` as holding current state. That file does not exist; it
-  is `AGENT.md`. Drift inside the document whose job is preventing drift.
 - [ ] **Human review pass, ordered by blast radius**, recorded as a review — never as an
   authorship claim:
   - `seal/contract.py` — `HASH_FIELDS` is a whitelist that defines identity permanently. A
@@ -1056,7 +1104,7 @@ code gets when its author is gone; the author being a model changes nothing abou
   - `seal/store.py` `_diff` / `write_pull` — decides what counts as changed and what is
     deprecated by absence. Wrong here is silent loss in the one scenario this tool exists
     to prevent.
-  - `seal/dates.py` and the `as_of` / `valid_from` / `deprecated_at` semantics — an
+  - `utils/dates.py` and the `as_of` / `valid_from` / `deprecated_at` semantics — an
     off-by-one surfaces two years out, which is when it cannot be debugged.
   - `scribe/` — skim. A bad render is visible immediately.
 - [ ] **Fold the `contract.py` half into the identity migration.** That migration re-hashes
@@ -1066,12 +1114,13 @@ code gets when its author is gone; the author being a model changes nothing abou
 - [ ] **`Co-Authored-By` trailers from here on.** Free at write time, unrecoverable after,
   and the only line-level signal that survives. It does not fix the existing 49 commits and
   is not meant to — it draws the line those commits sit behind.
-- [ ] **Split `AGENT.md` when it is cleaned for tracking.** ~1035 lines, of which
+- [ ] **Split `AGENT.md`.** ~1140 lines, of which
   "Architecture & data model" and "protocols.io — the rules that cost us something" are
   roughly half: that is a design doc, tracked and reviewed on its own merits whether or not
   an agent ever reads it. The agent-facing part — principles, conventions, this roadmap —
-  is smaller and churns faster. Different lifecycles, different files. Tracking it also
-  makes rule churn legible, which is the finding, not the embarrassment.
+  is smaller and churns faster. Different lifecycles, different files. Now that the file
+  is tracked, that churn is legible in the log, which is the finding, not the
+  embarrassment.
 - [ ] **[Decision]** Declare the agent's role per phase — reviewer / helper / author —
   in whichever file survives the split. Principle 8 states the working model; nothing
   records which model was actually in force when. That silent drift is the whole problem

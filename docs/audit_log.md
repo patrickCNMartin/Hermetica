@@ -1,7 +1,7 @@
 # Audit log — decisions and discoveries
 
 Append-only. Newest last. **Not read by default** — only when the history of a decision
-is actually needed. `CLAUDE.md` holds the current state, `protocols_io_findings.md` holds
+is actually needed. `AGENT.md` holds the current state, `protocols_io_findings.md` holds
 the evidence; this file holds *when* and *why*.
 
 One entry per major decision or discovery:
@@ -14,9 +14,11 @@ One entry per major decision or discovery:
 ```
 
 **The entry is written after the commit it describes**, so the hash names the commit that
-actually contains the work — not the one before it. This file is git-ignored and never
-committed itself, so there is no ordering problem. A decision that changes no tracked file
-still takes the hash of the commit it sits beside, and says so.
+actually contains the work — not the one before it. This file is tracked, so an entry is
+committed one commit behind the work it names; that lag is what keeps the hashes real, and
+it is what makes every `## YYYY-MM-DD — <hash> —` header checkable: the commit exists and
+contains what the entry claims. A decision that changes no tracked file still takes the
+hash of the commit it sits beside, and says so.
 
 ---
 
@@ -403,3 +405,96 @@ unpatched in the mirror body.
 The three recorded doc-versus-reality discrepancies — `page_id` indexing, `order_field`
 uniqueness, the rate limit — are all still accurate as written, and the v4 search still
 documents `GET` while its own example uses `-X PUT`.
+
+---
+
+## 2026-09-03 — 531d44c — an earlier rename never reached its callers
+
+**Discovered:** the suite could not collect. Five test modules and `chronos.py` still
+imported `initialize_db`, `format_entry`, `build_row` and `ProtocolRow`, which had been
+renamed in the source to `initialize_protocol_db`, `format_db_entry`,
+`build_protocol_entry` and `ProtocolEntry`. `chronos.py` also imported
+`initialize_pipeline_db` from `compose.compose`, where it has never lived, and passed it a
+`template=` argument it does not accept.
+
+**Why it matters:** the tests were red before any of this session's work started, so
+nothing could have told us whether a refactor broke behaviour. Repaired first, on its own
+commit, so a bisect can separate a rename repair from a behaviour change.
+
+**Decided:** flatten `chronos/utils/` into `chronos/`. It held two chronos-only modules,
+so the directory bought nothing, and it would have collided in the reader's head with the
+new top-level `utils/`.
+
+**Cost:** none. No behaviour change; 509 tests pass either side of it.
+
+---
+
+## 2026-09-03 — 2717c60 — shared mechanics leave `seal` for `utils`
+
+**Decided:** `hermetica/utils/` now holds canonical form and hashing (`hashing.py`), epoch
+conversion (`dates.py`, moved out of `seal/`), the sqlite connection and schema helpers
+(`store.py`), and the version-interval machinery (`intervals.py`). `seal` and `compose`
+call into it, each passing its own table and id column.
+
+**Why:** `protocol_blob` and `pipeline_blob` had identical bodies, `HASH_ALGORITHM` was
+declared twice, and the whole open/close-interval machinery existed only in `seal`. The
+next step — versioning pipelines — would have been a second copy of the part of the system
+where a mistake is silent data loss.
+
+**Rejected — a descriptor object or a factory returning bound callables.** Both were
+considered and both shorten the call sites. Plain arguments won because a reader learns
+every input from the signature; a bag of table config puts a hidden input back with extra
+steps (Principle 3, "a function is a capsule").
+
+**Rejected — a shared base class for `hashable`/`metadata`/`to_dict`.** Those are three
+one-liners visible on each dataclass. Inheriting them would move their meaning to another
+file to save nine lines, which is the locality cost the same principle warns about. They
+stay duplicated on purpose. Only the *hashing of* their output is shared, as
+`hash_of(payload)`.
+
+**Accepted contradiction:** `AGENT.md` said "a rule about identity or time belongs in
+`seal`". `dates.py` moved anyway. The distinction now written into the module table is
+**mechanics versus rules**: `to_epoch` converts, but *what `valid_from` means* is still
+seal's; `hash_bytes` digests, but *which fields get hashed* is still `HASH_FIELDS`.
+`utils` holds no rule, knows no platform, and owns no error vocabulary — `fetch_rows`
+returns what it found and leaves naming an absence to the caller.
+
+**Cost:** every `seal.dates` and `seal.contract` import in the repo moved. `FROZEN_HASH`
+in `test_contract.py` is unchanged, which is the proof canonical form did not shift — no
+stored hash is invalidated.
+
+---
+
+## 2026-09-03 — 2717c60 — `compose` gets a history table; `DAG_ids` dropped
+
+**Decided:** `compose.db` gains `pipeline_history(pipeline_guid, hash, valid_from,
+deprecated_at)` and a valid `pipeline_content`. Pipelines are now versioned by exactly the
+interval rules protocols use, through the same `utils/intervals.py`: one active version
+per guid, a new hash closes the old interval and opens a new one, absence deprecates.
+
+**Discovered:** `compose/store.py` could not run at all. Its `CREATE TABLE` was missing
+four commas, `created_on` was read before assignment, and the `DAG` column was being handed
+the entire hashed blob instead of the DAG. `compose/templates.py` was six runtime errors
+deep — `re.find` (not a function), `uuid.uuid4().hex()` (a property, called), a dict
+iterated as pairs, a `tite=` typo, and YAML keys that did not match what the reader asked
+for (`guid` vs `pipeline_guid`, `executor` vs the template's `executoror`).
+
+**Decided:** drop `DAG_ids` from `compose.HASH_FIELDS`. It named a field that does not
+exist on `ProtocolPipeline`, so `hashable()` raised `AttributeError` on every call — which
+is how it survived unnoticed. The ids it named are already carried inside the `DAG`, so
+hashing them separately would hash the same information twice. Rejected the alternative of
+adding the field: inventing a hashed field decides what every future pipeline hash means,
+and there is no DAG document shape settled yet to decide it from.
+
+**Decided:** reading a template never mints. `pipelines_from_template` now raises
+`UnmintedTemplateError` unless passed `mint=True`. The `pipeline_guid` is the identity that
+survives every edit, so minting fixes it forever; a silent re-mint would orphan every
+pipeline already stored under the old guid. The tell was our own new tests writing
+`config/pg_core_templates_minted.yaml` into the working tree as a side effect of reading.
+
+**Cost:** no pipeline hash had ever been written, so nothing re-hashes. `manifest_hash`
+ships as a nullable column nothing fills — resolving a pipeline against a dated manifest
+is still blocked on the Phase 2 day-to-manifest resolver. Graph validation against the
+read-only version control, fork-on-edit and lineage remain unbuilt: this commit is the
+storage, not the composition rules. `pyyaml` was imported but never declared, and is now a
+dependency; `uv.lock` still needs a `uv lock` refresh, which could not run here.
