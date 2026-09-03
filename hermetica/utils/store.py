@@ -6,8 +6,10 @@ from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 
 from utils.dates import get_timestamp
-from utils.hashing import hash_bytes
 from utils.error_handling import MissingHash
+from utils.hashing import hash_bytes
+
+
 # -----------------------------------------------------------------------------#
 # CONNECTION
 # -----------------------------------------------------------------------------#
@@ -39,11 +41,7 @@ def initialize_db(db: str, schema: Iterable[str]) -> None:
 # -----------------------------------------------------------------------------#
 # READ
 # -----------------------------------------------------------------------------#
-def format_entries(
-    build: Callable,
-    artefacts: Iterable,
-    pulled_at: int | None
-) -> list:
+def format_entries(build: Callable, artefacts: Iterable, pulled_at: int | None) -> list:
     pulled_at = pulled_at if pulled_at is not None else get_timestamp()
     return [build(artefact, pulled_at) for artefact in artefacts]
 
@@ -62,7 +60,7 @@ def fetch_entries(
     columns: tuple[str, ...],
     key_column: str,
     keys: Iterable[str],
-    entry_type: type
+    entry_type: type,
 ) -> list:
     wanted = list(keys)
     if not wanted:
@@ -70,7 +68,9 @@ def fetch_entries(
     with connect(db, read_only=True) as conn:
         found = {
             key: entry_type(*row)
-            for key, row in fetch_entry(conn, table, columns, key_column, wanted).items()
+            for key, row in fetch_entry(
+                conn, table, columns, key_column, wanted
+            ).items()
         }
     missing = sorted(set(wanted) - set(found))
     if missing:

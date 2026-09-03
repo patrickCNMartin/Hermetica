@@ -1,7 +1,6 @@
 # -----------------------------------------------------------------------------#
 # IMPORT LIBS
 # -----------------------------------------------------------------------------#
-import json
 import os
 import sys
 from pathlib import Path
@@ -16,13 +15,14 @@ from chronos.report import format_failure, format_report, write_report
 from compose.store import SCHEMA as PIPELINE_SCHEMA
 from seal.store import SCHEMA as PROTOCOL_SCHEMA
 from seal.store import format_protocol_entry, write_protocols
-from utils.error_handling import UnreadableProtocolError
+
 # -----------------------------------------------------------------------------#
 # IMPORT SOURCE ADAPTERS
 # -----------------------------------------------------------------------------#
 from sources import protocols_io
 from sources.contract import ProtocolSource, check_source_name
 from utils.dates import get_timestamp
+from utils.error_handling import UnreadableProtocolError
 from utils.store import initialize_db
 
 # -----------------------------------------------------------------------------#
@@ -210,4 +210,3 @@ if __name__ == "__main__":
 
     if failed:
         sys.exit(1)
-

@@ -2,6 +2,7 @@
 # IMPORT LIBS
 # -----------------------------------------------------------------------------#
 import difflib
+
 # -----------------------------------------------------------------------------#
 # LIFECYCLE TOKENS
 # -----------------------------------------------------------------------------#
@@ -15,6 +16,7 @@ DEPRECATED_TOKENS: frozenset[str] = frozenset(
         "deprecate",
     }
 )
+
 
 # -----------------------------------------------------------------------------#
 # TOKENS
@@ -33,10 +35,7 @@ def is_deprecated(keywords: str | None) -> bool:
 
 # Not sure if I want to keep this
 # this is more of a guard againts my own incomptence in spelling...
-def near_miss_tokens(
-    keywords: str | None,
-    near_miss_ratio: float = 0.8
-) -> list[str]:
+def near_miss_tokens(keywords: str | None, near_miss_ratio: float = 0.8) -> list[str]:
     """Tokens that look like a lifecycle flag but are not one. Warning only."""
 
     def looks_like_one(token: str) -> bool:

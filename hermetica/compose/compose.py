@@ -4,18 +4,19 @@
 import sqlite3
 from dataclasses import asdict, dataclass
 
+from utils.constants import (
+    PIPELINE_GUID,
+    PIPELINE_HASH_FIELDS,
+    PIPELINE_HISTORY,
+    PIPELINE_METADATA_FIELDS,
+)
 from utils.intervals import active_hashes
 from utils.store import connect
-from utils.constants import (
-    PIPELINE_HASH_FIELDS,
-    PIPELINE_METADATA_FIELDS,
-    PIPELINE_HISTORY,
-    PIPELINE_GUID)
-
 
 # -----------------------------------------------------------------------------#
 # CREATE COMPOSITION TEMPLATE
 # -----------------------------------------------------------------------------#
+
 
 @dataclass(frozen=True)
 class PipelineArtefact:
@@ -52,7 +53,9 @@ class PipelineArtefact:
 def active_protocols(db_path: str) -> dict[str, str]:
     """hash -> title for every protocol version currently active."""
     with connect(db_path, read_only=True) as conn:
-        protocol_set = list(active_hashes(conn, PIPELINE_HISTORY, PIPELINE_GUID).values())
+        protocol_set = list(
+            active_hashes(conn, PIPELINE_HISTORY, PIPELINE_GUID).values()
+        )
         if not protocol_set:
             return {}
         hash_list = ",".join("?" * len(protocol_set))
@@ -66,4 +69,3 @@ def active_protocols(db_path: str) -> dict[str, str]:
             )
         }
     return protocols
-

@@ -5,15 +5,16 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from seal.contract import ProtocolArtefact
+from utils.constants import (
+    PROTOCOL_CONTENT,
+    PROTOCOL_CONTENT_FIELDS,
+    PROTOCOL_HISTORY,
+    PROTOCOL_ID,
+)
 from utils.dates import get_timestamp, to_epoch
-from utils.hashing import encode_entry, canonical_json, hash_bytes
+from utils.hashing import canonical_json, encode_entry, hash_bytes
 from utils.intervals import diff_versioned, write_version_control
 from utils.store import fetch_entries, insert_statement
-from utils.constants import (
-    PROTOCOL_HISTORY,
-    PROTOCOL_CONTENT,
-    PROTOCOL_ID,
-    PROTOCOL_CONTENT_FIELDS)
 
 # -----------------------------------------------------------------------------#
 # SCHEMA
@@ -63,7 +64,7 @@ SCHEMA: tuple[str, ...] = (
 # FORMATTING DB ENTRIES
 # -----------------------------------------------------------------------------#
 # Type enforce a protocol entry
-@dataclass(frozen= True)
+@dataclass(frozen=True)
 class ProtocolEntry:
     hash: str
     protocol_id: str
@@ -78,10 +79,6 @@ class ProtocolEntry:
     authors: str | None
     keywords: str | None
     valid_from: int
-
-
-
-
 
 
 def build_protocol_entry(
@@ -139,8 +136,7 @@ class ProtocolContentEntry:
 # GET CONTENT
 # -----------------------------------------------------------------------------#
 def read_protocol_content():
-    return ProtocolContentEntry._fields[:-1] 
-
+    return ProtocolContentEntry._fields[:-1]
 
 
 def get_protocols(
@@ -152,12 +148,7 @@ def get_protocols(
     READ_COLUMNS = read_protocol_content()
     columns = READ_COLUMNS + ("protocol",) if with_blob else READ_COLUMNS
     return fetch_entries(
-        db,
-        protocol_content,
-        columns,
-        "hash",
-        hashes,
-        ProtocolContentEntry
+        db, protocol_content, columns, "hash", hashes, ProtocolContentEntry
     )
 
 
@@ -165,7 +156,7 @@ def diff_protocols(
     db: str,
     protocols: Iterable[ProtocolEntry],
     protocol_history: str = PROTOCOL_HISTORY,
-    protocol_id: str = PROTOCOL_ID
+    protocol_id: str = PROTOCOL_ID,
 ) -> dict[str, list[str]]:
     """Compare a pull against the active state.
 
@@ -178,6 +169,7 @@ def diff_protocols(
 # WRITE CONTENT
 # -----------------------------------------------------------------------------#
 
+
 # personal pref - explicit argument naming
 # Is it necessary? Not really. Do I find this more readable? Yes
 def write_protocols(
@@ -185,16 +177,11 @@ def write_protocols(
     entries: list[ProtocolEntry],
     pulled_at: int | None = None,
     protocol_content: str = PROTOCOL_CONTENT,
-    protocol_content_fields : Iterable[str] = PROTOCOL_CONTENT_FIELDS,
-    protocol_history : str = PROTOCOL_HISTORY,
-    protocol_id: str = PROTOCOL_ID
+    protocol_content_fields: Iterable[str] = PROTOCOL_CONTENT_FIELDS,
+    protocol_history: str = PROTOCOL_HISTORY,
+    protocol_id: str = PROTOCOL_ID,
 ) -> dict[str, list[str]]:
-    insert = insert_statement(protocol_content,protocol_content_fields)
+    insert = insert_statement(protocol_content, protocol_content_fields)
     return write_version_control(
-        db,
-        protocol_history,
-        protocol_id,
-        insert,
-        entries,
-        pulled_at
+        db, protocol_history, protocol_id, insert, entries, pulled_at
     )

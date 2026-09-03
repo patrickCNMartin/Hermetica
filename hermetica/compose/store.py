@@ -5,15 +5,17 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from compose.compose import PipelineArtefact
+from utils.constants import (
+    PIPELINE_CONTENT,
+    PIPELINE_CONTENT_FIELDS,
+    PIPELINE_GUID,
+    PIPELINE_HISTORY,
+)
 from utils.dates import get_timestamp, to_epoch
 from utils.hashing import as_column, canonical_json, hash_bytes
 from utils.intervals import diff_versioned, write_version_control
 from utils.store import fetch_entries, insert_statement
-from utils.constants import (
-    PIPELINE_HISTORY,
-    PIPELINE_CONTENT,
-    PIPELINE_GUID,
-    PIPELINE_CONTENT_FIELDS)
+
 # -----------------------------------------------------------------------------#
 # BUILD PROTOCOL PIPELINE DB
 # -----------------------------------------------------------------------------#
@@ -68,11 +70,8 @@ class PipelineEntry:
     valid_from: int
 
 
-
-
 def build_pipeline_entry(
-    artefact: PipelineArtefact,
-    pulled_at: int | None = None
+    artefact: PipelineArtefact, pulled_at: int | None = None
 ) -> PipelineEntry:
     """Prepare one pipeline entry from a ProtocolPipeline."""
     pulled_at = pulled_at if pulled_at is not None else get_timestamp()
@@ -94,12 +93,12 @@ def build_pipeline_entry(
 
 
 def format_pipeline_entry(
-    artefacts: Iterable[PipelineArtefact],
-    pulled_at: int | None = None
+    artefacts: Iterable[PipelineArtefact], pulled_at: int | None = None
 ) -> list[PipelineArtefact]:
     """make a list of entries from a bunch of protocols"""
     pulled_at = pulled_at if pulled_at is not None else get_timestamp()
     return [build_pipeline_entry(artefact, pulled_at) for artefact in artefacts]
+
 
 # -----------------------------------------------------------------------------#
 # CHANGE DETECTION UTILS
@@ -123,26 +122,23 @@ class PipelineContentEntry:
 # -----------------------------------------------------------------------------#
 # don't like this but I hate the constant approach even more.
 def read_pipeline_content():
-    return PipelineContentEntry._fields[:-1] 
+    return PipelineContentEntry._fields[:-1]
+
 
 # I know I don't need to parse pipeline content as an argument
 # But I hate when function pull something out of nothing instead of
 # parsing it as an argument.
 # explicit IN and explicit OUT
 def get_pipelines(
-    db: str, hashes: Iterable[str],
+    db: str,
+    hashes: Iterable[str],
     with_blob: bool = True,
-    content_table : str = PIPELINE_CONTENT,
+    content_table: str = PIPELINE_CONTENT,
 ) -> list[PipelineContentEntry]:
     READ_COLUMNS = read_pipeline_content()
     columns = READ_COLUMNS + ("pipeline",) if with_blob else READ_COLUMNS
     return fetch_entries(
-        db,
-        content_table,
-        columns,
-        "hash",
-        hashes,
-        PipelineContentEntry
+        db, content_table, columns, "hash", hashes, PipelineContentEntry
     )
 
 
@@ -150,7 +146,7 @@ def diff_pipelines(
     db: str,
     pipelines: Iterable[PipelineEntry],
     pipeline_history: str = PIPELINE_HISTORY,
-    pipeline_guid: str = PIPELINE_GUID
+    pipeline_guid: str = PIPELINE_GUID,
 ) -> dict[str, list[str]]:
     """Compare a set of pipelines against the active state."""
     return diff_versioned(db, pipeline_history, pipeline_guid, pipelines)
@@ -164,17 +160,12 @@ def write_pipeline(
     entries: list[PipelineEntry],
     pulled_at: int | None = None,
     pipeline_content: str = PIPELINE_CONTENT,
-    pipleline_content_fields : Iterable[str] = PIPELINE_CONTENT_FIELDS,
+    pipleline_content_fields: Iterable[str] = PIPELINE_CONTENT_FIELDS,
     pipeline_history: str = PIPELINE_HISTORY,
-    pipeline_guid : str = PIPELINE_GUID
+    pipeline_guid: str = PIPELINE_GUID,
 ) -> dict[str, list[str]]:
     """Apply one set of pipelines and return its diff."""
-    insert = insert_statement(pipeline_content,pipleline_content_fields)
+    insert = insert_statement(pipeline_content, pipleline_content_fields)
     return write_version_control(
-        db,
-        pipeline_history,
-        pipeline_guid,
-        insert,
-        entries,
-        pulled_at
+        db, pipeline_history, pipeline_guid, insert, entries, pulled_at
     )

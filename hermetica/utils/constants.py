@@ -1,6 +1,6 @@
 # -----------------------------------------------------------------------------#
 # This is where we have all the "configs" and constants
-# This could be a set of builder functions 
+# This could be a set of builder functions
 # It just irks me to have to find where all of this shit is
 # -----------------------------------------------------------------------------#
 
@@ -104,17 +104,12 @@ PINS_KEYS: tuple[str, ...] = (
     "created_at",
     "provenance",
     "entries",
-    "pipeline"
+    "pipeline",
 )
-PROTOCOL_KEYS: tuple[str,...] = (
-    "protocols",
-    "bodies"
-)
+PROTOCOL_KEYS: tuple[str, ...] = ("protocols", "bodies")
 
 # Need to check this
-PIPELINE_KEYS: tuple[str,...] = (
-    "dag"
-)
+PIPELINE_KEYS: tuple[str, ...] = "dag"
 
 LOCK_KEYS: tuple[str, ...] = PINS_KEYS + PROTOCOL_KEYS + PIPELINE_KEYS
 

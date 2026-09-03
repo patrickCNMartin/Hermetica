@@ -5,7 +5,10 @@ import hashlib
 import json
 import unicodedata
 from typing import Any
+
 from utils.constants import HASH_ALGORITHM
+
+
 # -----------------------------------------------------------------------------#
 # CANONICAL FORM
 # -----------------------------------------------------------------------------#
@@ -54,6 +57,7 @@ def encode_entry(value: Any) -> Any:
     if value is None or isinstance(value, (int, float, str)):
         return value
     return canonical_json(value).decode("ascii")
+
 
 def decode_entry(value: str | None) -> Any:
     return None if value is None else json.loads(value)

@@ -3,8 +3,8 @@
 # -----------------------------------------------------------------------------#
 import sqlite3
 from collections.abc import Iterable
-from datetime import date, datetime
 from dataclasses import dataclass
+from datetime import date, datetime
 
 from utils.dates import end_of_day, get_timestamp, start_of_day
 from utils.store import connect
@@ -142,16 +142,15 @@ def open_intervals(
 # -----------------------------------------------------------------------------#
 
 
-
-def version_control_diff(
-    db: str, history_table: str, id_column: str, entries: Iterable
-) -> dict[str, list[str]]:
-    """Compare a set of entries against the active state, without writing."""
-    with connect(db, read_only=True) as conn:
-        return diff_entries(
-            active_hashes(conn, history_table, id_column),
-            _incoming(entries, id_column),
-        )
+# def version_control_diff(
+#     db: str, history_table: str, id_column: str, entries: Iterable
+# ) -> dict[str, list[str]]:
+#     """Compare a set of entries against the active state, without writing."""
+#     with connect(db, read_only=True) as conn:
+#         return diff_entries(
+#             active_hashes(conn, history_table, id_column),
+#             _incoming(entries, id_column),
+#         )
 
 
 def write_version_control(
@@ -160,11 +159,10 @@ def write_version_control(
     id_column: str,
     insert_sql: str,
     entries: list,
-    pulled_at: int | None
+    pulled_at: int | None,
 ) -> dict[str, list[str]]:
-    
+
     pulled_at = pulled_at if pulled_at is not None else get_timestamp()
-    
 
     with connect(db) as conn:
         diff = diff_entries(active_hashes(conn, history_table, id_column), entries)

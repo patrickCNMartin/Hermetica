@@ -9,6 +9,7 @@ from yaml import safe_dump, safe_load
 from compose.compose import ProtocolPipeline
 from utils.dates import to_epoch
 
+
 # -----------------------------------------------------------------------------#
 # TEMPLATES
 # -----------------------------------------------------------------------------#
@@ -39,12 +40,10 @@ def mint_template(template_path: str) -> tuple[dict, str]:
 # -----------------------------------------------------------------------------#
 
 
-
 def pipelines_from_template(
-    template_path: str,
-    mint: bool = False
+    template_path: str, mint: bool = False
 ) -> list[ProtocolPipeline]:
- 
+
     if mint and not re.compile(r"_minted\.(?:yaml|yml)$").search(template_path):
         template, _ = mint_template(template_path)
     else:

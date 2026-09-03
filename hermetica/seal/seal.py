@@ -4,12 +4,11 @@
 import json
 from collections.abc import Iterable
 
-
 from seal.store import get_content
 from utils.dates import as_iso, get_timestamp
-from utils.hashing import canonical_json, hash_bytes, decode_entry
-from utils.error_handling import DuplicatedIdError, MalformedLockError
-from utils.constants import LOCK_KEYS,PINS_KEYS,DRIFT
+from utils.error_handling import DuplicatedIdError
+from utils.hashing import canonical_json, decode_entry, hash_bytes
+
 # -----------------------------------------------------------------------------#
 # LOCK DOCUMENT
 # -----------------------------------------------------------------------------#
@@ -68,4 +67,3 @@ def generate_protocol_lock(
     if with_bodies:
         document["bodies"] = bodies
     return document
-

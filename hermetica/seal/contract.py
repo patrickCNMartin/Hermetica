@@ -5,8 +5,10 @@ import json
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from utils.hashing import hash_of
 from utils.constants import PROTOCOL_HASH_FIELDS, PROTOCOL_METADATA_FIELDS
+from utils.hashing import hash_of
+
+
 # -----------------------------------------------------------------------------#
 # CONTENT CONTRACT
 # -----------------------------------------------------------------------------#
