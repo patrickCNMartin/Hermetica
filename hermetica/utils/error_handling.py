@@ -9,8 +9,5 @@ class MissingHash(ValueError):
     """Hash Value not found in data base."""
 
 
-
-
-
 class MalformedLockError(ValueError):
     """The file is not a lock document — a key the format requires is missing."""

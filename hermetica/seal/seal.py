@@ -4,16 +4,18 @@
 import json
 from collections.abc import Iterable
 
-from seal.store import get_protocols
 from compose.store import get_pipelines
+from seal.store import get_protocols
 from utils.dates import as_iso, get_timestamp
 from utils.hashing import canonical_json, decode_entry, hash_bytes
+
 
 # -----------------------------------------------------------------------------#
 # Error handling
 # -----------------------------------------------------------------------------#
 class DuplicatedIdError(ValueError):
     """Duplicated entries in the version control data base"""
+
 
 # -----------------------------------------------------------------------------#
 # LOCK DOCUMENT
@@ -32,8 +34,7 @@ def generate_protocol_lock(
     provenance: dict | None = None,
     with_bodies: bool = True,
 ) -> dict:
-    """Build the lock document for an already-resolved set of protocol hashes.
-    """
+    """Build the lock document for an already-resolved set of protocol hashes."""
     as_of = as_of if as_of is not None else get_timestamp()
     protocols = get_protocols(db, protocols, with_blob=with_bodies)
 
@@ -44,7 +45,10 @@ def generate_protocol_lock(
                 f"two versions of protocol {protocol.protocol_id} in one lock; "
                 "at most one version of a protocol may be active"
             )
-        entries[protocol.protocol_id] = {"guid": protocol.protocol_guid, "hash": protocol.hash}
+        entries[protocol.protocol_id] = {
+            "guid": protocol.protocol_guid,
+            "hash": protocol.hash,
+        }
         display[protocol.protocol_id] = {
             "title": protocol.title,
             "doi": protocol.doi,
@@ -69,11 +73,9 @@ def generate_protocol_lock(
         document["bodies"] = bodies
     return document
 
+
 def generate_pipeline_lock(
-    pipeline: dict,
-    db: str,
-    as_of: int | None = None,
-    provenance: dict | None = None
+    pipeline: dict, db: str, as_of: int | None = None, provenance: dict | None = None
 ) -> dict:
     as_of = as_of if as_of is not None else get_timestamp()
     pipelines = get_pipelines(db, pipeline)
@@ -84,13 +86,15 @@ def generate_pipeline_lock(
                 f"two versions of protocol {pipeline.pipeline_guid} in one lock; "
                 "at most one version of a protocol may be active"
             )
-        entries[pipeline.pipeline_guid] = {"guid": pipeline.pipeline_guid, "hash": pipeline.hash}
+        entries[pipeline.pipeline_guid] = {
+            "guid": pipeline.pipeline_guid,
+            "hash": pipeline.hash,
+        }
         display[pipeline.pipeline_guid] = {
             "title": pipeline.title,
-            "dag" : pipeline.dag,
+            "dag": pipeline.dag,
             "created_on": as_iso(pipeline.created_on) if pipeline.created_on else None,
             "creator": decode_entry(pipeline.creator),
-            
         }
     document = {
         "manifest_hash": manifest_hash(entries),
@@ -100,11 +104,11 @@ def generate_pipeline_lock(
         "entries": entries,
         "pipelines": display,
     }
-    
-    return document
-    
 
-def generate_lock(protocol_lock:dict|None, pipeline_lock:dict|None):
+    return document
+
+
+def generate_lock(protocol_lock: dict | None, pipeline_lock: dict | None):
     if protocol_lock and pipeline_lock:
         protocol_lock["pipeline"] = pipeline_lock
         return protocol_lock
@@ -114,4 +118,3 @@ def generate_lock(protocol_lock:dict|None, pipeline_lock:dict|None):
         return pipeline_lock
     else:
         raise ValueError("No lock files to return!")
-    
