@@ -109,7 +109,7 @@ PINS_KEYS: tuple[str, ...] = (
 PROTOCOL_KEYS: tuple[str, ...] = ("protocols", "bodies")
 
 # Need to check this
-PIPELINE_KEYS: tuple[str, ...] = "dag"
+PIPELINE_KEYS: tuple[str, ...] = ("dag",)
 
 LOCK_KEYS: tuple[str, ...] = PINS_KEYS + PROTOCOL_KEYS + PIPELINE_KEYS
 

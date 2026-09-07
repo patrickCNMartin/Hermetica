@@ -2,7 +2,7 @@
 # IMPORT LIBS
 # -----------------------------------------------------------------------------#
 from collections.abc import Iterable
-from dataclasses import dataclass
+from typing import NamedTuple
 
 from seal.contract import ProtocolArtefact
 from utils.constants import (
@@ -64,8 +64,9 @@ SCHEMA: tuple[str, ...] = (
 # FORMATTING DB ENTRIES
 # -----------------------------------------------------------------------------#
 # Type enforce a protocol entry
-@dataclass(frozen=True)
-class ProtocolEntry:
+
+
+class ProtocolEntry(NamedTuple):
     hash: str
     protocol_id: str
     protocol_guid: str
@@ -116,8 +117,9 @@ def format_protocol_entry(
 # -----------------------------------------------------------------------------#
 # CHANGE DETECTION UTILS
 # -----------------------------------------------------------------------------#
-@dataclass(frozen=True)
-class ProtocolContentEntry:
+
+
+class ProtocolContentEntry(NamedTuple):
     hash: str
     protocol_id: str
     protocol_guid: str

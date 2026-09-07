@@ -12,14 +12,14 @@ from utils.constants import HASH_ALGORITHM
 # -----------------------------------------------------------------------------#
 # CANONICAL FORM
 # -----------------------------------------------------------------------------#
-def _normalize(obj: Any) -> Any:
+def normalize(obj: Any) -> Any:
     """Recursively NFC-normalize every string, key or value."""
     if isinstance(obj, str):
         return unicodedata.normalize("NFC", obj)
     if isinstance(obj, dict):
-        return {_normalize(k): _normalize(v) for k, v in obj.items()}
+        return {normalize(k): normalize(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
-        return [_normalize(v) for v in obj]
+        return [normalize(v) for v in obj]
     return obj
 
 
@@ -29,7 +29,7 @@ def canonical_json(obj: Any) -> bytes:
     Sorted keys, no whitespace, ASCII-escaped, NFC strings. Rejects NaN/Infinity.
     """
     return json.dumps(
-        _normalize(obj),
+        normalize(obj),
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=True,

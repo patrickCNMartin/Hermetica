@@ -11,7 +11,13 @@ from dotenv import load_dotenv
 # IMPORT GENERIC UTILS
 # -----------------------------------------------------------------------------#
 from chronos.pull_log import record_pull
-from chronos.report import format_failure, format_report, write_report
+from chronos.report import (
+    MailNotSentError,
+    format_failure,
+    format_report,
+    send_report,
+    write_report,
+)
 from compose.store import SCHEMA as PIPELINE_SCHEMA
 from seal.store import SCHEMA as PROTOCOL_SCHEMA
 from seal.store import format_protocol_entry, write_protocols
@@ -22,12 +28,17 @@ from seal.store import format_protocol_entry, write_protocols
 from sources import protocols_io
 from sources.contract import ProtocolSource, check_source_name
 from utils.dates import get_timestamp
-from utils.error_handling import UnreadableProtocolError
 from utils.store import initialize_db
 
 # -----------------------------------------------------------------------------#
 # SET ENV VARS
 # -----------------------------------------------------------------------------#
+# This was set up with protocols.io in mind. While i do try to use source
+# constructors where you can create your own interface for what ever system
+# you are using, I don't know if this is the right design to be adapatable to
+# anythting... How much would this need to be adapted if we used google drive
+# api for retrieval?
+
 dotenv_path = Path.cwd() / "env" / ".env"
 load_dotenv(dotenv_path=dotenv_path)
 
@@ -36,11 +47,22 @@ API_KEY = os.getenv("API_KEY", "")
 BASE_URL = os.getenv("BASE_URL", "")
 PROTOCOL_LIST_URL = os.getenv("PROTOCOL_LIST_URL", "")
 PROTOCOL_URL = os.getenv("PROTOCOL_URL", "")
+# The workspace uri, as it appears in the browser address bar. Required by the
+# workspace strategy; ignored by the filter one.
+WORKSPACE_ID = os.getenv("WORKSPACE_ID", "")
 
 CLIENT_ID = os.getenv("CLIENT_ID", "")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET", "")
 
 EMAIL = os.getenv("EMAIL", "")
+
+# Empty SMTP_HOST drafts the message to LOGS instead of sending it.
+SMTP_HOST = os.getenv("SMTP_HOST", "")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_SECURITY = os.getenv("SMTP_SECURITY", "starttls")
+SMTP_FROM = os.getenv("SMTP_FROM", "")
 LOGS = os.getenv("LOGS", "logs")
 DB_OUT = os.getenv("DB", "db")
 
@@ -50,21 +72,26 @@ PIPE_TEMPLATE = os.getenv("PIPE_TEMPLATE", "")
 # Which platforms tonight's run reads, in order. Comma separated.
 SOURCES = os.getenv("SOURCES", "protocols_io")
 
-# Walk uses old entry point which goes through folder - works but archived
-# filter uses the modern entry point - but sucks.
-# This might need to be updated completely depending on what happens
-# with protocols.io
-PULL_STRATEGY = os.getenv("PULL_STRATEGY", "walk")
+# Using workspace search as default
+PULL_STRATEGY = os.getenv("PULL_STRATEGY", "workspace")
 
 
 # -----------------------------------------------------------------------------#
-# WHICH SOURCES TO PULL
+# CHRONOS ERRORS
+# -----------------------------------------------------------------------------#
+class UnreadableProtocolError(ValueError):
+    """Cannot read the protocol from a given source"""
+
+
+# -----------------------------------------------------------------------------#
+# MULTI SOURCE CONSTRUCTOR
 # -----------------------------------------------------------------------------#
 def build_sources(
     names: list[str],
     base_url: str,
     api_key: str,
-    strategy: str = "walk",
+    strategy: str = "workspace",
+    workspace_id: str = "",
     list_url: str = "",
     protocol_url: str = "",
     page_size: int = 10,
@@ -84,6 +111,7 @@ def build_sources(
                     base_url=base_url,
                     api_key=api_key,
                     strategy=strategy,
+                    workspace_id=workspace_id,
                     list_url=list_url,
                     protocol_url=protocol_url,
                     page_size=page_size,
@@ -99,7 +127,7 @@ def build_sources(
 # -----------------------------------------------------------------------------#
 # ONE PULL, ONE SOURCE
 # -----------------------------------------------------------------------------#
-def run_protocol_pull(db_name: str, pulled_at: int, source: ProtocolSource) -> dict:
+def pull_protocols(db_name: str, pulled_at: int, source: ProtocolSource) -> dict:
     """Discover, fetch, seal. Returns the entry written to the log.
 
     Knows no field names: whatever a platform calls things is settled by the
@@ -167,23 +195,24 @@ if __name__ == "__main__":
     pulled_at = get_timestamp()
     names = [name.strip() for name in SOURCES.split(",") if name.strip()]
 
-    configured = build_sources(
+    source_constructors = build_sources(
         names,
         base_url=BASE_URL,
         api_key=API_KEY,
         strategy=PULL_STRATEGY,
+        workspace_id=WORKSPACE_ID,
         list_url=PROTOCOL_LIST_URL,
         protocol_url=PROTOCOL_URL,
         raw_dump=DB_OUT,
     )
 
     reports, failed = [], False
-    for source in configured:
+    for source in source_constructors:
         # Per source, not around the loop: one platform being down must not stop
         # the others, and a source that raises writes nothing, so none of its
         # protocols are deprecated by absence.
         try:
-            entry = run_protocol_pull(protcol_db, pulled_at, source)
+            entry = pull_protocols(protcol_db, pulled_at, source)
         except Exception as error:
             failed = True
             entry = {
@@ -200,13 +229,31 @@ if __name__ == "__main__":
         record_pull(LOGS, pulled_at, entry)
         reports.append(format_report({**entry, "pulled_at": pulled_at}))
 
-    write_report(LOGS, "\n".join(reports))
+    report = "\n".join(reports)
+    write_report(LOGS, report)
 
-    # place holder to transfer log to the maintainer
+    # The same text, sent rather than filed. Goes out whether the night went
+    # well or badly; the subject line says which.
     if EMAIL:
-        # No mail route is configured yet; the report is written for a human to
-        # collect or for cron to pipe onward.
-        print(f"  (intended for {EMAIL} — no mail transport wired)")
+        try:
+            print(
+                send_report(
+                    LOGS,
+                    report,
+                    pulled_at,
+                    to=EMAIL,
+                    sender=SMTP_FROM,
+                    host=SMTP_HOST,
+                    port=SMTP_PORT,
+                    user=SMTP_USER,
+                    password=SMTP_PASSWORD,
+                    security=SMTP_SECURITY,
+                    failed=failed,
+                )
+            )
+        except MailNotSentError as error:
+            failed = True
+            print(f"report mail FAILED — {error}")
 
     if failed:
         sys.exit(1)

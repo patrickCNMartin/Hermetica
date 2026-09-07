@@ -4,201 +4,175 @@
 from typing import Iterable, NamedTuple
 
 from sources.contract import DiscoveredProtocols
-from sources.protocols_io.client import _call_api, fetch_protocol_list
-
-# -----------------------------------------------------------------------------#
-# CONSTANTS & STORES
-# -----------------------------------------------------------------------------#
-# content_type_id says what kind of thing an item is; type_id sub-types a
-# protocol (1 protocol, 3 collection, 4 document). Only real protocols are sealed.
-FOLDER_CONTENT_TYPE = 10
-PROTOCOL_CONTENT_TYPE = 1
-PROTOCOL_TYPE_ID = 1
-
-# /v3/folders/<guid>/ids is 1-indexed. /v3/protocols is 0-indexed. Asking this
-# one for page 0 returns an empty `ids` array *with* a populated `next_page`, so
-# a pager written against the other endpoint finds nothing and exits cleanly.
-FIRST_FOLDER_PAGE = 1
-FOLDER_PAGE_SIZE = 100
-# /v3/filemanager/items takes repeated ids[] params; batched to keep URLs sane.
-ITEM_BATCH = 50
-
-# The workspace Trash is a top-level folder and carries `in_trash: False` itself —
-# it is the container, not a trashed item. Its own name is the only way in.
-TRASH_FOLDER_TITLE = "trash"
+from sources.protocols_io.client import call_api, read_payload
+from sources.protocols_io.config import (
+    FIRST_PAGE,
+    FIRST_SEARCH_PAGE,
+    PROTOCOL_CONTENT_TYPE,
+    PROTOCOL_TYPE_ID,
+    SEARCH_PAGE_SIZE,
+)
 
 
 # -----------------------------------------------------------------------------#
 # ERROR HANDLING
 # -----------------------------------------------------------------------------#
-class IncompleteWalkError(RuntimeError):
-    """A folder yielded fewer item ids than the server reported it holds."""
+class IncompleteDiscoveryError(RuntimeError):
+    """A discovery read collected fewer records than the server said it holds."""
 
 
 # -----------------------------------------------------------------------------#
-# WALK ITEMS
+# WORKSPACE ITEMS
 # -----------------------------------------------------------------------------#
-class WalkItem(NamedTuple):
-    """One protocol found in the workspace tree, with where it was found.
+class WorkspaceItem(NamedTuple):
+    """One protocol the workspace search returned.
 
     Discovery yields ids; the by-ID fetch is the only source of content. Only
     what gates an id or names it in a warning is kept.
-    `in_trash` is the upstream flag; `trashed` also counts a trashed branch.
     """
 
     id: int
-    title: str
+    title: str | None
     type_id: int | None
     in_trash: bool
-    trashed: bool
-    path: str
-
-    @property
-    def flag_disagrees(self) -> bool:
-        return self.in_trash != self.trashed
 
 
 # -----------------------------------------------------------------------------#
-# THE WALK
+# THE PAGER
 # -----------------------------------------------------------------------------#
-def fetch_top_folders(base_url: str, headers: dict) -> list[dict]:
-    """The workspace root folders."""
-    url = f"{base_url}/v3/filemanager/folders"
-    return _call_api(url, headers, {"top": 1}).json().get("folders") or []
-
-
-def fetch_folder_ids(
-    base_url: str, headers: dict, guid: str, page_size: int = FOLDER_PAGE_SIZE
-) -> list[int]:
-    """Every item id in one folder. The per-folder total is the only count check."""
-    ids: list[int] = []
+def fetch_pages(
+    url: str,
+    headers: dict,
+    params: dict,
+    start_page: int,
+    page_size: int,
+    max_pull: int | None = None,
+) -> tuple[list[dict], int | None]:
+    """Fetch pages until the server says stop. Returns (items, total_results)."""
+    items: list[dict] = []
     total: int | None = None
-    page = FIRST_FOLDER_PAGE
+    page = start_page
 
-    while True:
-        payload = _call_api(
-            f"{base_url}/v3/folders/{guid}/ids",
-            headers,
-            {"page_size": page_size, "page_id": page},
-        ).json()
-        ids.extend(payload.get("ids") or [])
+    while max_pull is None or (page - start_page) < max_pull:
+        print(f"Processing Page: {page}")
+        response = call_api(url, headers, {**params, "page_id": page})
+        payload = read_payload(response)
+        batch = payload.get("items") or []
+        pagination = payload.get("pagination")
 
-        pagination = payload.get("pagination") or {}
-        if total is None:
+        if total is None and pagination:
             total = pagination.get("total_results")
-        if not pagination.get("next_page"):
+        if not batch:
+            break
+        items.extend(batch)
+
+        if pagination:
+            if not pagination.get("next_page"):
+                break
+        elif len(batch) < page_size:
             break
         page += 1
 
-    if total is not None and len(ids) != total:
-        raise IncompleteWalkError(
-            f"folder {guid} yielded {len(ids)} item ids but the server reports "
-            f"{total}; refusing to treat a short read as an empty folder"
-        )
-    return ids
+    return items, total
 
 
-def fetch_items(
-    base_url: str, headers: dict, item_ids: Iterable[int], batch: int = ITEM_BATCH
+# -----------------------------------------------------------------------------#
+# ROUTE ONE — THE WORKSPACE SEARCH
+# -----------------------------------------------------------------------------#
+def search_workspace_items(
+    workspace_url: str,
+    headers: dict,
+    page_size: int = SEARCH_PAGE_SIZE,
 ) -> list[dict]:
-    """Resolve file manager item ids to their full items."""
-    item_ids = list(item_ids)
-    items: list[dict] = []
-    for start in range(0, len(item_ids), batch):
-        chunk = item_ids[start : start + batch]
-        payload = _call_api(
-            f"{base_url}/v3/filemanager/items",
-            headers,
-            [("ids[]", i) for i in chunk] + [("page_size", len(chunk))],
-        ).json()
-        items.extend(payload.get("items") or [])
+    """Every item in the workspace, flat, in one paginated sweep.
+
+    The v4 search returns folders, protocols, records and files together, each
+    protocol already carrying the id, `type_id` and `in_trash` a gate needs, so
+    no folder is ever opened. It publishes a global total, making a short read
+    catchable here rather than showing up later as a protocol gone missing.
+    """
+    items, total = fetch_pages(
+        workspace_url, headers, {"page_size": page_size}, FIRST_SEARCH_PAGE, page_size
+    )
+
+    if total is not None and len(items) != total:
+        raise IncompleteDiscoveryError(
+            f"workspace search yielded {len(items)} items but the server reports "
+            f"{total}; refusing to treat a short read as an absence"
+        )
     return items
 
 
-def _is_trash_folder(folder: dict) -> bool:
-    """The workspace Trash, by name — it reports in_trash False, parent_guid None."""
-    return str(folder.get("title") or "").strip().casefold() == TRASH_FOLDER_TITLE
-
-
-def _as_walk_item(item: dict, path: str, trashed_branch: bool) -> WalkItem:
-    in_trash = item.get("in_trash") is True
-    return WalkItem(
+def as_workspace_item(item: dict) -> WorkspaceItem:
+    return WorkspaceItem(
         id=item["id"],
         title=item.get("title"),
         type_id=item.get("type_id"),
-        in_trash=in_trash,
-        trashed=in_trash or trashed_branch,
-        path=path,
+        in_trash=item.get("in_trash") is True,
     )
 
 
-def walk_workspace(
-    base_url: str, headers: dict, page_size: int = FOLDER_PAGE_SIZE
-) -> list[WalkItem]:
-    """Every protocol in the workspace, folder by folder. Uses [Archived] endpoints."""
-    queue: list[tuple[str, str, bool]] = [
-        (folder["guid"], str(folder.get("title") or ""), _is_trash_folder(folder))
-        for folder in fetch_top_folders(base_url, headers)
-    ]
+# -----------------------------------------------------------------------------#
+# ROUTE TWO — THE PROTOCOL LIST, BY FILTER
+# -----------------------------------------------------------------------------#
+def fetch_protocol_list(
+    proto_list_url: str,
+    headers: dict,
+    page_size: int = 10,
+    max_pull: int | None = None,
+    **params,
+) -> list[dict]:
+    """This function does a first call through the API to get protocol IDs.
+    We are only interested in IDs as a first pass since the protocol list
+    does actually contain all the information we need to build verifiable
+    protocol versions.
+    """
+    start_page = int(params.pop("page_id", FIRST_PAGE))
+    params["page_size"] = page_size
 
-    found: dict[int, WalkItem] = {}
-    walked: set[str] = set()
+    for attempt in (1, 2):
+        protocols, total = fetch_pages(
+            proto_list_url, headers, params, start_page, page_size, max_pull
+        )
+        # A capped or resumed pull is expected to be partial; nothing to verify.
+        if total is None or max_pull is not None or start_page != FIRST_PAGE:
+            break
+        if len(protocols) == total:
+            break
+        if attempt == 2:
+            raise IncompleteDiscoveryError(
+                f"pulled {len(protocols)} protocols but the server reports "
+                f"{total}; refusing to write a partial pull"
+            )
+        print(
+            f"Incomplete pull: got {len(protocols)} of {total} reported. Retrying once."
+        )
 
-    while queue:
-        guid, path, trashed_branch = queue.pop(0)
-        # A folder reachable by two routes would otherwise be walked twice, and a
-        # cycle would never terminate.
-        if guid in walked:
-            continue
-        walked.add(guid)
-
-        for item in fetch_items(
-            base_url, headers, fetch_folder_ids(base_url, headers, guid, page_size)
-        ):
-            content_type = item.get("content_type_id")
-            child_path = f"{path}/{item.get('title')}"
-            if content_type == FOLDER_CONTENT_TYPE:
-                inherited = (
-                    trashed_branch
-                    or item.get("in_trash") is True
-                    or _is_trash_folder(item)
-                )
-                queue.append((item["guid"], child_path, inherited))
-            elif content_type == PROTOCOL_CONTENT_TYPE:
-                # Filed in two folders costs one by-ID fetch, not two.
-                found.setdefault(
-                    item["id"], _as_walk_item(item, path, bool(trashed_branch))
-                )
-
-    return sorted(found.values(), key=lambda i: i.id)
+    return [i["id"] for i in protocols]
 
 
 # -----------------------------------------------------------------------------#
 # SELECTION
 # -----------------------------------------------------------------------------#
 class SelectedProtocols(NamedTuple):
-    selected: list[WalkItem]
-    trashed: list[WalkItem]
-    excluded: list[WalkItem]
+    selected: list[WorkspaceItem]
+    trashed: list[WorkspaceItem]
+    excluded: list[WorkspaceItem]
     warnings: list[str]
 
 
-def select_protocols(items: Iterable[WalkItem]) -> SelectedProtocols:
+def select_protocols(items: Iterable[WorkspaceItem]) -> SelectedProtocols:
     """Gate whatever discovery found: not trashed, and actually a protocol.
 
-    How an item was discovered does not qualify or disqualify it — trash and
-    type are the only two states the API states for itself.
+    Trash is upstream's `in_trash` and nothing else — a protocol the user put in
+    the trash is not tracked. Folder position decides nothing; the keyword route
+    to retirement lives in lifecycle.
     """
     selected, trashed, excluded = [], [], []
     warnings: list[str] = []
 
     for item in items:
-        if item.flag_disagrees:
-            warnings.append(
-                f"in_trash flag disagrees with folder position for {item.id} "
-                f"({item.title!r} at {item.path!r})"
-            )
-        if item.trashed:
+        if item.in_trash:
             trashed.append(item)
             continue
         if item.type_id is not None and item.type_id != PROTOCOL_TYPE_ID:
@@ -217,7 +191,7 @@ def select_protocols(items: Iterable[WalkItem]) -> SelectedProtocols:
 # -----------------------------------------------------------------------------#
 # THE TWO DISCOVERY ROUTES
 # -----------------------------------------------------------------------------#
-def _selection_detail(selection: SelectedProtocols) -> dict:
+def selection_detail(selection: SelectedProtocols) -> dict:
     return {
         "selected": len(selection.selected),
         "trashed": sorted(item.id for item in selection.trashed),
@@ -226,15 +200,26 @@ def _selection_detail(selection: SelectedProtocols) -> dict:
     }
 
 
-def discover_by_walk(base_url: str, headers: dict) -> DiscoveredProtocols:
-    """Use folder structure to find protocols by id."""
-    items = walk_workspace(base_url, headers)
-    selection = select_protocols(items)
-    detail = {"workspace_items": len(items), **_selection_detail(selection)}
-    return DiscoveredProtocols([item.id for item in selection.selected], "walk", detail)
+def search_workspace(headers: dict, workspace_url: str) -> DiscoveredProtocols:
+    """One sweep of the workspace search; the protocols in it carry their ids."""
+    items = search_workspace_items(workspace_url, headers)
+    protocols = [
+        as_workspace_item(i)
+        for i in items
+        if i.get("content_type_id") == PROTOCOL_CONTENT_TYPE
+    ]
+    selection = select_protocols(protocols)
+    detail = {
+        "workspace_items": len(items),
+        "workspace_protocols": len(protocols),
+        **selection_detail(selection),
+    }
+    return DiscoveredProtocols(
+        [item.id for item in selection.selected], "workspace", detail
+    )
 
 
-def discover_by_filter(
+def search_by_filter(
     list_url: str, headers: dict, page_size: int = 10, max_pull: int | None = None
 ) -> DiscoveredProtocols:
     """Use get list method to list protocol ids under
@@ -255,14 +240,21 @@ def discover_by_filter(
 
 def discover(
     strategy: str,
-    base_url: str,
     list_url: str,
     headers: dict,
+    workspace_url: str = "",
     page_size: int = 10,
     max_pull: int | None = None,
 ) -> DiscoveredProtocols:
-    if strategy == "walk":
-        return discover_by_walk(base_url, headers)
+    if strategy == "workspace":
+        if not workspace_url:
+            raise ValueError(
+                "PULL_STRATEGY=workspace needs WORKSPACE_ID — the workspace uri, "
+                "the slug the browser shows for the workspace"
+            )
+        return search_workspace(headers, workspace_url)
     if strategy == "filter":
-        return discover_by_filter(list_url, headers, page_size, max_pull)
-    raise ValueError(f"unknown PULL_STRATEGY {strategy!r}; expected 'walk' or 'filter'")
+        return search_by_filter(list_url, headers, page_size, max_pull)
+    raise ValueError(
+        f"unknown PULL_STRATEGY {strategy!r}; expected 'workspace' or 'filter'"
+    )

@@ -3,18 +3,18 @@
 # -----------------------------------------------------------------------------#
 import sqlite3
 from collections.abc import Iterable
-from dataclasses import dataclass
 from datetime import date, datetime
+from typing import NamedTuple
 
 from utils.dates import end_of_day, get_timestamp, start_of_day
 from utils.store import connect
 
-
 # -----------------------------------------------------------------------------#
 # WHAT A HISTORY ROW IS
 # -----------------------------------------------------------------------------#
-@dataclass(frozen=True)
-class VersionInterval:
+
+
+class VersionInterval(NamedTuple):
     hash: str
     valid_from: int
     deprecated_at: int | None

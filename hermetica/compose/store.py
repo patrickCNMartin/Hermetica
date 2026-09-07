@@ -2,7 +2,7 @@
 # IMPORT LIBS
 # -----------------------------------------------------------------------------#
 from collections.abc import Iterable
-from dataclasses import dataclass
+from typing import NamedTuple
 
 from compose.compose import PipelineArtefact
 from utils.constants import (
@@ -12,7 +12,7 @@ from utils.constants import (
     PIPELINE_HISTORY,
 )
 from utils.dates import get_timestamp, to_epoch
-from utils.hashing import as_column, canonical_json, hash_bytes
+from utils.hashing import canonical_json, encode_entry, hash_bytes
 from utils.intervals import diff_versioned, write_version_control
 from utils.store import fetch_entries, insert_statement
 
@@ -55,8 +55,9 @@ SCHEMA: tuple[str, ...] = (
 # FORMATTING DB ENTRIES
 # -----------------------------------------------------------------------------#
 # Type enforce a pipeline entry
-@dataclass(frozen=True)
-class PipelineEntry:
+
+
+class PipelineEntry(NamedTuple):
     hash: str
     pipeline_guid: str
     title: str
@@ -76,7 +77,7 @@ def build_pipeline_entry(
     """Prepare one pipeline entry from a ProtocolPipeline."""
     pulled_at = pulled_at if pulled_at is not None else get_timestamp()
     blob = canonical_json(artefact.hashable())
-    metadata = {k: as_column(v) for k, v in artefact.metadata().items()}
+    metadata = {k: encode_entry(v) for k, v in artefact.metadata().items()}
     created_on = metadata["created_on"]
     return PipelineEntry(
         hash=hash_bytes(blob),
@@ -85,7 +86,7 @@ def build_pipeline_entry(
         manifest_hash=artefact.manifest_hash,
         root=artefact.root,
         executor=artefact.executor,
-        DAG=as_column(artefact.DAG),
+        DAG=encode_entry(artefact.DAG),
         pipeline=blob.decode("ascii"),
         valid_from=to_epoch(created_on) if created_on else pulled_at,
         **metadata,
@@ -103,8 +104,9 @@ def format_pipeline_entry(
 # -----------------------------------------------------------------------------#
 # CHANGE DETECTION UTILS
 # -----------------------------------------------------------------------------#
-@dataclass(frozen=True)
-class PipelineContentEntry:
+
+
+class PipelineContentEntry(NamedTuple):
     hash: str
     pipeline_guid: str
     title: str

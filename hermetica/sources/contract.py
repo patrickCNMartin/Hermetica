@@ -6,20 +6,6 @@ from typing import Callable, NamedTuple
 
 from seal.contract import ProtocolArtefact
 
-# -----------------------------------------------------------------------------#
-# CONSTANTS & STORES
-# -----------------------------------------------------------------------------#
-# The source name prefixes every protocol_uid, so a name carrying the separator
-# would make the uid ambiguous.
-SOURCE_NAME = re.compile(r"^[a-z0-9_]+$")
-
-
-# -----------------------------------------------------------------------------#
-# ERROR HANDLING
-# -----------------------------------------------------------------------------#
-class UnreadableProtocolError(RuntimeError):
-    """A source returned neither an artefact nor a retirement."""
-
 
 # -----------------------------------------------------------------------------#
 # WHAT AN ADAPTER HANDS BACK
@@ -57,9 +43,10 @@ class ProtocolSource(NamedTuple):
 
 def check_source_name(name: str) -> str:
     """Reject a name that would make a protocol_uid ambiguous."""
-    if not SOURCE_NAME.match(name or ""):
+    source_name = re.compile(r"^[a-z0-9_]+$")
+    if not source_name.match(name or ""):
         raise ValueError(
-            f"source name {name!r} must match {SOURCE_NAME.pattern} — it prefixes "
+            f"source name {name!r} must match {source_name.pattern} — it prefixes "
             f"every protocol_uid"
         )
     return name

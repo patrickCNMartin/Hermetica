@@ -9,10 +9,10 @@ from pathlib import Path
 
 import pytest
 
-from sources.protocols_io.client import _call_api
+from sources.protocols_io.client import call_api
 
 FIXTURE = Path(__file__).parent / "fixtures" / "protocols_by_id.json"
-WALK_FIXTURE = Path(__file__).parent / "fixtures" / "filemanager_walk.json"
+SEARCH_FIXTURE = Path(__file__).parent / "fixtures" / "workspace_search.json"
 
 # Named for the structure each one carries, not for the protocol it came from.
 ARCHETYPES = (
@@ -30,7 +30,7 @@ ARCHETYPES = (
 # RATE LIMIT
 # -----------------------------------------------------------------------------#
 def _rate_limiter():
-    """The RateLimitDecorator guarding _call_api, reached through its closure."""
+    """The RateLimitDecorator guarding call_api, reached through its closure."""
 
     def find(function, depth: int = 0):
         for cell in getattr(function, "__closure__", None) or []:
@@ -43,14 +43,14 @@ def _rate_limiter():
                     return found
         return None
 
-    return find(_call_api)
+    return find(call_api)
 
 
 @pytest.fixture(autouse=True)
 def _reset_rate_limit():
     """Give every test a full call budget.
 
-    _call_api allows 100 calls/minute and `sleep_and_retry` blocks when that runs
+    call_api allows 100 calls/minute and `sleep_and_retry` blocks when that runs
     out — a suite that walks a few hundred mocked pages would otherwise stall for
     a real minute. Resetting is not a behaviour change: the throttle is tested
     directly in test_request.py rather than incidentally everywhere else.
@@ -79,9 +79,9 @@ def record(by_id_records):
 
 
 @pytest.fixture(scope="session")
-def walk_records() -> dict:
-    """The synthetic File Manager tree: top folders, folder pages, items."""
-    return json.loads(WALK_FIXTURE.read_text(encoding="utf-8"))
+def workspace_records() -> dict:
+    """The synthetic workspace: the v4 search sweep, folder pages, items."""
+    return json.loads(SEARCH_FIXTURE.read_text(encoding="utf-8"))
 
 
 @pytest.fixture

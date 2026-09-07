@@ -9,11 +9,10 @@ import pytest
 import requests
 import responses
 
-from sources.protocols_io.client import (
-    FIRST_PAGE,
-    IncompletePullError,
-    _call_api,
-    fetch_protocol,
+from sources.protocols_io.client import call_api, fetch_protocol
+from sources.protocols_io.config import FIRST_PAGE
+from sources.protocols_io.discover import (
+    IncompleteDiscoveryError,
     fetch_protocol_list,
 )
 
@@ -221,7 +220,7 @@ class TestEnvelopeDrivenPagination:
         """
         responses.add(responses.GET, PROTOCOLS_URL, json=paged(list_items(1), None, 61))
 
-        with pytest.raises(IncompletePullError, match="61"):
+        with pytest.raises(IncompleteDiscoveryError, match="61"):
             fetch_protocol_list(PROTOCOLS_URL, HEADERS, page_size=10)
 
         assert len(responses.calls) == 2  # original + exactly one retry
@@ -298,7 +297,7 @@ class TestCallApi:
         responses.add(responses.GET, PROTOCOLS_URL, json={"error": "nope"}, status=404)
 
         with pytest.raises(requests.exceptions.HTTPError):
-            _call_api(PROTOCOLS_URL, HEADERS)
+            call_api(PROTOCOLS_URL, HEADERS)
 
     @responses.activate
     def test_client_errors_are_not_retried(self):
@@ -306,7 +305,7 @@ class TestCallApi:
         responses.add(responses.GET, PROTOCOLS_URL, json={}, status=400)
 
         with pytest.raises(requests.exceptions.HTTPError):
-            _call_api(PROTOCOLS_URL, HEADERS)
+            call_api(PROTOCOLS_URL, HEADERS)
 
         assert len(responses.calls) == 1
 
@@ -317,7 +316,7 @@ class TestCallApi:
         responses.add(responses.GET, PROTOCOLS_URL, json={}, status=503)
         responses.add(responses.GET, PROTOCOLS_URL, json={"items": []}, status=200)
 
-        assert _call_api(PROTOCOLS_URL, HEADERS).status_code == 200
+        assert call_api(PROTOCOLS_URL, HEADERS).status_code == 200
         assert len(responses.calls) == 2
 
     @responses.activate
@@ -327,14 +326,14 @@ class TestCallApi:
         responses.add(responses.GET, PROTOCOLS_URL, json={}, status=429)
         responses.add(responses.GET, PROTOCOLS_URL, json={"items": []}, status=200)
 
-        assert _call_api(PROTOCOLS_URL, HEADERS).status_code == 200
+        assert call_api(PROTOCOLS_URL, HEADERS).status_code == 200
         assert len(responses.calls) == 2
 
     @responses.activate
     def test_headers_are_forwarded(self):
         responses.add(responses.GET, PROTOCOLS_URL, json={"items": []})
 
-        _call_api(PROTOCOLS_URL, HEADERS)
+        call_api(PROTOCOLS_URL, HEADERS)
 
         assert responses.calls[0].request.headers["Authorization"] == (
             "Bearer test-token"

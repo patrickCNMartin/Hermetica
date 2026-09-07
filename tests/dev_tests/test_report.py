@@ -18,11 +18,11 @@ from chronos.report import (
 
 @pytest.fixture
 def entry():
-    """A successful walk pull, shaped like what chronos actually logs."""
+    """A successful workspace pull, shaped like what chronos actually logs."""
     return {
         "pulled_at": 1700000000,
         "pulled_at_iso": "2023-11-14T22:13:20+00:00",
-        "strategy": "walk",
+        "strategy": "workspace",
         "workspace_items": 67,
         "selected": 57,
         "trashed": list(range(200, 209)),
@@ -48,7 +48,7 @@ class TestFormatReport:
         text = format_report(entry)
 
         assert "2023-11-14T22:13:20+00:00" in text
-        assert "walk" in text
+        assert "workspace" in text
         assert "OK" in text
 
     def test_the_headline_counts_are_present(self, entry):
@@ -108,7 +108,7 @@ class TestFormatReport:
         assert "incomplete by construction" in text
         assert "protocols_io_findings" in text
 
-    def test_a_walk_pull_does_not_claim_to_be_degraded(self, entry):
+    def test_a_workspace_pull_does_not_claim_to_be_degraded(self, entry):
         assert "incomplete by construction" not in format_report(entry)
 
     def test_deprecated_protocols_are_named(self, entry):
@@ -122,7 +122,7 @@ class TestFormatReport:
 # -----------------------------------------------------------------------------#
 class TestFormatFailure:
     def test_it_names_the_error_and_its_type(self):
-        entry = {"pulled_at": 1700000000, "strategy": "walk"}
+        entry = {"pulled_at": 1700000000, "strategy": "workspace"}
 
         text = format_failure(entry, ValueError("folder guid was rejected"))
 

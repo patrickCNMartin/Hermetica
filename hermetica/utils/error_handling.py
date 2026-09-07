@@ -13,9 +13,5 @@ class DuplicatedIdError(ValueError):
     """Duplicated entries in the version control data base"""
 
 
-class UnreadableProtocolError(ValueError):
-    """Cannot read the protocol from a given source"""
-
-
 class MalformedLockError(ValueError):
     """The file is not a lock document — a key the format requires is missing."""

@@ -21,14 +21,14 @@ import unicodedata
 
 import pytest
 
-from tests.conftest import ARCHETYPES, FIXTURE, WALK_FIXTURE
+from tests.conftest import ARCHETYPES, FIXTURE, SEARCH_FIXTURE
 
 RAW = unicodedata.normalize("NFC", FIXTURE.read_text(encoding="utf-8"))
-WALK_RAW = unicodedata.normalize("NFC", WALK_FIXTURE.read_text(encoding="utf-8"))
+SEARCH_RAW = unicodedata.normalize("NFC", SEARCH_FIXTURE.read_text(encoding="utf-8"))
 
 # Every committed dataset. A fixture that is not scanned is a fixture that can
 # leak, so a new one joins this tuple rather than getting its own weaker rules.
-DATASETS = (("protocols_by_id", RAW), ("filemanager_walk", WALK_RAW))
+DATASETS = (("protocols_by_id", RAW), ("workspace_search", SEARCH_RAW))
 
 # RFC 2606 reserves example.org permanently, so no synthetic value here can ever
 # resolve to a real host or mailbox. 10.99999 is not an assigned DOI prefix.
@@ -153,11 +153,11 @@ class TestOnlySyntheticValues:
         }
         assert words <= LEXICON, sorted(words - LEXICON)
 
-    def test_prose_in_the_walk_fixture_uses_the_same_lexicon(self, walk_records):
+    def test_prose_in_the_walk_fixture_uses_the_same_lexicon(self, workspace_records):
         """Folder names are prose too — a real workspace tree fails here."""
         words = {
             word.lower()
-            for text in prose(walk_records)
+            for text in prose(workspace_records)
             for word in re.findall(
                 r"[A-Za-zÀ-ÿ]{2,}", unicodedata.normalize("NFC", text)
             )
@@ -317,82 +317,167 @@ class TestFixtureFile:
 
 
 # -----------------------------------------------------------------------------#
-# 5. THE WALK FIXTURE — the shapes the folder walk has to survive
+# 5. THE WORKSPACE FIXTURE — the shapes workspace discovery has to survive
 # -----------------------------------------------------------------------------#
-class TestWalkFixtureStructure:
-    def test_a_folder_spans_more_than_one_page(self, walk_records):
+class TestWorkspaceFixtureStructure:
+    def test_a_folder_spans_more_than_one_page(self, workspace_records):
         """`next_page` on page 1 is what proves the pager is 1-indexed here."""
-        multi = [p for p in walk_records["folder_pages"].values() if len(p) > 1]
+        multi = [p for p in workspace_records["folder_pages"].values() if len(p) > 1]
         assert multi
         assert multi[0][0]["pagination"]["next_page"] == 2
         assert multi[0][0]["pagination"]["current_page"] == 1
 
-    def test_page_counts_add_up_to_total_results(self, walk_records):
-        """Otherwise IncompleteWalkError fires on a fixture, not on a real bug."""
-        for guid, pages in walk_records["folder_pages"].items():
+    def test_page_counts_add_up_to_total_results(self, workspace_records):
+        """Otherwise IncompleteDiscoveryError fires on a fixture, not a real bug."""
+        for guid, pages in workspace_records["folder_pages"].items():
             collected = sum(len(page["ids"]) for page in pages)
             assert collected == pages[0]["pagination"]["total_results"], guid
 
-    def test_an_empty_folder_exists(self, walk_records):
+    def test_an_empty_folder_exists(self, workspace_records):
         assert any(
-            page[0]["ids"] == [] for page in walk_records["folder_pages"].values()
+            page[0]["ids"] == [] for page in workspace_records["folder_pages"].values()
         )
 
-    def test_the_trash_folder_reports_itself_as_not_trashed(self, walk_records):
+    def test_the_trash_folder_reports_itself_as_not_trashed(self, search_folders):
         """Measured upstream: the container carries in_trash False."""
-        trash = [
-            i
-            for i in walk_records["items"].values()
-            if str(i.get("title", "")).casefold() == "trash"
-        ]
+        trash = [f for f in search_folders if f["default_id"] == 12]
+
         assert len(trash) == 1
         assert trash[0]["in_trash"] is False
         assert trash[0]["content_type_id"] == 10
 
-    def test_a_trashed_protocol_exists(self, walk_records):
+    def test_a_trashed_protocol_exists(self, workspace_records):
         assert any(
             i["in_trash"] and i["content_type_id"] == 1
-            for i in walk_records["items"].values()
+            for i in workspace_records["items"].values()
         )
 
-    def test_a_trashed_folder_holds_an_unflagged_protocol(self, walk_records):
+    def test_a_trashed_folder_holds_an_unflagged_protocol(self, workspace_records):
         """The one case that could not be measured: does the flag propagate?
 
-        Upstream has no such protocol, so the fixture supplies the shape and the
-        walk's answer is a decision we make, not one we observed.
+        Upstream has no such protocol, so the fixture supplies the shape and
+        our answer is a decision we make, not one we observed.
         """
         folders = {
             i["guid"]: i
-            for i in walk_records["items"].values()
+            for i in workspace_records["items"].values()
             if i["content_type_id"] == 10 and i["in_trash"]
         }
         assert folders
         held = [
-            walk_records["items"][str(item_id)]
+            workspace_records["items"][str(item_id)]
             for guid in folders
-            for page in walk_records["folder_pages"][guid]
+            for page in workspace_records["folder_pages"][guid]
             for item_id in page["ids"]
         ]
         assert any(i["content_type_id"] == 1 and not i["in_trash"] for i in held)
 
-    def test_one_protocol_is_filed_in_two_folders(self, walk_records):
+    def test_one_protocol_is_filed_in_two_folders(self, workspace_records):
         seen: list[int] = []
-        for pages in walk_records["folder_pages"].values():
+        for pages in workspace_records["folder_pages"].values():
             for page in pages:
                 seen.extend(page["ids"])
         assert len(seen) != len(set(seen))
 
-    def test_two_protocols_share_a_version_family(self, walk_records):
+    def test_two_protocols_share_a_version_family(self, workspace_records):
         families = [
             i["version_class"]
-            for i in walk_records["items"].values()
+            for i in workspace_records["items"].values()
             if i["content_type_id"] == 1
         ]
         assert len(families) != len(set(families))
 
-    def test_a_non_protocol_content_item_exists(self, walk_records):
+    def test_a_non_protocol_content_item_exists(self, workspace_records):
         """type_id 3 is a Collection — it must not be sealed as a protocol."""
         assert any(
             i["content_type_id"] == 1 and i["type_id"] != 1
-            for i in walk_records["items"].values()
+            for i in workspace_records["items"].values()
+        )
+
+
+# -----------------------------------------------------------------------------#
+# 6. THE SEARCH SWEEP — the v4 shape the folder tree arrives in
+# -----------------------------------------------------------------------------#
+@pytest.fixture
+def search_folders(workspace_records) -> list[dict]:
+    """Every folder the sweep hands back, across all its pages."""
+    return [
+        item
+        for page in workspace_records["search_pages"]
+        for item in page["payload"]["items"]
+    ]
+
+
+class TestSearchFixtureStructure:
+    def test_the_answer_is_nested_under_payload(self, workspace_records):
+        """v4 wraps; v3 does not. A reader built for one finds nothing in the other."""
+        for page in workspace_records["search_pages"]:
+            assert set(page) == {"payload", "status_code"}
+            assert set(page["payload"]) == {"items", "pagination"}
+
+    def test_the_sweep_spans_more_than_one_page(self, workspace_records):
+        """A single-page fixture would never exercise the pager."""
+        assert len(workspace_records["search_pages"]) > 1
+
+    def test_it_is_one_indexed(self, workspace_records):
+        pages = workspace_records["search_pages"]
+        assert [p["payload"]["pagination"]["current_page"] for p in pages] == list(
+            range(1, len(pages) + 1)
+        )
+
+    def test_next_page_is_a_url_not_a_number(self, workspace_records):
+        """The trap: v3 gives a page number here, v4 gives a path."""
+        first = workspace_records["search_pages"][0]["payload"]["pagination"]
+        assert isinstance(first["next_page"], str)
+        assert "page_id=2" in first["next_page"]
+        assert (
+            workspace_records["search_pages"][-1]["payload"]["pagination"]["next_page"]
+            is None
+        )
+
+    def test_page_counts_add_up_to_total_results(
+        self, workspace_records, search_folders
+    ):
+        """Otherwise the sweep's completeness check fires on a fixture."""
+        total = workspace_records["search_pages"][0]["payload"]["pagination"][
+            "total_results"
+        ]
+        assert len(search_folders) == total
+
+    def test_every_folder_is_a_folder(self, search_folders):
+        assert search_folders
+        assert all(f["content_type_id"] == 10 for f in search_folders)
+
+    def test_guids_are_unique(self, search_folders):
+        guids = [f["guid"] for f in search_folders]
+        assert len(set(guids)) == len(guids)
+
+    def test_a_folder_sits_two_levels_down(self, search_folders):
+        """Nesting only parent_guid can express — a flat read would miss it."""
+        index = {f["guid"]: f for f in search_folders}
+        depths = []
+        for folder in search_folders:
+            depth, parent = 0, folder.get("parent_guid")
+            while parent in index and depth < 10:
+                depth += 1
+                parent = index[parent].get("parent_guid")
+            depths.append(depth)
+        assert max(depths) >= 2
+
+    def test_every_parent_guid_resolves(self, search_folders):
+        """A dangling parent would silently truncate a path."""
+        guids = {f["guid"] for f in search_folders}
+        for folder in search_folders:
+            parent = folder.get("parent_guid")
+            assert parent is None or parent in guids, folder["title"]
+
+    def test_a_trashed_folder_exists(self, search_folders):
+        assert any(f["in_trash"] for f in search_folders)
+
+    def test_every_folder_in_folder_pages_is_swept(
+        self, workspace_records, search_folders
+    ):
+        """The two halves must describe the same workspace."""
+        assert {f["guid"] for f in search_folders} == set(
+            workspace_records["folder_pages"]
         )
