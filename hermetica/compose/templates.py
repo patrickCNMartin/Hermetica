@@ -6,7 +6,7 @@ import uuid
 
 from yaml import safe_dump, safe_load
 
-from compose.compose import ProtocolPipeline
+from compose.compose import PipelineArtefact
 from utils.dates import to_epoch
 
 
@@ -42,7 +42,7 @@ def mint_template(template_path: str) -> tuple[dict, str]:
 
 def pipelines_from_template(
     template_path: str, mint: bool = False
-) -> list[ProtocolPipeline]:
+) -> list[PipelineArtefact]:
 
     if mint and not re.compile(r"_minted\.(?:yaml|yml)$").search(template_path):
         template, _ = mint_template(template_path)
@@ -63,7 +63,7 @@ def pipelines_from_template(
     created_on = to_epoch(template["created_on"])
     creator = template.get("creator")
     return [
-        ProtocolPipeline(
+        PipelineArtefact(
             guid=pipeline["pipeline_guid"],
             title=name,
             manifest_hash=pipeline.get("manifest_hash"),

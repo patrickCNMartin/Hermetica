@@ -9,8 +9,7 @@ class MissingHash(ValueError):
     """Hash Value not found in data base."""
 
 
-class DuplicatedIdError(ValueError):
-    """Duplicated entries in the version control data base"""
+
 
 
 class MalformedLockError(ValueError):

@@ -9,7 +9,8 @@ from collections.abc import Sequence
 
 from scribe.richtext import render_document
 from seal.seal import manifest_hash
-from seal.store import HISTORY_TABLE, ID_COLUMN, get_content
+from seal.store import get_protocols
+from utils.constants import PROTOCOL_HISTORY, PROTOCOL_ID
 from utils.dates import as_iso
 from utils.intervals import active_hashes
 from utils.store import connect
@@ -60,7 +61,7 @@ def linkable(entries: dict, db: str | None) -> set[str]:
     if not db:
         return set()
     with connect(db, read_only=True) as conn:
-        active = active_hashes(conn, HISTORY_TABLE, ID_COLUMN)
+        active = active_hashes(conn, PROTOCOL_HISTORY, PROTOCOL_ID)
     return {pid for pid, entry in entries.items() if active.get(pid) == entry["hash"]}
 
 
@@ -79,7 +80,7 @@ def collect_bodies(
             f"{len(missing)} protocol(s) must be inlined but the lock carries no "
             "bodies and no database was given"
         )
-    for row in get_content(db, missing):
+    for row in get_protocols(db, missing):
         bodies[row.hash] = json.loads(row.protocol)
     return bodies
 
@@ -106,7 +107,7 @@ def collect_display(
             raise UnrenderableProtocolError(
                 "a pins-only lock carries no titles; rendering one needs a database"
             )
-        rows = get_content(
+        rows = get_protocols(
             db, [entries[pid]["hash"] for pid in unresolved], with_blob=False
         )
         for pid, row in zip(unresolved, rows):
@@ -133,14 +134,14 @@ def plain(value: str | None) -> str:
     return html.unescape(_TAGS.sub("", value or "")).strip()
 
 
-def _people(value) -> str:
+def format_people(value) -> str:
     if not value:
         return ""
     names = [person.get("name") or "" for person in value if isinstance(person, dict)]
     return ", ".join(name for name in names if name)
 
 
-def _facts(pid: str, entry: dict, fields: dict, body: dict | None) -> list[str]:
+def render_facts(pid: str, entry: dict, fields: dict, body: dict | None) -> list[str]:
     """The verification block under a protocol heading."""
     rows = [
         ("protocol_id", pid),
@@ -154,14 +155,14 @@ def _facts(pid: str, entry: dict, fields: dict, body: dict | None) -> list[str]:
         ("doi", fields.get("doi")),
         ("reserved_doi", fields.get("reserved_doi")),
         ("created_on", fields.get("created_on")),
-        ("creator", _people([creator])),
+        ("creator", format_people([creator])),
         ("affiliation", creator.get("affiliation")),
-        ("authors", _people(fields.get("authors"))),
+        ("authors", format_people(fields.get("authors"))),
     ]
     return [f"| {key} | {value} |" for key, value in rows if value not in (None, "")]
 
 
-def _steps(body: dict) -> list[str]:
+def render_steps(body: dict) -> list[str]:
     """Steps in `chain` order, grouped under their section headings."""
     steps = {step["id"]: step for step in body.get("steps") or []}
     chain = body.get("chain") or []
@@ -187,7 +188,7 @@ def _steps(body: dict) -> list[str]:
     return lines
 
 
-def _protocol(
+def render_protocol(
     position: int, pid: str, entry: dict, fields: dict, body: dict | None
 ) -> list[str]:
     title = fields.get("title") or f"protocol {pid}"
@@ -199,7 +200,7 @@ def _protocol(
         "| field | value |",
         "| --- | --- |",
     ]
-    lines += _facts(pid, entry, fields, body)
+    lines += render_facts(pid, entry, fields, body)
 
     if body is None:
         uri = fields.get("uri")
@@ -225,7 +226,7 @@ def _protocol(
         rendered = render_document(body.get(field), units)
         if rendered:
             lines += ["", f"### {label}", "", rendered]
-    steps = _steps(body)
+    steps = render_steps(body)
     if steps:
         lines += ["", "### Steps"] + steps
     references = render_document(body.get("protocol_references"), units)
@@ -234,7 +235,7 @@ def _protocol(
     return lines
 
 
-def _banner(total: int, linked: int, inline: int, db: str | None) -> str:
+def format_banner(total: int, linked: int, inline: int, db: str | None) -> str:
     """State why each protocol rendered the way it did — never imply more than known."""
     if not db:
         return (
@@ -277,11 +278,13 @@ def to_markdown(
         f"- **as_of**: {lock.get('as_of')}",
         f"- **created_at**: {lock.get('created_at')}",
         "",
-        _banner(len(order), len(linked), len(inline), db),
+        format_banner(len(order), len(linked), len(inline), db),
     ]
     for position, pid in enumerate(order, start=1):
         body = None if pid in linked else bodies[entries[pid]["hash"]]
-        lines += _protocol(position, pid, entries[pid], display.get(pid, {}), body)
+        lines += render_protocol(
+            position, pid, entries[pid], display.get(pid, {}), body
+        )
     return "\n".join(lines).strip() + "\n"
 
 

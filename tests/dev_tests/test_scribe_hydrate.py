@@ -12,16 +12,11 @@ import pytest
 
 from scribe.hydrate import LockDriftError, hydrate_pins
 from seal.seal import export_pins, generate_protocol_lock
-from seal.store import (
-    HISTORY_TABLE,
-    ID_COLUMN,
-    SCHEMA,
-    UnknownProtocolHashError,
-    format_db_entry,
-    write_pull,
-)
+from seal.store import SCHEMA, format_protocol_entry, write_protocols
 from sources.protocols_io.artefact import build_protocol_artefact
+from utils.constants import PROTOCOL_HISTORY, PROTOCOL_ID
 from utils.dates import to_epoch
+from utils.error_handling import MissingHash
 from utils.intervals import active_hashes
 from utils.store import connect, initialize_db
 
@@ -35,9 +30,11 @@ def store(db_path, by_id_records):
     artefacts = [
         build_protocol_artefact(copy.deepcopy(r)) for r in by_id_records.values()
     ]
-    write_pull(db_path, format_db_entry(artefacts, PULLED_AT), PULLED_AT)
+    write_protocols(db_path, format_protocol_entry(artefacts, PULLED_AT), PULLED_AT)
     with connect(db_path, read_only=True) as conn:
-        return db_path, list(active_hashes(conn, HISTORY_TABLE, ID_COLUMN).values())
+        return db_path, list(
+            active_hashes(conn, PROTOCOL_HISTORY, PROTOCOL_ID).values()
+        )
 
 
 @pytest.fixture
@@ -106,7 +103,7 @@ class TestHydrateRefuses:
         document["manifest_hash"] = manifest_hash(document["entries"])
         with open(path, "w") as handle:
             json.dump(document, handle)
-        with pytest.raises(UnknownProtocolHashError):
+        with pytest.raises(MissingHash):
             hydrate_pins(path, db)
 
     def test_a_tampered_pin_set_is_refused_before_any_db_read(self, pins_file):

@@ -20,8 +20,9 @@ from scribe.markdown import (
     to_markdown,
 )
 from seal.seal import generate_protocol_lock
-from seal.store import HISTORY_TABLE, ID_COLUMN, SCHEMA, format_db_entry, write_pull
+from seal.store import SCHEMA, format_protocol_entry, write_protocols
 from sources.protocols_io.artefact import build_protocol_artefact
+from utils.constants import PROTOCOL_HISTORY, PROTOCOL_ID
 from utils.dates import to_epoch
 from utils.intervals import active_hashes
 from utils.store import connect, initialize_db
@@ -38,9 +39,11 @@ def store(db_path, by_id_records):
     artefacts = [
         build_protocol_artefact(copy.deepcopy(r)) for r in by_id_records.values()
     ]
-    write_pull(db_path, format_db_entry(artefacts, PULLED_AT), PULLED_AT)
+    write_protocols(db_path, format_protocol_entry(artefacts, PULLED_AT), PULLED_AT)
     with connect(db_path, read_only=True) as conn:
-        return db_path, list(active_hashes(conn, HISTORY_TABLE, ID_COLUMN).values())
+        return db_path, list(
+            active_hashes(conn, PROTOCOL_HISTORY, PROTOCOL_ID).values()
+        )
 
 
 @pytest.fixture
@@ -156,11 +159,11 @@ class TestMode:
             if str(raw["id"]) == victim:
                 raw["title"] = f"{raw['title']} (revised)"
             edited.append(build_protocol_artefact(raw))
-        write_pull(db, format_db_entry(edited, LATER), LATER)
+        write_protocols(db, format_protocol_entry(edited, LATER), LATER)
 
         with connect(db, read_only=True) as conn:
             assert (
-                active_hashes(conn, HISTORY_TABLE, ID_COLUMN)[victim]
+                active_hashes(conn, PROTOCOL_HISTORY, PROTOCOL_ID)[victim]
                 != document["entries"][victim]["hash"]
             )
         rendered = to_markdown(document, db=db)

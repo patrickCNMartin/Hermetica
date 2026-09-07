@@ -4,11 +4,13 @@
 """These have no protocol and no pipeline in them on purpose. If a rule here
 needs a domain object to state, it belongs in seal or compose, not in utils."""
 
+from typing import NamedTuple
+
 import pytest
 
-from utils.hashing import as_column, canonical_json, hash_bytes, hash_of
-from utils.intervals import diff_entries
-from utils.store import connect, fetch_rows, initialize_db, insert_statement
+from utils.hashing import canonical_json, encode_entry, hash_bytes, hash_of
+from utils.intervals import diff_entries, incoming_hashes
+from utils.store import connect, fetch_entry, initialize_db, insert_statement
 
 SCHEMA = (
     """
@@ -43,25 +45,41 @@ class TestHashOf:
 class TestAsColumn:
     @pytest.mark.parametrize("value", [None, 1, 1.5, "text"])
     def test_natives_pass_through_untouched(self, value):
-        assert as_column(value) is value
+        assert encode_entry(value) is value
 
     def test_a_dict_becomes_canonical_json_text(self):
-        assert as_column({"b": 2, "a": 1}) == '{"a":1,"b":2}'
+        assert encode_entry({"b": 2, "a": 1}) == '{"a":1,"b":2}'
 
     def test_a_list_becomes_canonical_json_text(self):
-        assert as_column([1, {"b": 2, "a": 1}]) == '[1,{"a":1,"b":2}]'
+        assert encode_entry([1, {"b": 2, "a": 1}]) == '[1,{"a":1,"b":2}]'
 
     def test_the_text_is_ascii_so_it_round_trips_through_sqlite(self):
-        assert as_column({"cafe": "café"}).encode("ascii")
+        assert encode_entry({"cafe": "café"}).encode("ascii")
 
     def test_bool_is_not_treated_as_an_int(self):
         """True is an int subclass, so this pins which branch it takes."""
-        assert as_column(True) is True
+        assert encode_entry(True) is True
 
 
 # -----------------------------------------------------------------------------#
 # DIFF
 # -----------------------------------------------------------------------------#
+class TestIncomingHashes:
+    class Row(NamedTuple):
+        thing_id: str
+        hash: str
+
+    def test_entries_become_an_id_to_hash_map(self):
+        rows = [self.Row("1", "sha256:aaa"), self.Row("2", "sha256:bbb")]
+        assert incoming_hashes(rows, "thing_id") == {
+            "1": "sha256:aaa",
+            "2": "sha256:bbb",
+        }
+
+    def test_no_entries_is_an_empty_map(self):
+        assert incoming_hashes([], "thing_id") == {}
+
+
 class TestDiffEntries:
     def test_an_id_with_no_history_is_new(self):
         diff = diff_entries({}, {"1": "sha256:aaa"})
@@ -162,24 +180,24 @@ class TestFetchRows:
         """`name` is column 0 here and the key is column 1 — the index is read,
         not assumed."""
         with connect(stocked, read_only=True) as conn:
-            found = fetch_rows(conn, "thing", ("name", "hash"), "hash", ["sha256:a"])
+            found = fetch_entry(conn, "thing", ("name", "hash"), "hash", ["sha256:a"])
         assert found == {"sha256:a": ("na", "sha256:a")}
 
     def test_it_returns_the_whole_row_in_column_order(self, stocked):
         with connect(stocked, read_only=True) as conn:
-            found = fetch_rows(
+            found = fetch_entry(
                 conn, "thing", ("hash", "name", "blob"), "hash", ["sha256:b"]
             )
         assert found["sha256:b"] == ("sha256:b", "nb", "{}")
 
     def test_no_keys_asks_the_database_nothing(self, stocked):
         with connect(stocked, read_only=True) as conn:
-            assert fetch_rows(conn, "thing", ("hash",), "hash", []) == {}
+            assert fetch_entry(conn, "thing", ("hash",), "hash", []) == {}
 
     def test_absences_are_simply_missing_not_raised(self, stocked):
         """Naming an absence is the caller's job — utils owns no error vocabulary."""
         with connect(stocked, read_only=True) as conn:
-            found = fetch_rows(
+            found = fetch_entry(
                 conn, "thing", ("hash",), "hash", ["sha256:a", "sha256:zzz"]
             )
         assert set(found) == {"sha256:a"}
@@ -187,4 +205,4 @@ class TestFetchRows:
     def test_a_key_column_outside_the_selection_fails_loudly(self, stocked):
         with connect(stocked, read_only=True) as conn:
             with pytest.raises(ValueError):
-                fetch_rows(conn, "thing", ("name",), "hash", ["sha256:a"])
+                fetch_entry(conn, "thing", ("name",), "hash", ["sha256:a"])

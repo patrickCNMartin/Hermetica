@@ -27,11 +27,11 @@ def unit_name(uid: Any, units: dict[str, str]) -> str:
     return units.get(str(uid)) or f"[unit:{uid}]"
 
 
-def _measure(value: Any, uid: Any, units: dict[str, str]) -> str:
+def format_measure(value: Any, uid: Any, units: dict[str, str]) -> str:
     return f"{value if value is not None else ''} {unit_name(uid, units)}".strip()
 
 
-def _duration(seconds: Any) -> str:
+def format_duration(seconds: Any) -> str:
     """Durations are stored in seconds and carry no unit id."""
     if not isinstance(seconds, (int, float)) or isinstance(seconds, bool):
         return ""
@@ -46,19 +46,19 @@ def _duration(seconds: Any) -> str:
     return " ".join(parts)
 
 
-def _centrifuge(data: dict, units: dict[str, str]) -> str:
-    speed = _measure(data.get("centrifuge"), data.get("unit"), units)
-    temp = _measure(data.get("temperature"), data.get("temperatureUnit"), units)
-    held = _duration(data.get("duration"))
+def format_centrifuge(data: dict, units: dict[str, str]) -> str:
+    speed = format_measure(data.get("centrifuge"), data.get("unit"), units)
+    temp = format_measure(data.get("temperature"), data.get("temperatureUnit"), units)
+    held = format_duration(data.get("duration"))
     return ", ".join(part for part in (speed, temp, held) if part)
 
 
-def _link(data: dict) -> str:
+def format_link(data: dict) -> str:
     url = data.get("url") or ""
     return f"<{url}>" if url else ""
 
 
-def _catalog(kind: str, name: Any, maker: Any, sku: Any) -> str:
+def format_catalog(kind: str, name: Any, maker: Any, sku: Any) -> str:
     """`name (maker, sku)`. Entries carry no vendor or sku, so parts drop."""
     name = (name or "").strip()
     detail = ", ".join(
@@ -74,19 +74,19 @@ def render_entity(entity: dict, units: dict[str, str]) -> str:
     kind = entity.get("type")
     data = entity.get("data") or {}
     if kind == "amount":
-        return _measure(data.get("amount"), data.get("unit"), units)
+        return format_measure(data.get("amount"), data.get("unit"), units)
     if kind == "concentration":
-        return _measure(data.get("concentration"), data.get("unit"), units)
+        return format_measure(data.get("concentration"), data.get("unit"), units)
     if kind == "temperature":
-        return _measure(data.get("temperature"), data.get("unit"), units)
+        return format_measure(data.get("temperature"), data.get("unit"), units)
     if kind == "duration":
-        return _duration(data.get("duration"))
+        return format_duration(data.get("duration"))
     if kind == "centrifuge":
-        return _centrifuge(data, units)
+        return format_centrifuge(data, units)
     if kind == "ph":
         return f"pH {data.get('number', '')}".strip()
     if kind == "reagents":
-        return _catalog(
+        return format_catalog(
             kind,
             data.get("name"),
             (data.get("vendor") or {}).get("name"),
@@ -95,9 +95,11 @@ def render_entity(entity: dict, units: dict[str, str]) -> str:
     if kind == "equipment":
         # `vendor` is the reseller, `brand` the maker — a Beckman instrument
         # comes back with vendor "Ramcon".
-        return _catalog(kind, data.get("name"), data.get("brand"), data.get("sku"))
+        return format_catalog(
+            kind, data.get("name"), data.get("brand"), data.get("sku")
+        )
     if kind == "link":
-        return _link(data)
+        return format_link(data)
     if kind == "emoji":
         return data.get("name") or ""
     return f"[{kind}]"

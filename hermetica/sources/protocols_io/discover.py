@@ -229,7 +229,6 @@ def search_by_filter(
         "filter": "shared_with_user",
         "key": " ",
         "order_field": "id",
-        "peer_reviewed": 0,
         "fields": "id",
     }
     ids = fetch_protocol_list(

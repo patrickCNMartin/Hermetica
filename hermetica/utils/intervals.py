@@ -80,6 +80,11 @@ def versions_on_date(
 # -----------------------------------------------------------------------------#
 # DIFF
 # -----------------------------------------------------------------------------#
+def incoming_hashes(entries: Iterable, id_column: str) -> dict[str, str]:
+    """id -> hash for one pull's worth of entries."""
+    return {getattr(row, id_column): row.hash for row in entries}
+
+
 def diff_entries(
     active: dict[str, str], incoming: dict[str, str]
 ) -> dict[str, list[str]]:
@@ -142,15 +147,15 @@ def open_intervals(
 # -----------------------------------------------------------------------------#
 
 
-# def version_control_diff(
-#     db: str, history_table: str, id_column: str, entries: Iterable
-# ) -> dict[str, list[str]]:
-#     """Compare a set of entries against the active state, without writing."""
-#     with connect(db, read_only=True) as conn:
-#         return diff_entries(
-#             active_hashes(conn, history_table, id_column),
-#             _incoming(entries, id_column),
-#         )
+def version_control_diff(
+    db: str, history_table: str, id_column: str, entries: Iterable
+) -> dict[str, list[str]]:
+    """Compare a set of entries against the active state, without writing."""
+    with connect(db, read_only=True) as conn:
+        return diff_entries(
+            active_hashes(conn, history_table, id_column),
+            incoming_hashes(entries, id_column),
+        )
 
 
 def write_version_control(
@@ -165,7 +170,10 @@ def write_version_control(
     pulled_at = pulled_at if pulled_at is not None else get_timestamp()
 
     with connect(db) as conn:
-        diff = diff_entries(active_hashes(conn, history_table, id_column), entries)
+        diff = diff_entries(
+            active_hashes(conn, history_table, id_column),
+            incoming_hashes(entries, id_column),
+        )
         first_time = set(diff["new"]) - seen_before(
             conn, history_table, id_column, diff["new"]
         )

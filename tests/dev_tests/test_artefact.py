@@ -9,11 +9,7 @@ import json
 
 import pytest
 
-from seal.contract import (
-    HASH_FIELDS,
-    METADATA_FIELDS,
-    protocol_hash,
-)
+from seal.contract import protocol_hash
 from sources.protocols_io.artefact import (
     build_protocol_artefact,
     get_step_chain,
@@ -21,8 +17,10 @@ from sources.protocols_io.artefact import (
     get_unit_map,
 )
 from tests.conftest import ARCHETYPES
+from utils.constants import PROTOCOL_HASH_FIELDS, PROTOCOL_METADATA_FIELDS
 
-# Restated as a literal on purpose: this is the spec. HASH_FIELDS defines protocol
+# Restated as a literal on purpose: this is the spec. PROTOCOL_HASH_FIELDS
+# defines protocol
 # identity, so an unreviewed edit re-hashes every version in the store — changing
 # the contract must require changing this test too.
 SPEC_HASH_FIELDS = (
@@ -67,27 +65,29 @@ STEP_CONTENT_FIELDS = {"id", "guid", "section", "step", "critical"}
 # -----------------------------------------------------------------------------#
 class TestContract:
     def test_hash_fields_match_the_spec(self):
-        assert HASH_FIELDS == SPEC_HASH_FIELDS
+        assert PROTOCOL_HASH_FIELDS == SPEC_HASH_FIELDS
 
     def test_metadata_fields_match_the_spec(self):
-        assert METADATA_FIELDS == SPEC_METADATA_FIELDS
+        assert PROTOCOL_METADATA_FIELDS == SPEC_METADATA_FIELDS
 
     def test_the_two_sets_do_not_overlap(self):
-        assert not set(HASH_FIELDS) & set(METADATA_FIELDS)
+        assert not set(PROTOCOL_HASH_FIELDS) & set(PROTOCOL_METADATA_FIELDS)
 
     @pytest.mark.parametrize("archetype", ARCHETYPES)
     def test_hashable_is_exactly_hash_fields(self, record, archetype):
         built = build_protocol_artefact(record(archetype))
-        assert tuple(built.hashable()) == HASH_FIELDS
+        assert tuple(built.hashable()) == PROTOCOL_HASH_FIELDS
 
     @pytest.mark.parametrize("archetype", ARCHETYPES)
     def test_metadata_is_exactly_metadata_fields(self, record, archetype):
         built = build_protocol_artefact(record(archetype))
-        assert tuple(built.metadata()) == METADATA_FIELDS
+        assert tuple(built.metadata()) == PROTOCOL_METADATA_FIELDS
 
     def test_to_dict_is_the_union(self, record):
         built = build_protocol_artefact(record("baseline"))
-        assert set(built.to_dict()) == set(HASH_FIELDS) | set(METADATA_FIELDS)
+        assert set(built.to_dict()) == set(PROTOCOL_HASH_FIELDS) | set(
+            PROTOCOL_METADATA_FIELDS
+        )
 
     def test_artefact_is_frozen(self, record):
         """A snapshot, not a working buffer — mutating desyncs blob and hash."""

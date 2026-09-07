@@ -11,7 +11,7 @@ import os
 import pytest
 
 from seal.seal import (
-    MalformedLockError,
+    DuplicatedIdError,
     export_lock,
     export_pins,
     export_pipeline,
@@ -20,16 +20,11 @@ from seal.seal import (
     manifest_hash,
     verify_lock,
 )
-from seal.store import (
-    HISTORY_TABLE,
-    ID_COLUMN,
-    SCHEMA,
-    DuplicateProtocolIdError,
-    format_db_entry,
-    write_pull,
-)
+from seal.store import SCHEMA, format_protocol_entry, write_protocols
 from sources.protocols_io.artefact import build_protocol_artefact
+from utils.constants import PROTOCOL_HISTORY, PROTOCOL_ID
 from utils.dates import to_epoch
+from utils.error_handling import MalformedLockError
 from utils.intervals import active_hashes
 from utils.store import connect, initialize_db
 
@@ -50,9 +45,11 @@ def store(db_path, by_id_records):
     artefacts = [
         build_protocol_artefact(copy.deepcopy(r)) for r in by_id_records.values()
     ]
-    write_pull(db_path, format_db_entry(artefacts, PULLED_AT), PULLED_AT)
+    write_protocols(db_path, format_protocol_entry(artefacts, PULLED_AT), PULLED_AT)
     with connect(db_path, read_only=True) as conn:
-        return db_path, list(active_hashes(conn, HISTORY_TABLE, ID_COLUMN).values())
+        return db_path, list(
+            active_hashes(conn, PROTOCOL_HISTORY, PROTOCOL_ID).values()
+        )
 
 
 @pytest.fixture
@@ -130,13 +127,13 @@ class TestGenerate:
         edited = copy.deepcopy(record)
         edited["title"] = "A different title"
 
-        first = format_db_entry([build_protocol_artefact(record)], PULLED_AT)
-        second = format_db_entry([build_protocol_artefact(edited)], PULLED_AT + 1)
-        write_pull(db_path, first, PULLED_AT)
-        write_pull(db_path, second, PULLED_AT + 1)
+        first = format_protocol_entry([build_protocol_artefact(record)], PULLED_AT)
+        second = format_protocol_entry([build_protocol_artefact(edited)], PULLED_AT + 1)
+        write_protocols(db_path, first, PULLED_AT)
+        write_protocols(db_path, second, PULLED_AT + 1)
 
         # Both blobs are still stored; pinning both would resolve one id twice.
-        with pytest.raises(DuplicateProtocolIdError, match="protocol"):
+        with pytest.raises(DuplicatedIdError, match="protocol"):
             generate_protocol_lock([first[0].hash, second[0].hash], db_path)
 
 

@@ -9,18 +9,13 @@ from pathlib import Path
 
 import pytest
 
-from compose.compose import HASH_FIELDS, METADATA_FIELDS, ProtocolPipeline
+from compose.compose import PipelineArtefact
 from compose.store import (
-    _CONTENT_COLUMNS,
-    HISTORY_TABLE,
-    ID_COLUMN,
     SCHEMA,
-    DuplicatePipelineGuidError,
     PipelineEntry,
-    UnknownPipelineHashError,
     build_pipeline_entry,
     diff_pipelines,
-    format_db_entry,
+    format_pipeline_entry,
     get_pipelines,
     write_pipeline,
 )
@@ -30,7 +25,16 @@ from compose.templates import (
     pipelines_from_template,
     read_template,
 )
+from seal.seal import DuplicatedIdError
+from utils.constants import (
+    PIPELINE_CONTENT_FIELDS,
+    PIPELINE_GUID,
+    PIPELINE_HASH_FIELDS,
+    PIPELINE_HISTORY,
+    PIPELINE_METADATA_FIELDS,
+)
 from utils.dates import to_epoch
+from utils.error_handling import MissingHash
 from utils.hashing import canonical_json
 from utils.intervals import active_hashes, versions_on_date
 from utils.store import connect, initialize_db, verify_blobs
@@ -52,7 +56,7 @@ EVENING = to_epoch(SWAP_DAY) + 18 * 3600
 # -----------------------------------------------------------------------------#
 @pytest.fixture
 def pipeline():
-    def _pipeline(guid: str = "abc123", **overrides) -> ProtocolPipeline:
+    def _pipeline(guid: str = "abc123", **overrides) -> PipelineArtefact:
         fields = {
             "guid": guid,
             "title": "CryPrep_biomek_base",
@@ -63,7 +67,7 @@ def pipeline():
             "created_on": CREATED_ON,
             "creator": "Homunculus Pat",
         }
-        return ProtocolPipeline(**{**fields, **overrides})
+        return PipelineArtefact(**{**fields, **overrides})
 
     return _pipeline
 
@@ -81,7 +85,7 @@ def query(db: str, sql: str, *params):
 
 def live(db: str) -> dict[str, str]:
     with connect(db, read_only=True) as conn:
-        return active_hashes(conn, HISTORY_TABLE, ID_COLUMN)
+        return active_hashes(conn, PIPELINE_HISTORY, PIPELINE_GUID)
 
 
 # -----------------------------------------------------------------------------#
@@ -90,13 +94,15 @@ def live(db: str) -> dict[str, str]:
 class TestPipelineContract:
     def test_every_hash_field_exists_on_the_dataclass(self, pipeline):
         """DAG_ids used to sit here and did not exist — hashable() raised."""
-        assert set(pipeline().hashable()) == set(HASH_FIELDS)
+        assert set(pipeline().hashable()) == set(PIPELINE_HASH_FIELDS)
 
     def test_metadata_is_the_metadata_fields(self, pipeline):
-        assert tuple(pipeline().metadata()) == METADATA_FIELDS
+        assert tuple(pipeline().metadata()) == PIPELINE_METADATA_FIELDS
 
     def test_to_dict_carries_both_halves(self, pipeline):
-        assert set(pipeline().to_dict()) == set(HASH_FIELDS) | set(METADATA_FIELDS)
+        assert set(pipeline().to_dict()) == set(PIPELINE_HASH_FIELDS) | set(
+            PIPELINE_METADATA_FIELDS
+        )
 
     def test_metadata_is_not_hashed(self, pipeline):
         """A different creator is the same pipeline."""
@@ -147,11 +153,13 @@ class TestDatabaseBuild:
         assert self.columns_of(db, "pipeline_history") == self.HISTORY_COLUMNS
 
     def test_content_columns_match_the_table(self, db):
-        """Derived from METADATA_FIELDS, never restated."""
-        assert list(_CONTENT_COLUMNS) == self.columns_of(db, "pipeline_content")
+        """Derived from PIPELINE_METADATA_FIELDS, never restated."""
+        assert list(PIPELINE_CONTENT_FIELDS) == self.columns_of(db, "pipeline_content")
 
     def test_entry_carries_the_columns_plus_valid_from(self):
-        assert set(PipelineEntry._fields) == set(_CONTENT_COLUMNS) | {"valid_from"}
+        assert set(PipelineEntry._fields) == set(PIPELINE_CONTENT_FIELDS) | {
+            "valid_from"
+        }
 
     def test_initialize_is_idempotent(self, db_path):
         initialize_db(db_path, SCHEMA)
@@ -183,7 +191,7 @@ class TestBuildEntry:
         assert entry.valid_from == WRITTEN_AT
 
     def test_format_db_entry_builds_one_per_pipeline(self, pipeline):
-        entries = format_db_entry([pipeline("a"), pipeline("b")], WRITTEN_AT)
+        entries = format_pipeline_entry([pipeline("a"), pipeline("b")], WRITTEN_AT)
         assert [e.pipeline_guid for e in entries] == ["a", "b"]
 
 
@@ -192,14 +200,16 @@ class TestBuildEntry:
 # -----------------------------------------------------------------------------#
 class TestWritePipeline:
     def test_a_first_write_is_new(self, db, pipeline):
-        diff = write_pipeline(db, format_db_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
+        diff = write_pipeline(
+            db, format_pipeline_entry([pipeline()], WRITTEN_AT), WRITTEN_AT
+        )
         assert diff["new"] == ["abc123"]
         assert live(db) == {
             "abc123": query(db, "SELECT hash FROM pipeline_content")[0][0]
         }
 
     def test_rewriting_the_same_pipeline_opens_no_second_interval(self, db, pipeline):
-        entries = format_db_entry([pipeline()], WRITTEN_AT)
+        entries = format_pipeline_entry([pipeline()], WRITTEN_AT)
         write_pipeline(db, entries, WRITTEN_AT)
         diff = write_pipeline(db, entries, LATER)
 
@@ -210,9 +220,9 @@ class TestWritePipeline:
     def test_a_changed_dag_closes_the_old_interval_and_opens_a_new_one(
         self, db, pipeline
     ):
-        write_pipeline(db, format_db_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
+        write_pipeline(db, format_pipeline_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
         edited = pipeline(DAG={"A": ["B"], "B": "D"})
-        diff = write_pipeline(db, format_db_entry([edited], LATER), LATER)
+        diff = write_pipeline(db, format_pipeline_entry([edited], LATER), LATER)
 
         assert diff["changed"] == ["abc123"]
         rows = query(
@@ -223,8 +233,10 @@ class TestWritePipeline:
         assert rows == [(CREATED_ON, LATER), (LATER, None)]
 
     def test_only_one_version_is_ever_active(self, db, pipeline):
-        write_pipeline(db, format_db_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
-        write_pipeline(db, format_db_entry([pipeline(DAG={"A": ["B"]})], LATER), LATER)
+        write_pipeline(db, format_pipeline_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
+        write_pipeline(
+            db, format_pipeline_entry([pipeline(DAG={"A": ["B"]})], LATER), LATER
+        )
         assert (
             query(
                 db,
@@ -239,24 +251,30 @@ class TestWritePipeline:
         self, db, pipeline
     ):
         write_pipeline(
-            db, format_db_entry([pipeline("a"), pipeline("b")], WRITTEN_AT), WRITTEN_AT
+            db,
+            format_pipeline_entry([pipeline("a"), pipeline("b")], WRITTEN_AT),
+            WRITTEN_AT,
         )
-        diff = write_pipeline(db, format_db_entry([pipeline("a")], LATER), LATER)
+        diff = write_pipeline(db, format_pipeline_entry([pipeline("a")], LATER), LATER)
 
         assert diff["absent"] == ["b"]
         assert set(live(db)) == {"a"}
 
     def test_the_old_blob_survives_deprecation(self, db, pipeline):
         """A pinned pipeline must still resolve after it is superseded."""
-        write_pipeline(db, format_db_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
+        write_pipeline(db, format_pipeline_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
         first = query(db, "SELECT hash FROM pipeline_content")[0][0]
-        write_pipeline(db, format_db_entry([pipeline(DAG={"A": ["B"]})], LATER), LATER)
+        write_pipeline(
+            db, format_pipeline_entry([pipeline(DAG={"A": ["B"]})], LATER), LATER
+        )
         assert get_pipelines(db, [first])[0].hash == first
 
     def test_only_the_first_ever_version_backdates(self, db, pipeline):
         """created_on says when the pipeline was authored, not this version."""
-        write_pipeline(db, format_db_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
-        write_pipeline(db, format_db_entry([pipeline(DAG={"A": ["B"]})], LATER), LATER)
+        write_pipeline(db, format_pipeline_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
+        write_pipeline(
+            db, format_pipeline_entry([pipeline(DAG={"A": ["B"]})], LATER), LATER
+        )
         opens = [
             row[0]
             for row in query(
@@ -266,12 +284,14 @@ class TestWritePipeline:
         assert opens == [CREATED_ON, LATER]
 
     def test_two_versions_of_one_guid_in_a_single_write_is_refused(self, db, pipeline):
-        entries = format_db_entry([pipeline(), pipeline(DAG={"A": ["B"]})], WRITTEN_AT)
-        with pytest.raises(DuplicatePipelineGuidError):
+        entries = format_pipeline_entry(
+            [pipeline(), pipeline(DAG={"A": ["B"]})], WRITTEN_AT
+        )
+        with pytest.raises(DuplicatedIdError):
             write_pipeline(db, entries, WRITTEN_AT)
 
     def test_diff_pipelines_reports_without_writing(self, db, pipeline):
-        entries = format_db_entry([pipeline()], WRITTEN_AT)
+        entries = format_pipeline_entry([pipeline()], WRITTEN_AT)
         assert diff_pipelines(db, entries)["new"] == ["abc123"]
         assert query(db, "SELECT COUNT(*) FROM pipeline_history") == [(0,)]
 
@@ -283,7 +303,9 @@ class TestGetPipelines:
     def test_it_returns_them_in_the_order_asked_for(self, db, pipeline):
         write_pipeline(
             db,
-            format_db_entry([pipeline("a"), pipeline("b", DAG={"X": []})], WRITTEN_AT),
+            format_pipeline_entry(
+                [pipeline("a"), pipeline("b", DAG={"X": []})], WRITTEN_AT
+            ),
         )
         hashes = [
             row[0]
@@ -294,13 +316,13 @@ class TestGetPipelines:
         assert [row.hash for row in get_pipelines(db, hashes)] == hashes
 
     def test_an_unknown_hash_raises_rather_than_dropping_out(self, db, pipeline):
-        write_pipeline(db, format_db_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
+        write_pipeline(db, format_pipeline_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
         known = query(db, "SELECT hash FROM pipeline_content")[0][0]
-        with pytest.raises(UnknownPipelineHashError, match="sha256:"):
+        with pytest.raises(MissingHash, match="sha256:"):
             get_pipelines(db, [known, "sha256:" + "0" * 64])
 
     def test_without_the_blob_the_pipeline_column_is_unread(self, db, pipeline):
-        write_pipeline(db, format_db_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
+        write_pipeline(db, format_pipeline_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
         known = query(db, "SELECT hash FROM pipeline_content")[0][0]
         assert get_pipelines(db, [known], with_blob=False)[0].pipeline is None
 
@@ -310,34 +332,43 @@ class TestGetPipelines:
 
 class TestPipelinesOnDate:
     def test_a_version_active_on_that_day_is_returned(self, db, pipeline):
-        write_pipeline(db, format_db_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
+        write_pipeline(db, format_pipeline_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
         with connect(db, read_only=True) as conn:
-            versions = versions_on_date(conn, HISTORY_TABLE, ID_COLUMN, "2026-09-01")
+            versions = versions_on_date(
+                conn, PIPELINE_HISTORY, PIPELINE_GUID, "2026-09-01"
+            )
         assert list(versions) == ["abc123"]
 
     def test_both_versions_are_returned_for_the_day_they_swapped(self, db, pipeline):
         """Two edits inside one day — the case a single date cannot disambiguate."""
-        write_pipeline(db, format_db_entry([pipeline()], MORNING), MORNING)
+        write_pipeline(db, format_pipeline_entry([pipeline()], MORNING), MORNING)
         write_pipeline(
-            db, format_db_entry([pipeline(DAG={"A": ["B"]})], EVENING), EVENING
+            db, format_pipeline_entry([pipeline(DAG={"A": ["B"]})], EVENING), EVENING
         )
         with connect(db, read_only=True) as conn:
-            versions = versions_on_date(conn, HISTORY_TABLE, ID_COLUMN, SWAP_DAY)
+            versions = versions_on_date(conn, PIPELINE_HISTORY, PIPELINE_GUID, SWAP_DAY)
         assert len(versions["abc123"]) == 2
 
     def test_a_version_closed_at_midnight_is_not_active_that_day(self, db, pipeline):
         """The interval is half-open: closing at 00:00:00 means it held nothing
         on the day that starts there."""
-        write_pipeline(db, format_db_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
-        write_pipeline(db, format_db_entry([pipeline(DAG={"A": ["B"]})], LATER), LATER)
+        write_pipeline(db, format_pipeline_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
+        write_pipeline(
+            db, format_pipeline_entry([pipeline(DAG={"A": ["B"]})], LATER), LATER
+        )
         with connect(db, read_only=True) as conn:
-            versions = versions_on_date(conn, HISTORY_TABLE, ID_COLUMN, "2026-09-08")
+            versions = versions_on_date(
+                conn, PIPELINE_HISTORY, PIPELINE_GUID, "2026-09-08"
+            )
         assert len(versions["abc123"]) == 1
 
     def test_a_day_before_anything_existed_is_empty(self, db, pipeline):
-        write_pipeline(db, format_db_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
+        write_pipeline(db, format_pipeline_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
         with connect(db, read_only=True) as conn:
-            assert versions_on_date(conn, HISTORY_TABLE, ID_COLUMN, "2020-01-01") == {}
+            assert (
+                versions_on_date(conn, PIPELINE_HISTORY, PIPELINE_GUID, "2020-01-01")
+                == {}
+            )
 
 
 # -----------------------------------------------------------------------------#
@@ -345,11 +376,11 @@ class TestPipelinesOnDate:
 # -----------------------------------------------------------------------------#
 class TestVerifyPipelines:
     def test_an_untouched_store_is_clean(self, db, pipeline):
-        write_pipeline(db, format_db_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
+        write_pipeline(db, format_pipeline_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
         assert verify_blobs(db, "pipeline_content", "hash", "pipeline") == []
 
     def test_a_tampered_blob_is_named(self, db, pipeline):
-        write_pipeline(db, format_db_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
+        write_pipeline(db, format_pipeline_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
         known = query(db, "SELECT hash FROM pipeline_content")[0][0]
         with connect(db) as conn:
             conn.execute(
@@ -375,7 +406,7 @@ class TestTemplates:
     def test_the_shipped_template_loads(self, template):
         pipelines = pipelines_from_template(template, mint=True)
         assert len(pipelines) == 7
-        assert all(isinstance(p, ProtocolPipeline) for p in pipelines)
+        assert all(isinstance(p, PipelineArtefact) for p in pipelines)
 
     def test_every_pipeline_gets_a_guid(self, template):
         guids = [p.guid for p in pipelines_from_template(template, mint=True)]
@@ -441,22 +472,24 @@ class TestTemplates:
     def test_pipelines_from_a_template_write_and_version(self, db, template):
         pipelines = pipelines_from_template(template, mint=True)
 
-        diff = write_pipeline(db, format_db_entry(pipelines, WRITTEN_AT), WRITTEN_AT)
+        diff = write_pipeline(
+            db, format_pipeline_entry(pipelines, WRITTEN_AT), WRITTEN_AT
+        )
         assert len(diff["new"]) == 7
         assert len(live(db)) == 7
 
     def test_an_edited_dag_versions_under_the_same_guid(self, db, template):
         """The guid is what survives an edit — that is the point of minting it."""
         pipelines = pipelines_from_template(template, mint=True)
-        write_pipeline(db, format_db_entry(pipelines, WRITTEN_AT), WRITTEN_AT)
+        write_pipeline(db, format_pipeline_entry(pipelines, WRITTEN_AT), WRITTEN_AT)
 
         edited = [
-            ProtocolPipeline(**{**p.to_dict(), "DAG": {"A": ["Z"]}})
+            PipelineArtefact(**{**p.to_dict(), "DAG": {"A": ["Z"]}})
             if p.title == "CryPrep_biomek_base"
             else p
             for p in pipelines
         ]
-        diff = write_pipeline(db, format_db_entry(edited, LATER), LATER)
+        diff = write_pipeline(db, format_pipeline_entry(edited, LATER), LATER)
 
         assert len(diff["changed"]) == 1
         assert len(live(db)) == 7

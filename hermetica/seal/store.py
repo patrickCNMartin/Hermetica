@@ -13,7 +13,7 @@ from utils.constants import (
 )
 from utils.dates import get_timestamp, to_epoch
 from utils.hashing import canonical_json, encode_entry, hash_bytes
-from utils.intervals import diff_versioned, write_version_control
+from utils.intervals import version_control_diff, write_version_control
 from utils.store import fetch_entries, insert_statement
 
 # -----------------------------------------------------------------------------#
@@ -164,7 +164,7 @@ def diff_protocols(
 
     Returns protocol_ids grouped as new / changed / unchanged / absent.
     """
-    return diff_versioned(db, protocol_history, protocol_id, protocols)
+    return version_control_diff(db, protocol_history, protocol_id, protocols)
 
 
 # -----------------------------------------------------------------------------#
