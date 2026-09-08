@@ -498,3 +498,49 @@ is still blocked on the Phase 2 day-to-manifest resolver. Graph validation again
 read-only version control, fork-on-edit and lineage remain unbuilt: this commit is the
 storage, not the composition rules. `pyyaml` was imported but never declared, and is now a
 dependency; `uv.lock` still needs a `uv lock` refresh, which could not run here.
+
+---
+
+## 2026-09-08 — 984a02b — identity becomes source-aware: `protocol_uid` and the scoped diff
+
+**Decided:** identity is `protocol_uid` = `"<source>:<id>"`, and `source` joins
+`PROTOCOL_HASH_FIELDS`. `protocol_history` keys on the uid and carries `source`;
+`active_hashes` takes a `(column, value)` scope so absence is computed inside one
+platform's partition. This closes the DANGER that had stood since `ee551d3` — a second
+source can now be added to `chronos.db`.
+
+**Why:** the two failure modes were separate and both had to be closed. The uid fixes
+*collision*: two platforms can each number a protocol `88578`, and with a bare id they are
+one row identity, so a content change on one closes the other's interval. The scoped diff
+fixes *absence*: `absent = active − incoming` read every live row in the table, so
+`protocols_io` and `zenodo` would have retired each other's whole catalogue on alternating
+nightly runs, permanently, in an append-only table. **The uid alone would not have fixed
+absence** — `active_hashes` still returns `zenodo:456` during a protocols.io pull. That is
+why the earlier note said `protocol_uid` *and* the per-source diff.
+
+`source` is hashed rather than kept as unhashed provenance, so one protocol mirrored on
+two platforms is two records that drift independently — one may change while the other
+does not. The alternative, source as a history-only column, was rejected: `protocol_content`
+is keyed on hash and carries the id as a column, so unhashed source makes two uids collide
+on one content row, a larger schema change than the re-hash.
+
+**Rejected:** naming the column `provenance`. `snapshots.provenance` is free-form TEXT that
+nothing reads, describing how a *lock* came to be; this is constrained, level-1, and
+load-bearing in the diff. The same word for both would make them look interchangeable.
+
+**Also decided:** the duplicate-identity check runs once, at lock generation, not again at
+write time. Both write-path tests asserting it were removed. A partial unique index
+(`ON protocol_history(protocol_uid) WHERE deprecated_at IS NULL`) makes "one active version"
+a database rule instead, costing no Python and unable to be forgotten.
+
+**Cost:** every stored protocol re-hashes — accepted as free before the first issued lock,
+per `ee551d3`. Lock `entries` and `protocols` are now keyed on the uid, so **every existing
+`.lock` file is stale** and must be regenerated; `db/chronos.db` must be rebuilt, as the
+schema change is not a migration. `scope_of` derives the source from the rows rather than
+taking it on trust, so an empty pull — the one case with no rows to read, and the one where
+scoping matters most — raises unless told its source. Two adapter-level renames rode along:
+`build_source` now threads one name into both the artefacts and `ProtocolSource.name`, which
+is what that docstring had always claimed, and `MissingHash` moved to `utils/store.py` where
+it is raised, retiring `utils/error_handling.py`. Still open from the `ee551d3` list: `id`
+widened to `str`, hashed fields made nullable, and `reserved_doi` collapsed into a nullable
+`doi`. 570 tests pass; `test_workspace.py` does not collect, against unbuilt discover work.
