@@ -340,6 +340,48 @@ class TestAttribution:
 
 
 # -----------------------------------------------------------------------------#
+# 4b. THE EXECUTOR
+# -----------------------------------------------------------------------------#
+class TestExecutor:
+    """Hashed content, so it must reach the page — by every route the renderer
+    has: the lock's display block, the blob, and the store."""
+
+    @pytest.fixture
+    def executed(self, db_path, by_id_records):
+        """One protocol declaring `executor:biomek`, sealed and locked."""
+        initialize_db(db_path, SCHEMA)
+        records = copy.deepcopy(by_id_records)
+        records["baseline"]["keywords"] = "sp3, executor:biomek"
+        artefacts = [build_protocol_artefact(r) for r in records.values()]
+        write_protocols(db_path, format_protocol_entry(artefacts, PULLED_AT), PULLED_AT)
+        with connect(db_path, read_only=True) as conn:
+            hashes = list(active_hashes(conn, PROTOCOL_HISTORY, PROTOCOL_UID).values())
+        document = generate_protocol_lock(hashes, db_path, as_of=PULLED_AT)
+        return document, db_path, uid(records["baseline"]["id"])
+
+    def test_it_renders_from_the_lock_display(self, executed):
+        document, _, pid = executed
+        assert "| executor | biomek |" in section(to_markdown(document), pid)
+
+    def test_it_renders_from_the_blob(self, executed):
+        """No display block: the executor is hashed, so the body still has it."""
+        document, _, pid = executed
+        del document["protocols"]
+        assert "| executor | biomek |" in section(to_markdown(document), pid)
+
+    def test_a_pins_only_lock_reads_it_from_the_db(self, executed):
+        document, db, pid = executed
+        del document["protocols"]
+        del document["bodies"]
+        assert "| executor | biomek |" in section(to_markdown(document, db=db), pid)
+
+    def test_an_undeclared_executor_renders_no_row(self, executed, by_id_records):
+        document, _, _ = executed
+        other = uid(by_id_records["dotted_steps"]["id"])
+        assert "| executor |" not in section(to_markdown(document), other)
+
+
+# -----------------------------------------------------------------------------#
 # 5. WHAT IT REFUSES
 # -----------------------------------------------------------------------------#
 class TestRefuses:

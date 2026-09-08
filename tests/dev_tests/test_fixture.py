@@ -396,16 +396,32 @@ class TestWorkspaceFixtureStructure:
 
 
 # -----------------------------------------------------------------------------#
-# 6. THE SEARCH SWEEP — the v4 shape the folder tree arrives in
+# 6. THE SEARCH SWEEP — the v4 shape the whole workspace arrives in
 # -----------------------------------------------------------------------------#
 @pytest.fixture
-def search_folders(workspace_records) -> list[dict]:
-    """Every folder the sweep hands back, across all its pages."""
+def search_items(workspace_records) -> list[dict]:
+    """Everything the sweep hands back, across all its pages.
+
+    The sweep is flat: folders, protocols, records and files together. That is
+    the whole point of it — no folder is ever opened to find a protocol.
+    """
     return [
         item
         for page in workspace_records["search_pages"]
         for item in page["payload"]["items"]
     ]
+
+
+@pytest.fixture
+def search_folders(search_items) -> list[dict]:
+    """Just the folder half of the sweep."""
+    return [item for item in search_items if item["content_type_id"] == 10]
+
+
+@pytest.fixture
+def search_protocols(search_items) -> list[dict]:
+    """Just the protocol-content half of the sweep."""
+    return [item for item in search_items if item["content_type_id"] == 1]
 
 
 class TestSearchFixtureStructure:
@@ -435,18 +451,33 @@ class TestSearchFixtureStructure:
             is None
         )
 
-    def test_page_counts_add_up_to_total_results(
-        self, workspace_records, search_folders
-    ):
+    def test_page_counts_add_up_to_total_results(self, workspace_records, search_items):
         """Otherwise the sweep's completeness check fires on a fixture."""
         total = workspace_records["search_pages"][0]["payload"]["pagination"][
             "total_results"
         ]
-        assert len(search_folders) == total
+        assert len(search_items) == total
 
-    def test_every_folder_is_a_folder(self, search_folders):
-        assert search_folders
-        assert all(f["content_type_id"] == 10 for f in search_folders)
+    def test_the_sweep_is_flat(self, search_items, search_folders, search_protocols):
+        """Folders and protocols arrive in the same list, not one inside another."""
+        assert search_folders and search_protocols
+        assert len(search_items) > len(search_folders) + len(search_protocols)
+
+    def test_every_protocol_carries_what_the_gate_reads(self, search_protocols):
+        """`id`, `type_id` and `in_trash` decide selection. Nothing else is read."""
+        for item in search_protocols:
+            assert isinstance(item["id"], int)
+            assert item["type_id"] is not None
+            assert isinstance(item["in_trash"], bool)
+
+    def test_a_protocol_carries_no_guid(self, search_protocols):
+        """Measured upstream: `guid` and `parent_guid` are folder-only here."""
+        assert not any("guid" in item for item in search_protocols)
+
+    def test_a_content_type_that_is_neither_exists(self, search_items):
+        """A record and a file share the sweep with the protocols."""
+        kinds = {i["content_type_id"] for i in search_items}
+        assert kinds - {1, 10}
 
     def test_guids_are_unique(self, search_folders):
         guids = [f["guid"] for f in search_folders]

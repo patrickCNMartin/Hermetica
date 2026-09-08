@@ -38,6 +38,9 @@ class ProtocolArtefact:
     keywords: str
     authors: list[dict] | None = None
     creator: dict | None = None
+    # Hashed despite sitting here: a default is only possible after the fields
+    # that have none, and not every source declares an executor.
+    executor: str = ""
 
     def to_dict(self) -> dict:
         """Full artefact as a plain dict — the stored/metadata-bearing form."""

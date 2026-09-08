@@ -8,12 +8,10 @@ pipelines:
     Some_cool_protocol:
         pipeline_guid: null
         manifest_hash: null
-        root: null
-        executor: null
+        root: "Filtrate vortex resuspend protocol"
         protocol_dag: {"568614":["319531","201297"],"319531":"D","201297":"400843"}
     Some_other_protocol:
         pipeline_guid: null
         manifest_hash: null
-        root: null
-        executor: null
+        root: "Filtrate vortex resuspend protocol"
         protocol_dag: {"568614":"400843"}

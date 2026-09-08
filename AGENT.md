@@ -131,6 +131,10 @@ underneath, append-only.
   protocol when protocols.io edits it. An unresolvable id is omitted, never guessed.
 - **Reagent and equipment entities stay in the blob, catalog state and all.** Which machine
   was used is load-bearing provenance.
+- **`executor` is hashed.** The same steps run by a human and by a Biomek are two
+  protocols, not one protocol with an attribute — that is why it sits on the artefact and
+  **not on the pipeline**, where a graph of mixed executors could not describe itself.
+  Declared, never inferred: `""` means nobody said so, and is not "human".
 
 ### Time and intervals
 
@@ -157,8 +161,14 @@ token in `keywords` — both meaning *never sealed*, both closing the interval b
 Neither is stored as a reason.
 
 - **Trashed protocols are never fetched by id.**
-- **`keywords` is never hashed**, so flagging cannot mint a version. This is why lifecycle
-  never goes in `description`.
+- **`keywords` itself is never hashed**, so flagging cannot mint a version. This is why
+  lifecycle never goes in `description`. **The `executor:<name>` token is the one
+  exception** — it is *parsed out* of `keywords` into a hashed field, so declaring an
+  executor **does** mint a version, deliberately. Everything else in `keywords` stays
+  metadata.
+- **`executor:<name>` is casefolded** (`split_keywords` already does it), so `Biomek` and
+  `biomek` are one executor rather than two hashes. **Two declarations raise** — the value
+  is hashed, and picking one would mint an identity nobody asked for.
 - **Token matching is exact, against an alias table.** `depreciated` and `depreceated` are
   aliased deliberately. Close-but-unrecognised is a **warning**, never acted on.
 - **Removing a flag opens a NEW interval, never reopens the closed one.**
@@ -213,6 +223,9 @@ Two flavours: protocols-only, and pipeline (adds the pinned graph).
   survives every edit. **Reading never mints** — a silent re-mint orphans everything
   stored under the old guid.
 - **Pinned to hashes**, so a pipeline reproduces even after a protocol is deprecated.
+- **A pipeline has no executor.** It once did, which said every node in the graph ran on
+  the same thing; a real pipeline hands off between a human and two robots. The executor
+  is the protocol's, and hashed there.
 - **No graph database** — violates the local/sovereign/no-heavy-dep principles.
 - **Not built:** validation against the read-only VC, fork-on-edit, parent links.
 
@@ -235,8 +248,9 @@ Two flavours: protocols-only, and pipeline (adds the pinned graph).
 - **Columns are derived from `METADATA_FIELDS`, never restated**, so drift is loud: a
   missing entry field is a `TypeError`, a missing column a `ProgrammingError`, and a
   reorder is harmless because binding is by name.
-- **Five hashed fields are also columns** (`source`, `title`, `doi`, `reserved_doi`,
-  `uri`) — a denormalized copy for display and for scoping, never authoritative.
+- **Six hashed fields are also columns** (`source`, `title`, `doi`, `reserved_doi`,
+  `uri`, `executor`) — a denormalized copy for display and for scoping, never
+  authoritative.
 - **Two SQLite files, deliberately separate.** `chronos.db` is append-only with the **cron
   writer as sole writer**; `compose.db` uses the same interval machinery. `snapshots` is
   schema only.

@@ -26,7 +26,6 @@ class PipelineArtefact:
     # None until the pipeline is pinned to a manifest; a base template is not.
     manifest_hash: str | None
     root: str | None  # starting material/ sample type
-    executor: str | None  # human or robot?
     DAG: dict
     # --- retained, never hashed (METADATA_FIELDS) -------------------------- #
     created_on: int
@@ -50,11 +49,15 @@ class PipelineArtefact:
 # -----------------------------------------------------------------------------#
 
 
-def active_protocols(db_path: str) -> dict[str, str]:
+def active_protocols(
+    db_path: str,
+    pipeline_history: str = PIPELINE_HISTORY,
+    pipeline_guid: str = PIPELINE_GUID,
+) -> dict[str, str]:
     """hash -> title for every protocol version currently active."""
     with connect(db_path, read_only=True) as conn:
         protocol_set = list(
-            active_hashes(conn, PIPELINE_HISTORY, PIPELINE_GUID).values()
+            active_hashes(conn, pipeline_history, pipeline_guid).values()
         )
         if not protocol_set:
             return {}

@@ -12,7 +12,6 @@ PIPELINE_HASH_FIELDS: tuple[str, ...] = (
     "title",
     "manifest_hash",
     "DAG",
-    "executor",
     "root",
 )
 # Specify other in
@@ -46,6 +45,9 @@ PROTOCOL_HASH_FIELDS: tuple[str, ...] = (
     "uri",
     "version_class",
     "protocol_references",
+    # Who runs it. Hashed: the same steps run by a human and by a robot are two
+    # protocols. Declared upstream, never inferred — "" means nobody said.
+    "executor",
 )
 
 PROTOCOL_METADATA_FIELDS: tuple[str, ...] = (
@@ -69,6 +71,7 @@ PROTOCOL_CONTENT_FIELDS: tuple[str, ...] = (
     "doi",
     "reserved_doi",
     "uri",
+    "executor",
     "protocol",
 ) + PROTOCOL_METADATA_FIELDS
 
@@ -90,7 +93,6 @@ PIPELINE_CONTENT_FIELDS: tuple[str, ...] = (
     "title",
     "manifest_hash",
     "root",
-    "executor",
     "DAG",
     "pipeline",
 ) + PIPELINE_METADATA_FIELDS

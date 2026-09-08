@@ -59,6 +59,10 @@ RICH_TEXT_FIELDS: tuple[str, ...] = (
 )
 
 UNIT_KEYS: tuple[str, ...] = ("unit", "temperatureUnit")
+
+# `keywords` doubles as the lab's declaration channel. This prefix marks the one
+# that names the executor: `executor:human`, `executor:biomek`.
+EXECUTOR_PREFIX = "executor:"
 # -----------------------------------------------------------------------------#
 # SIGNED URL SCRUBBING
 # -----------------------------------------------------------------------------#

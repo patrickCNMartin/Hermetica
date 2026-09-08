@@ -5,11 +5,37 @@ from typing import Any
 
 from seal.contract import ProtocolArtefact, parse_rich_text
 from sources.protocols_io.config import (
+    EXECUTOR_PREFIX,
     RICH_TEXT_FIELDS,
     SIGNED_PARAM,
     SOURCE_NAME,
     UNIT_KEYS,
 )
+from sources.protocols_io.lifecycle import split_keywords
+
+
+# -----------------------------------------------------------------------------#
+# EXECUTOR
+# -----------------------------------------------------------------------------#
+def get_executor(keywords: str | None) -> str:
+    """Who runs the protocol, declared as an `executor:<name>` keyword.
+
+    Casefolded by `split_keywords`, so `Biomek` and `biomek` are one executor
+    rather than two hashes. Two declarations raise: the value is hashed, and
+    picking one of them would mint an identity nobody asked for. Undeclared is
+    "", never guessed — the same rule lifecycle flags follow.
+    """
+    declared = [
+        token[len(EXECUTOR_PREFIX) :].strip()
+        for token in split_keywords(keywords)
+        if token.startswith(EXECUTOR_PREFIX)
+    ]
+    if len(declared) > 1:
+        raise ValueError(
+            f"{len(declared)} executors declared in keywords ({declared}); "
+            "a protocol has one executor"
+        )
+    return declared[0] if declared else ""
 
 
 # -----------------------------------------------------------------------------#
@@ -111,6 +137,7 @@ def build_protocol_artefact(
         reserved_doi=protocol["reserved_doi"],
         version_class=protocol["version_class"],
         protocol_references=protocol["protocol_references"],
+        executor=get_executor(protocol.get("keywords")),
         created_on=protocol["created_on"],
         keywords=protocol["keywords"],
         authors=protocol["authors"],

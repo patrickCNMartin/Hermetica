@@ -12,6 +12,7 @@ import pytest
 from seal.contract import protocol_hash
 from sources.protocols_io.artefact import (
     build_protocol_artefact,
+    get_executor,
     get_step_chain,
     get_steps,
     get_unit_map,
@@ -42,6 +43,7 @@ SPEC_HASH_FIELDS = (
     "uri",
     "version_class",
     "protocol_references",
+    "executor",
 )
 SPEC_METADATA_FIELDS = ("created_on", "creator", "authors", "keywords")
 
@@ -388,3 +390,58 @@ class TestDeterminism:
     def test_get_steps_tolerates_null(self):
         assert get_steps({"steps": None}) == []
         assert get_steps({}) == []
+
+
+# -----------------------------------------------------------------------------#
+# 7. THE EXECUTOR — declared in keywords, hashed as content
+# -----------------------------------------------------------------------------#
+class TestExecutor:
+    """`executor:<name>` is the lab declaring who runs the protocol. The value is
+    hashed, so the same steps run by a human and by a robot are two protocols."""
+
+    @pytest.mark.parametrize(
+        "keywords, expected",
+        [
+            ("sp3, executor:human, digestion", "human"),
+            ("executor:biomek", "biomek"),
+            ("executor: biomek ", "biomek"),
+            ("executor:Biomek", "biomek"),
+            ("sp3, digestion", ""),
+            ("", ""),
+            (None, ""),
+            ("no_executor:human", ""),
+        ],
+    )
+    def test_the_keyword_declares_it(self, keywords, expected):
+        assert get_executor(keywords) == expected
+
+    def test_two_declarations_raise(self):
+        """Hashed and ambiguous — picking one would mint an identity silently."""
+        with pytest.raises(ValueError, match="one executor"):
+            get_executor("executor:human, executor:biomek")
+
+    def test_it_reaches_the_artefact(self, record):
+        raw = record("baseline")
+        raw["keywords"] = "sp3, executor:biomek"
+        assert build_protocol_artefact(raw).executor == "biomek"
+
+    def test_an_undeclared_executor_is_empty_never_none(self, record):
+        raw = record("baseline")
+        raw["keywords"] = "sp3"
+        assert build_protocol_artefact(raw).executor == ""
+
+    def test_it_is_hashed(self, record):
+        """The whole point of moving it off the pipeline."""
+        human, robot = record("baseline"), record("baseline")
+        human["keywords"], robot["keywords"] = "executor:human", "executor:biomek"
+        assert protocol_hash(build_protocol_artefact(human)) != protocol_hash(
+            build_protocol_artefact(robot)
+        )
+
+    def test_the_rest_of_keywords_still_does_not_hash(self, record):
+        """Only the executor token is content; the others remain metadata."""
+        one, two = record("baseline"), record("baseline")
+        one["keywords"], two["keywords"] = "sp3", "digestion"
+        assert protocol_hash(build_protocol_artefact(one)) == protocol_hash(
+            build_protocol_artefact(two)
+        )

@@ -19,7 +19,14 @@ from utils.store import connect
 # unlike BASE_URL this carries a working default.
 VIEW_URL = os.getenv("VIEW_URL", "https://www.protocols.io/view/")
 
-DISPLAY_FIELDS: tuple[str, ...] = ("source", "title", "doi", "reserved_doi", "uri")
+DISPLAY_FIELDS: tuple[str, ...] = (
+    "source",
+    "title",
+    "executor",
+    "doi",
+    "reserved_doi",
+    "uri",
+)
 
 
 class OrderError(ValueError):
@@ -115,6 +122,7 @@ def collect_display(
                 "source": row.source,
                 "protocol_id": row.protocol_id,
                 "title": row.title,
+                "executor": row.executor,
                 "doi": row.doi,
                 "reserved_doi": row.reserved_doi,
                 "uri": row.uri,
@@ -156,6 +164,7 @@ def render_facts(pid: str, entry: dict, fields: dict, body: dict | None) -> list
         rows += [("version_class", body.get("version_class"))]
     creator = fields.get("creator") or {}
     rows += [
+        ("executor", fields.get("executor")),
         ("doi", fields.get("doi")),
         ("reserved_doi", fields.get("reserved_doi")),
         ("created_on", fields.get("created_on")),

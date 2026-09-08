@@ -7,13 +7,13 @@ near miss is reported instead — `depricated` is loud rather than silently live
 
 import pytest
 
-from seal.lifecycle import (
+from sources.protocols_io.lifecycle import (
     DEPRECATED_TOKENS,
     is_deprecated,
     near_miss_tokens,
+    screen_protocol,
     split_keywords,
 )
-from sources.protocols_io.lifecycle import screen_protocol
 
 
 # -----------------------------------------------------------------------------#

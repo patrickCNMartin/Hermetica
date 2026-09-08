@@ -53,6 +53,7 @@ def generate_protocol_lock(
             "source": protocol.source,
             "protocol_id": protocol.protocol_id,
             "title": protocol.title,
+            "executor": protocol.executor,
             "doi": protocol.doi,
             "reserved_doi": protocol.reserved_doi,
             "uri": protocol.uri,
@@ -102,6 +103,7 @@ def generate_pipeline_lock(
             "created_on": as_iso(pipeline.created_on) if pipeline.created_on else None,
             "creator": decode_entry(pipeline.creator),
         }
+
     document = {
         "manifest_hash": hash_of(entries),
         "as_of": as_iso(as_of),
@@ -110,7 +112,6 @@ def generate_pipeline_lock(
         "entries": entries,
         "pipelines": display,
     }
-
     return document
 
 

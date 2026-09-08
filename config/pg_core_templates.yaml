@@ -12,47 +12,40 @@ pipelines:
         pipeline_guid: null
         manifest_hash: null
         root: null
-        executor: null
         protocol_dag: {"A":["B","C"],"B":"D","C":"D"}
 
     FFPE_digestion_base:
         pipeline_guid: null
         manifest_hash: null
         root: null
-        executor: null
         protocol_dag: {}
 
     In_gel_digestion_base:
         pipeline_guid: null
         manifest_hash: null
         root: null
-        executor: null
         protocol_dag: {}
 
     IP_base:
         pipeline_guid: null
         manifest_hash: null
         root: null
-        executor: null
         protocol_dag: {}
 
     IPMS_base:
         pipeline_guid: null
         manifest_hash: null
         root: null
-        executor: null
         protocol_dag: {}
 
     FF_SDS_base:
         pipeline_guid: null
         manifest_hash: null
         root: null
-        executor: null
         protocol_dag: {}
 
     Frozen_tissue_base:
         pipeline_guid: null
         manifest_hash: null
         root: null
-        executor: null
         protocol_dag: {}

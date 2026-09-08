@@ -32,6 +32,7 @@ SCHEMA: tuple[str, ...] = (
         doi              TEXT,
         reserved_doi     TEXT,
         uri              TEXT,
+        executor         TEXT,
         protocol         TEXT NOT NULL,
         created_on       INTEGER,
         creator          TEXT,
@@ -86,6 +87,7 @@ class ProtocolEntry(NamedTuple):
     doi: str | None
     reserved_doi: str | None
     uri: str | None
+    executor: str | None
     protocol: str
     created_on: int | None
     creator: str | None
@@ -114,6 +116,7 @@ def build_protocol_entry(
         doi=artefact.doi,
         reserved_doi=artefact.reserved_doi,
         uri=artefact.uri,
+        executor=artefact.executor,
         protocol=blob.decode("ascii"),
         valid_from=to_epoch(created_on) if created_on else pulled_at,
         **metadata,
@@ -143,6 +146,7 @@ class ProtocolContentEntry(NamedTuple):
     doi: str | None
     reserved_doi: str | None
     uri: str | None
+    executor: str | None
     created_on: int | None
     creator: str | None
     authors: str | None

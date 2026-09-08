@@ -72,7 +72,6 @@ def pipelines_from_template(
             title=name,
             manifest_hash=pipeline.get("manifest_hash"),
             root=pipeline.get("root"),
-            executor=pipeline.get("executor"),
             DAG=pipeline.get("protocol_dag") or {},
             created_on=created_on,
             creator=creator,

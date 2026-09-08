@@ -544,3 +544,50 @@ is what that docstring had always claimed, and `MissingHash` moved to `utils/sto
 it is raised, retiring `utils/error_handling.py`. Still open from the `ee551d3` list: `id`
 widened to `str`, hashed fields made nullable, and `reserved_doi` collapsed into a nullable
 `doi`. 570 tests pass; `test_workspace.py` does not collect, against unbuilt discover work.
+
+---
+
+## 2026-09-08 — `<hash of the commit carrying this work>` — the executor moves from the pipeline to the protocol
+
+**Discovered:** `executor` was a hashed field on `PipelineArtefact`, which asserts that one
+pipeline runs on one thing. It does not. A real pipeline hands a plate from a human to a
+Biomek and back, so the field could only ever be right for the degenerate single-executor
+case — and it was `null` in all seven shipped templates, so nothing had noticed.
+
+**Decided:** `executor` leaves `compose` entirely and joins `ProtocolArtefact` as a hashed
+field, defaulting to `""`. The same steps run by a human and by a robot are two protocols,
+not one protocol with an attribute: different calibration, different failure modes,
+different results. Hashing it is what makes those two things separately pinnable and
+separately versioned. `""` means nobody declared one, and is **not** a synonym for `human`.
+
+**Why hashed rather than metadata:** the alternative was carrying it beside `keywords` as
+retained-but-unhashed provenance. Rejected — a lock that pins a protocol would then not
+pin who runs it, and swapping the executor on a stored protocol would leave every existing
+lock silently claiming something it no longer describes. That is exactly the drift a
+content hash exists to prevent.
+
+**Decided:** protocols.io declares it in `keywords`, as `executor:<name>`. That channel
+already carries the lab's declarations (the `deprecated` tokens), needs no upstream schema
+we do not control, and is editable by the people who actually know the answer. It reuses
+`split_keywords`, so the value is casefolded — `Biomek` and `biomek` are one executor
+rather than two hashes. **Two declarations raise** rather than picking one: the value is
+hashed, so choosing on the lab's behalf would mint an identity nobody asked for.
+
+This puts a **hashed field downstream of an unhashed one** for the first time. `keywords`
+stays metadata; only the `executor:` token is lifted out of it into content. The rule in
+`AGENT.md` — "`keywords` is never hashed, so flagging cannot mint a version" — now has one
+deliberate exception, and declaring an executor *does* mint a version.
+
+**Cost:** every stored protocol re-hashes — still free before the first issued lock, per
+`ee551d3`. `protocol_content` gains an `executor` column (six hashed fields are now also
+columns) and `pipeline_content` loses one, so **neither schema is a migration**: both
+`chronos.db` and `compose.db` must be rebuilt, and every existing `.lock` file is stale.
+The lock's `protocols` display block carries the executor; `pins.lock` does not — pins stay
+guid and hash, and the executor is inside the hash they pin. `scribe` renders it as a fact
+row, omitted when undeclared. `config/pg_core_templates.yaml` and the pipeline test fixture
+drop their `executor:` keys. No protocol in the workspace declares an executor yet, so
+every value on the next pull will be `""` until the lab tags them.
+
+**Rode along:** `tests/dev_tests/test_lifecycle.py` still imported `seal.lifecycle`, which
+had moved to `sources/protocols_io/`, so the whole suite failed to collect. Import fixed;
+602 tests pass.

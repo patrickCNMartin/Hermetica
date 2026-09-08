@@ -135,6 +135,7 @@ class TestDatabaseBuild:
         "doi",
         "reserved_doi",
         "uri",
+        "executor",
         "protocol",
         "created_on",
         "creator",
