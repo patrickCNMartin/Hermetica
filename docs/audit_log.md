@@ -737,3 +737,31 @@ what the entry above expects the HTTP API to supply. And `compose.active_protoco
 still dead and still wrong: it reads `pipeline_history` for hashes and then looks them up
 in `protocol_content`, which cannot match. Left alone deliberately, flagged here rather
 than fixed inside an unrelated change.
+
+---
+
+## 2026-09-08 — 69f8e0e — a measured status page instead of a written one
+
+**Decided:** repo status is computed, not asserted. `716e6af` added the script and the
+target, `69f8e0e` made the check bite. `scripts/audit.py` counts, per
+top-level module, files, physical lines, module-level public functions, test functions in
+files importing that module, and covered/total statements from one `pytest --cov` run over
+`tests/dev_tests`; `make audit` writes that table into `docs/status.md` and nothing in that
+file is written by hand. `make audit-check` regenerates and then `git diff --exit-code`s
+the result, so a committed status page that no longer matches the repo fails CI, and the
+step runs in the `test` job where the venv already exists (`RUN="uv run"` overrides the
+Nix dev shell used locally).
+
+**Why:** completion percentages and module summaries written as prose have been wrong here
+before and there was no way to catch it — a number in a doc is only as good as the last
+person who edited it. Nothing goes into `status.md` that the script did not measure, so the
+"ESTIMATE" case has no place to live: if a claim matters, it becomes a column. First
+measurement: 6 modules, 30 files, 3419 lines, 126 public functions, 91.4% statement
+coverage, 629 tests passing.
+
+**Cost:** `.gitignore` had `docs/*` with a single exception for `audit_log.md`, so a
+staleness check on an untracked file would have silently passed forever; `!docs/status.md`
+is now a second exception. The `tests` column double-counts — a test file importing two
+modules is counted against both, which is why the column sums to 1176 against a 629-test
+suite — so it reads as attention, not as a test census. `make audit` runs the full suite
+with coverage, which makes it a slow target and adds a second pytest run to CI.
