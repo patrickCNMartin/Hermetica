@@ -17,11 +17,15 @@ from utils.hashing import decode_entry, hash_of
 class DuplicatedIdError(ValueError):
     """Duplicated entries in the version control data base"""
 
+
 class MalformedLockError(ValueError):
     """The file is not a lock document — a key the format requires is missing."""
+
+
 # -----------------------------------------------------------------------------#
 # LOCK DOCUMENT
 # -----------------------------------------------------------------------------#
+
 
 def generate_protocol_lock(
     protocols: Iterable[str],
@@ -118,9 +122,11 @@ def generate_lock(protocol_lock: dict | None, pipeline_lock: dict | None) -> dic
         return {**protocol_lock, "pipeline": pipeline_lock}
     return protocol_lock or pipeline_lock
 
+
 # -----------------------------------------------------------------------------#
 # EXPORT AND SAVE LOCKS
 # -----------------------------------------------------------------------------#
+
 
 def write_lock_file(lock: dict, keys: Iterable[str], path: str) -> dict:
     """Write the keys this lock actually carries. `pipeline` and `dag` are

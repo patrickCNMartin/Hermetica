@@ -1,4 +1,7 @@
 # yaml file for protocol templates
+# By id - maybe should have a protcol title situation here?
+# Otherwise kind of annoying to work with if you want to add new 
+# templates
 creator: "Homunculus Pat"
 created_on: "2026-08-21"
 pipelines:

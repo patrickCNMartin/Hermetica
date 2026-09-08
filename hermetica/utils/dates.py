@@ -52,5 +52,3 @@ def as_date(epoch: int) -> str:
 def as_iso(epoch: int) -> str:
     """Epoch seconds -> full ISO-8601 UTC string."""
     return from_epoch(epoch).isoformat()
-
-

@@ -378,7 +378,6 @@ class TestTemplates:
             for p in pipelines_from_template(template, mint=True)
         )
 
-
     def test_minting_writes_a_twin_and_keeps_the_top_level_keys(self, template):
         result, minted_path = mint_template(template)
 
