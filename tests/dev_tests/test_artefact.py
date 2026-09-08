@@ -24,6 +24,7 @@ from utils.constants import PROTOCOL_HASH_FIELDS, PROTOCOL_METADATA_FIELDS
 # identity, so an unreviewed edit re-hashes every version in the store — changing
 # the contract must require changing this test too.
 SPEC_HASH_FIELDS = (
+    "source",
     "doi",
     "reserved_doi",
     "id",

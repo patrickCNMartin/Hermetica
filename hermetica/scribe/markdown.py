@@ -8,10 +8,10 @@ import re
 from collections.abc import Sequence
 
 from scribe.richtext import render_document
-from seal.seal import manifest_hash
 from seal.store import get_protocols
-from utils.constants import PROTOCOL_HISTORY, PROTOCOL_ID
+from utils.constants import PROTOCOL_HISTORY, PROTOCOL_UID
 from utils.dates import as_iso
+from utils.hashing import hash_of
 from utils.intervals import active_hashes
 from utils.store import connect
 
@@ -19,7 +19,7 @@ from utils.store import connect
 # unlike BASE_URL this carries a working default.
 VIEW_URL = os.getenv("VIEW_URL", "https://www.protocols.io/view/")
 
-DISPLAY_FIELDS: tuple[str, ...] = ("title", "doi", "reserved_doi", "uri")
+DISPLAY_FIELDS: tuple[str, ...] = ("source", "title", "doi", "reserved_doi", "uri")
 
 
 class OrderError(ValueError):
@@ -61,7 +61,7 @@ def linkable(entries: dict, db: str | None) -> set[str]:
     if not db:
         return set()
     with connect(db, read_only=True) as conn:
-        active = active_hashes(conn, PROTOCOL_HISTORY, PROTOCOL_ID)
+        active = active_hashes(conn, PROTOCOL_HISTORY, PROTOCOL_UID)
     return {pid for pid, entry in entries.items() if active.get(pid) == entry["hash"]}
 
 
@@ -112,6 +112,8 @@ def collect_display(
         )
         for pid, row in zip(unresolved, rows):
             display[pid] = {
+                "source": row.source,
+                "protocol_id": row.protocol_id,
                 "title": row.title,
                 "doi": row.doi,
                 "reserved_doi": row.reserved_doi,
@@ -144,7 +146,9 @@ def format_people(value) -> str:
 def render_facts(pid: str, entry: dict, fields: dict, body: dict | None) -> list[str]:
     """The verification block under a protocol heading."""
     rows = [
-        ("protocol_id", pid),
+        ("protocol_uid", pid),
+        ("source", fields.get("source")),
+        ("protocol_id", fields.get("protocol_id")),
         ("guid", entry.get("guid")),
         ("hash", entry.get("hash")),
     ]
@@ -269,7 +273,7 @@ def to_markdown(
     display = collect_display(lock, entries, order, bodies, db)
 
     recorded = lock.get("manifest_hash")
-    verified = recorded == manifest_hash(entries)
+    verified = recorded == hash_of(entries)
     lines = [
         "# Protocol manifest",
         "",

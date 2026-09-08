@@ -57,6 +57,7 @@ CLIENT_SECRET = os.getenv("CLIENT_SECRET", "")
 EMAIL = os.getenv("EMAIL", "")
 
 # Empty SMTP_HOST drafts the message to LOGS instead of sending it.
+# Host not set up! 
 SMTP_HOST = os.getenv("SMTP_HOST", "")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "")
@@ -165,7 +166,9 @@ def pull_protocols(db_name: str, pulled_at: int, source: ProtocolSource) -> dict
         artefacts.append(fetched.artefact)
 
     protocol_entries = format_protocol_entry(artefacts, pulled_at)
-    diff_protocols = write_protocols(db_name, protocol_entries, pulled_at)
+    diff_protocols = write_protocols(
+        db_name, protocol_entries, pulled_at, source.name
+    )
 
     return {
         "source": source.name,

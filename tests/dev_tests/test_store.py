@@ -23,17 +23,17 @@ from seal.store import (
     write_protocols,
 )
 from sources.protocols_io.artefact import build_protocol_artefact
+from sources.protocols_io.config import SOURCE_NAME
 from utils.constants import (
     PROTOCOL_CONTENT_FIELDS,
     PROTOCOL_HISTORY,
-    PROTOCOL_ID,
     PROTOCOL_METADATA_FIELDS,
+    PROTOCOL_UID,
 )
 from utils.dates import as_date, end_of_day, to_epoch
-from utils.error_handling import MissingHash
 from utils.hashing import canonical_json, hash_bytes
 from utils.intervals import VersionInterval, active_hashes, versions_on_date
-from utils.store import connect, initialize_db, verify_blobs
+from utils.store import MissingHash, connect, initialize_db, verify_blobs
 
 PULLED_AT = to_epoch("2026-07-27")
 LATER = to_epoch("2026-08-03")
@@ -71,6 +71,15 @@ def rows_for(protocols, pulled_at=None):
     )
 
 
+def uid(pid) -> str:
+    """History is keyed on the qualified uid, never the bare upstream id."""
+    return f"{SOURCE_NAME}:{pid}"
+
+
+def uids(*pids) -> list[str]:
+    return [uid(pid) for pid in pids]
+
+
 def query(db: str, sql: str, *params):
     with connect(db, read_only=True) as conn:
         return conn.execute(sql, params).fetchall()
@@ -83,21 +92,21 @@ def columns_of(db: str, table: str) -> list[str]:
 
 def live_hashes(db: str) -> dict[str, str]:
     with connect(db, read_only=True) as conn:
-        return active_hashes(conn, PROTOCOL_HISTORY, PROTOCOL_ID)
+        return active_hashes(conn, PROTOCOL_HISTORY, PROTOCOL_UID)
 
 
 def active_count(db: str) -> list[tuple]:
     """protocol_ids with more than one live version — must always be empty."""
     return query(
         db,
-        "SELECT protocol_id, COUNT(*) FROM protocol_history "
-        "WHERE deprecated_at IS NULL GROUP BY protocol_id HAVING COUNT(*) > 1",
+        "SELECT protocol_uid, COUNT(*) FROM protocol_history "
+        "WHERE deprecated_at IS NULL GROUP BY protocol_uid HAVING COUNT(*) > 1",
     )
 
 
 def on_date(db: str, when) -> dict[str, list[VersionInterval]]:
     with connect(db, read_only=True) as conn:
-        return versions_on_date(conn, PROTOCOL_HISTORY, PROTOCOL_ID, when)
+        return versions_on_date(conn, PROTOCOL_HISTORY, PROTOCOL_UID, when)
 
 
 def overlaps(db: str) -> list[tuple]:
@@ -109,9 +118,9 @@ def overlaps(db: str) -> list[tuple]:
     """
     return query(
         db,
-        "SELECT a.protocol_id, a.valid_from, b.valid_from "
+        "SELECT a.protocol_uid, a.valid_from, b.valid_from "
         "FROM protocol_history a JOIN protocol_history b "
-        "  ON a.protocol_id = b.protocol_id AND a.rowid < b.rowid "
+        "  ON a.protocol_uid = b.protocol_uid AND a.rowid < b.rowid "
         f"WHERE a.valid_from < COALESCE(b.deprecated_at, {FOREVER}) "
         f"  AND b.valid_from < COALESCE(a.deprecated_at, {FOREVER})",
     )
@@ -123,6 +132,8 @@ def overlaps(db: str) -> list[tuple]:
 class TestDatabaseBuild:
     CONTENT_COLUMNS = [
         "hash",
+        "protocol_uid",
+        "source",
         "protocol_id",
         "protocol_guid",
         "title",
@@ -135,7 +146,13 @@ class TestDatabaseBuild:
         "authors",
         "keywords",
     ]
-    HISTORY_COLUMNS = ["protocol_id", "hash", "valid_from", "deprecated_at"]
+    HISTORY_COLUMNS = [
+        "protocol_uid",
+        "source",
+        "hash",
+        "valid_from",
+        "deprecated_at",
+    ]
     SNAPSHOT_COLUMNS = ["manifest_hash", "created_at", "provenance"]
 
     def test_tables_are_created(self, db_path):
@@ -180,8 +197,10 @@ class TestDatabaseBuild:
             )
         }
         assert {
-            "idx_content_protocol_id",
-            "idx_history_protocol_id",
+            "idx_content_protocol_uid",
+            "idx_history_protocol_uid",
+            "idx_history_source",
+            "idx_history_one_active",
             "idx_history_validity",
         } <= indexes
 
@@ -287,7 +306,8 @@ class TestConnectionLifetime:
             with connect(db_path) as conn:
                 conn.execute(
                     "INSERT INTO protocol_history "
-                    "(protocol_id, hash, valid_from) VALUES ('1', 'nope', 1)"
+                    "(protocol_uid, source, hash, valid_from) "
+                    "VALUES ('protocols_io:1', 'protocols_io', 'nope', 1)"
                 )
 
 
@@ -299,7 +319,7 @@ class TestDataInsertion:
         initialize_db(db_path, SCHEMA)
         diff = write_protocols(db_path, rows_for([protocol(1), protocol(2)]))
 
-        assert diff["new"] == ["1", "2"]
+        assert diff["new"] == uids(1, 2)
         assert query(db_path, "SELECT COUNT(*) FROM protocol_content") == [(2,)]
         assert query(db_path, "SELECT COUNT(*) FROM protocol_history") == [(2,)]
 
@@ -365,7 +385,7 @@ class TestMetadataColumns:
         write_protocols(db_path, rows_for([protocol(1)]))
 
         reattributed = protocol(1, creator={"name": "B. Other", "username": "b.other"})
-        assert diff_protocols(db_path, rows_for([reattributed]))["unchanged"] == ["1"]
+        assert diff_protocols(db_path, rows_for([reattributed]))["unchanged"] == uids(1)
 
     def test_missing_metadata_is_null_not_an_error(self, db_path, protocol):
         raw = protocol(1)
@@ -382,10 +402,10 @@ class TestMetadataColumns:
         """Re-pulling identical content is a no-op (content-hash primary key)."""
         rows = rows_for([protocol(1), protocol(2)])
         initialize_db(db_path, SCHEMA)
-        assert write_protocols(db_path, rows)["new"] == ["1", "2"]
+        assert write_protocols(db_path, rows)["new"] == uids(1, 2)
 
         diff = write_protocols(db_path, rows)
-        assert diff["unchanged"] == ["1", "2"]
+        assert diff["unchanged"] == uids(1, 2)
         assert diff["new"] == []
         assert query(db_path, "SELECT COUNT(*) FROM protocol_history") == [(2,)]
 
@@ -572,7 +592,7 @@ class TestChangeDetection:
         initialize_db(db_path, SCHEMA)
         diff = diff_protocols(db_path, rows_for([protocol(1), protocol(2)]))
 
-        assert diff["new"] == ["1", "2"]
+        assert diff["new"] == uids(1, 2)
         assert diff["changed"] == []
         assert diff["unchanged"] == []
         assert diff["absent"] == []
@@ -583,7 +603,7 @@ class TestChangeDetection:
         write_protocols(db_path, rows)
 
         diff = diff_protocols(db_path, rows)
-        assert diff["unchanged"] == ["1", "2"]
+        assert diff["unchanged"] == uids(1, 2)
         assert diff["new"] == []
         assert diff["changed"] == []
 
@@ -593,7 +613,7 @@ class TestChangeDetection:
         write_protocols(db_path, rows_for([protocol(1, title="Original")]))
 
         diff = diff_protocols(db_path, rows_for([protocol(1, title="Edited")]))
-        assert diff["changed"] == ["1"]
+        assert diff["changed"] == uids(1)
         assert diff["new"] == []
 
     def test_request_time_noise_is_not_a_change(self, db_path, protocol):
@@ -606,7 +626,7 @@ class TestChangeDetection:
         noisy["image"] = {"source": "https://x.example.org/y.jpg?Policy=NEW-TOKEN"}
 
         diff = diff_protocols(db_path, rows_for([noisy]))
-        assert diff["unchanged"] == ["1"]
+        assert diff["unchanged"] == uids(1)
         assert diff["changed"] == []
 
     def test_dropped_protocol_is_absent(self, db_path, protocol):
@@ -615,8 +635,8 @@ class TestChangeDetection:
         write_protocols(db_path, rows_for([protocol(1), protocol(2)]))
 
         diff = diff_protocols(db_path, rows_for([protocol(1)]))
-        assert diff["absent"] == ["2"]
-        assert diff["unchanged"] == ["1"]
+        assert diff["absent"] == uids(2)
+        assert diff["unchanged"] == uids(1)
 
     def test_active_hashes_ignores_deprecated(self, db_path, protocol):
         initialize_db(db_path, SCHEMA)
@@ -658,11 +678,12 @@ class TestWritePath:
 
         diff = write_protocols(db_path, rows_for([protocol(1)], LATER), LATER)
 
-        assert diff["absent"] == ["2"]
-        assert live_hashes(db_path).keys() == {"1"}
+        assert diff["absent"] == uids(2)
+        assert set(live_hashes(db_path)) == set(uids(1))
         assert query(
             db_path,
-            "SELECT deprecated_at FROM protocol_history WHERE protocol_id = '2'",
+            "SELECT deprecated_at FROM protocol_history "
+            "WHERE protocol_uid = 'protocols_io:2'",
         ) == [(LATER,)]
 
     def test_blob_survives_deprecation(self, db_path, protocol):
@@ -710,7 +731,7 @@ class TestWritePath:
         assert query(
             db_path,
             "SELECT valid_from, deprecated_at FROM protocol_history "
-            "WHERE protocol_id = '1' ORDER BY valid_from",
+            "WHERE protocol_uid = 'protocols_io:1' ORDER BY valid_from",
         ) == [(CREATED_ON, LATER), (LATER, LATER + 1), (LATER + 1, None)]
 
     def test_unchanged_protocol_keeps_its_original_interval(self, db_path, protocol):
@@ -733,11 +754,11 @@ class TestWritePath:
             db_path, rows_for([protocol(1, title="A")], LATER + 1), LATER + 1
         )
 
-        assert diff["changed"] == ["1"]
+        assert diff["changed"] == uids(1)
         # Two blobs, three intervals: content deduped, history not.
         assert query(db_path, "SELECT COUNT(*) FROM protocol_content") == [(2,)]
         assert query(db_path, "SELECT COUNT(*) FROM protocol_history") == [(3,)]
-        assert live_hashes(db_path)["1"] == original[0].hash
+        assert live_hashes(db_path)[uid(1)] == original[0].hash
 
     def test_reappearing_protocol_opens_a_new_interval(self, db_path, protocol):
         """Absent then back: a new interval, NOT a backdate into the closed one.
@@ -755,11 +776,11 @@ class TestWritePath:
             db_path, rows_for([protocol(1), protocol(2)], LATER + 1), LATER + 1
         )
 
-        assert diff["new"] == ["2"]
+        assert diff["new"] == uids(2)
         assert query(
             db_path,
             "SELECT valid_from, deprecated_at FROM protocol_history "
-            "WHERE protocol_id = '2' ORDER BY valid_from",
+            "WHERE protocol_uid = 'protocols_io:2' ORDER BY valid_from",
         ) == [(CREATED_ON, LATER), (LATER + 1, None)]
         assert active_count(db_path) == []
         assert overlaps(db_path) == []
@@ -794,9 +815,9 @@ class TestWritePath:
         )
 
         assert diff == {
-            "new": ["3"],
-            "changed": ["2"],
-            "unchanged": ["1"],
+            "new": uids(3),
+            "changed": uids(2),
+            "unchanged": uids(1),
             "absent": [],
         }
 
@@ -819,7 +840,7 @@ class TestProtocolsOnDate:
 
         found = on_date(db_path, PUSH_DAY)
 
-        assert sorted(found) == ["1", "2"]
+        assert sorted(found) == uids(1, 2)
         assert [len(v) for v in found.values()] == [1, 1]
 
     def test_two_pushes_in_one_day_report_both_versions(self, db_path, protocol):
@@ -832,7 +853,7 @@ class TestProtocolsOnDate:
             db_path, rows_for([protocol(1, title="Evening")], EVENING), EVENING
         )
 
-        versions = on_date(db_path, PUSH_DAY)["1"]
+        versions = on_date(db_path, PUSH_DAY)[uid(1)]
 
         assert len(versions) == 2
         assert [v.deprecated_at for v in versions] == [EVENING, None]
@@ -844,7 +865,7 @@ class TestProtocolsOnDate:
         for title, stamp in (("A", MORNING), ("B", EVENING), ("C", EVENING + 60)):
             write_protocols(db_path, rows_for([protocol(1, title=title)], stamp), stamp)
 
-        opened = [v.valid_from for v in on_date(db_path, PUSH_DAY)["1"]]
+        opened = [v.valid_from for v in on_date(db_path, PUSH_DAY)[uid(1)]]
 
         assert opened == sorted(opened)
         assert len(opened) == 3
@@ -871,11 +892,11 @@ class TestProtocolsOnDate:
         )
         assert closed_at == [(MIDNIGHT,)]
 
-        assert len(on_date(db_path, PUSH_DAY)["1"]) == 1
-        assert len(on_date(db_path, "2026-08-10")["1"]) == 1
+        assert len(on_date(db_path, PUSH_DAY)[uid(1)]) == 1
+        assert len(on_date(db_path, "2026-08-10")[uid(1)]) == 1
         assert (
-            on_date(db_path, PUSH_DAY)["1"][0].hash
-            != on_date(db_path, "2026-08-10")["1"][0].hash
+            on_date(db_path, PUSH_DAY)[uid(1)][0].hash
+            != on_date(db_path, "2026-08-10")[uid(1)][0].hash
         )
 
     def test_a_version_opening_in_the_last_second_still_counts(self, db_path, protocol):
@@ -884,7 +905,7 @@ class TestProtocolsOnDate:
         last = end_of_day(PUSH_DAY)
         write_protocols(db_path, rows_for([protocol(1, created_on=None)], last), last)
 
-        assert on_date(db_path, PUSH_DAY)["1"][0].valid_from == last
+        assert on_date(db_path, PUSH_DAY)[uid(1)][0].valid_from == last
         assert on_date(db_path, "2026-08-10") == {}
 
     def test_a_protocol_created_later_is_absent(self, db_path, protocol):
@@ -894,7 +915,7 @@ class TestProtocolsOnDate:
         )
 
         assert on_date(db_path, "2026-08-10") == {}
-        assert "1" in on_date(db_path, PUSH_DAY)
+        assert uid(1) in on_date(db_path, PUSH_DAY)
 
     def test_a_protocol_retired_earlier_is_absent(self, db_path, protocol):
         """Deprecate-on-absence closes it; the day after must not resolve it."""
@@ -902,8 +923,8 @@ class TestProtocolsOnDate:
         write_protocols(db_path, rows_for([protocol(1), protocol(2)], MORNING), MORNING)
         write_protocols(db_path, rows_for([protocol(2)], EVENING), EVENING)
 
-        assert sorted(on_date(db_path, PUSH_DAY)) == ["1", "2"]
-        assert sorted(on_date(db_path, "2026-08-12")) == ["2"]
+        assert sorted(on_date(db_path, PUSH_DAY)) == uids(1, 2)
+        assert sorted(on_date(db_path, "2026-08-12")) == uids(2)
 
     def test_a_protocol_that_lived_entirely_after_the_date_is_absent(
         self, db_path, protocol
@@ -934,7 +955,7 @@ class TestProtocolsOnDate:
         initialize_db(db_path, SCHEMA)
         write_protocols(db_path, rows_for([protocol(1)], MORNING), MORNING)
 
-        assert on_date(db_path, "2031-01-01")["1"][0].deprecated_at is None
+        assert on_date(db_path, "2031-01-01")[uid(1)][0].deprecated_at is None
 
     def test_it_agrees_with_active_hashes_for_today(self, db_path, protocol):
         """The two reads are the same question at different resolutions."""
@@ -949,7 +970,7 @@ class TestProtocolsOnDate:
         initialize_db(db_path, SCHEMA)
         write_protocols(db_path, rows_for([protocol(1)], MORNING), MORNING)
 
-        version = on_date(db_path, PUSH_DAY)["1"][0]
+        version = on_date(db_path, PUSH_DAY)[uid(1)][0]
 
         assert isinstance(version, VersionInterval)
         assert version.hash.startswith("sha256:")
@@ -966,7 +987,7 @@ class TestProtocolsOnDate:
             db_path, rows_for([protocol(1, title="Evening")], EVENING), EVENING
         )
 
-        assert len(on_date(db_path, f"{PUSH_DAY}T13:45:00")["1"]) == 2
+        assert len(on_date(db_path, f"{PUSH_DAY}T13:45:00")[uid(1)]) == 2
 
     def test_an_ambiguous_date_format_is_refused(self, db_path):
         """Only ISO parses, so 10-12-2026 can never be read as the wrong month."""
@@ -998,7 +1019,7 @@ class TestTitleIsNotIdentity:
             ),
         )
 
-        assert diff["new"] == ["1", "2"]
+        assert diff["new"] == uids(1, 2)
         assert len(live_hashes(db_path)) == 2
 
     def test_same_content_under_different_ids_stays_two_protocols(
@@ -1009,7 +1030,7 @@ class TestTitleIsNotIdentity:
         write_protocols(db_path, rows_for([protocol(1), protocol(2)]))
 
         hashes = live_hashes(db_path)
-        assert hashes["1"] != hashes["2"]  # id is inside the hash
+        assert hashes[uid(1)] != hashes[uid(2)]  # id is inside the hash
         assert query(db_path, "SELECT COUNT(*) FROM protocol_content") == [(2,)]
 
     def test_a_retitle_is_a_new_version(self, db_path, protocol):
@@ -1021,7 +1042,7 @@ class TestTitleIsNotIdentity:
         diff = write_protocols(
             db_path, rows_for([protocol(1, title="After")], LATER), LATER
         )
-        assert diff["changed"] == ["1"]
+        assert diff["changed"] == uids(1)
 
 
 # -----------------------------------------------------------------------------#

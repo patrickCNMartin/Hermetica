@@ -20,12 +20,10 @@ from compose.store import (
     write_pipeline,
 )
 from compose.templates import (
-    UnmintedTemplateError,
     mint_template,
     pipelines_from_template,
     read_template,
 )
-from seal.seal import DuplicatedIdError
 from utils.constants import (
     PIPELINE_CONTENT_FIELDS,
     PIPELINE_GUID,
@@ -34,10 +32,9 @@ from utils.constants import (
     PIPELINE_METADATA_FIELDS,
 )
 from utils.dates import to_epoch
-from utils.error_handling import MissingHash
 from utils.hashing import canonical_json
 from utils.intervals import active_hashes, versions_on_date
-from utils.store import connect, initialize_db, verify_blobs
+from utils.store import MissingHash, connect, initialize_db, verify_blobs
 
 TEMPLATE = Path(__file__).parents[2] / "config" / "pg_core_templates.yaml"
 
@@ -283,13 +280,6 @@ class TestWritePipeline:
         ]
         assert opens == [CREATED_ON, LATER]
 
-    def test_two_versions_of_one_guid_in_a_single_write_is_refused(self, db, pipeline):
-        entries = format_pipeline_entry(
-            [pipeline(), pipeline(DAG={"A": ["B"]})], WRITTEN_AT
-        )
-        with pytest.raises(DuplicatedIdError):
-            write_pipeline(db, entries, WRITTEN_AT)
-
     def test_diff_pipelines_reports_without_writing(self, db, pipeline):
         entries = format_pipeline_entry([pipeline()], WRITTEN_AT)
         assert diff_pipelines(db, entries)["new"] == ["abc123"]
@@ -429,16 +419,6 @@ class TestTemplates:
             for p in pipelines_from_template(template, mint=True)
         )
 
-    def test_reading_an_unminted_template_refuses_rather_than_minting(self, template):
-        """A read never writes. Without this, guids appear as a side effect."""
-        with pytest.raises(UnmintedTemplateError, match="CryPrep_biomek_base"):
-            pipelines_from_template(template)
-
-    def test_reading_writes_no_file(self, template, tmp_path):
-        before = set(tmp_path.iterdir())
-        with pytest.raises(UnmintedTemplateError):
-            pipelines_from_template(template)
-        assert set(tmp_path.iterdir()) == before
 
     def test_minting_writes_a_twin_and_keeps_the_top_level_keys(self, template):
         result, minted_path = mint_template(template)

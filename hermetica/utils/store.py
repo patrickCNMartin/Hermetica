@@ -6,8 +6,11 @@ from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 
 from utils.dates import get_timestamp
-from utils.error_handling import MissingHash
 from utils.hashing import hash_bytes
+
+
+class MissingHash(ValueError):
+    """Hash value not found in the database."""
 
 
 # -----------------------------------------------------------------------------#

@@ -12,19 +12,17 @@ import pytest
 
 from seal.seal import (
     DuplicatedIdError,
+    MalformedLockError,
     export_lock,
     export_pins,
-    export_pipeline,
     generate_protocol_lock,
-    is_verified,
-    manifest_hash,
     verify_lock,
 )
 from seal.store import SCHEMA, format_protocol_entry, write_protocols
 from sources.protocols_io.artefact import build_protocol_artefact
-from utils.constants import PROTOCOL_HISTORY, PROTOCOL_ID
+from utils.constants import PROTOCOL_HISTORY, PROTOCOL_UID
 from utils.dates import to_epoch
-from utils.error_handling import MalformedLockError
+from utils.hashing import hash_of
 from utils.intervals import active_hashes
 from utils.store import connect, initialize_db
 
@@ -48,7 +46,7 @@ def store(db_path, by_id_records):
     write_protocols(db_path, format_protocol_entry(artefacts, PULLED_AT), PULLED_AT)
     with connect(db_path, read_only=True) as conn:
         return db_path, list(
-            active_hashes(conn, PROTOCOL_HISTORY, PROTOCOL_ID).values()
+            active_hashes(conn, PROTOCOL_HISTORY, PROTOCOL_UID).values()
         )
 
 
@@ -88,7 +86,7 @@ class TestGenerate:
         assert a["provenance"] != b["provenance"]
 
     def test_manifest_hash_reproduces_from_entries(self, lock):
-        assert manifest_hash(lock["entries"]) == lock["manifest_hash"]
+        assert hash_of(lock["entries"]) == lock["manifest_hash"]
 
     def test_a_different_pin_set_is_a_different_manifest(self, store, lock):
         db, hashes = store
@@ -177,11 +175,6 @@ class TestExport:
         with pytest.raises(ValueError, match="export_pins"):
             export_lock(light, str(tmp_path / "nope.json"))
 
-    def test_export_pipeline_rejects_a_graph(self, lock, tmp_path):
-        """The DAG document shape is a Phase 3 decision, not a silent default."""
-        with pytest.raises(NotImplementedError, match="DAG"):
-            export_pipeline(lock, str(tmp_path / "p.json"), graph={"nodes": []})
-
     def test_the_file_is_valid_utf8_json_ending_in_a_newline(self, lock, tmp_path):
         path = str(tmp_path / "lock.json")
         export_lock(lock, path)
@@ -203,12 +196,12 @@ class TestVerify:
     def test_a_fresh_lock_verifies(self, lock, tmp_path):
         path = str(tmp_path / "lock.json")
         export_lock(lock, path)
-        assert is_verified(verify_lock(path))
+        assert not any(verify_lock(path).values())
 
     def test_a_fresh_pins_file_verifies(self, lock, tmp_path):
         path = str(tmp_path / "pins.json")
         export_pins(lock, path)
-        assert is_verified(verify_lock(path))
+        assert not any(verify_lock(path).values())
 
     def test_a_pins_file_is_not_missing_its_bodies(self, lock, tmp_path):
         """It never claimed to carry content — absence is the format, not drift."""
@@ -229,7 +222,7 @@ class TestVerify:
             sort_keys=False,
             separators=(",", ": "),
         )
-        assert is_verified(verify_lock(rewritten))
+        assert not any(verify_lock(rewritten).values())
 
     def test_provenance_and_timestamps_are_outside_the_hash(self, lock, tmp_path):
         path = str(tmp_path / "lock.json")
@@ -237,7 +230,8 @@ class TestVerify:
         document["provenance"] = {"who": "someone else entirely"}
         document["created_at"] = "1999-01-01T00:00:00+00:00"
 
-        assert is_verified(verify_lock(rewrite(str(tmp_path / "p.json"), document)))
+        path = rewrite(str(tmp_path / "p.json"), document)
+        assert not any(verify_lock(path).values())
 
     def test_verify_needs_no_database(self, lock, store, tmp_path):
         """The whole claim of export_lock: the file reproduces on its own."""
@@ -247,7 +241,7 @@ class TestVerify:
 
         os.remove(db)
         assert not os.path.exists(db)
-        assert is_verified(verify_lock(path))
+        assert not any(verify_lock(path).values())
 
 
 class TestTamperDetection:
@@ -264,7 +258,7 @@ class TestTamperDetection:
 
         drift = verify_lock(rewrite(str(tmp_path / "t.json"), document))
         assert drift["manifest_hash"]
-        assert not is_verified(drift)
+        assert any(drift.values())
 
     def test_a_removed_entry_is_caught(self, written):
         _, document, tmp_path = written

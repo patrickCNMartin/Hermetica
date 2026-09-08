@@ -9,7 +9,8 @@ from utils.constants import (
     PROTOCOL_CONTENT,
     PROTOCOL_CONTENT_FIELDS,
     PROTOCOL_HISTORY,
-    PROTOCOL_ID,
+    PROTOCOL_SOURCE,
+    PROTOCOL_UID,
 )
 from utils.dates import get_timestamp, to_epoch
 from utils.hashing import canonical_json, encode_entry, hash_bytes
@@ -23,6 +24,8 @@ SCHEMA: tuple[str, ...] = (
     """
     CREATE TABLE IF NOT EXISTS protocol_content (
         hash             TEXT PRIMARY KEY,
+        protocol_uid     TEXT NOT NULL,
+        source           TEXT NOT NULL,
         protocol_id      TEXT NOT NULL,
         protocol_guid    TEXT NOT NULL,
         title            TEXT NOT NULL,
@@ -38,7 +41,8 @@ SCHEMA: tuple[str, ...] = (
     """,
     """
     CREATE TABLE IF NOT EXISTS protocol_history (
-        protocol_id   TEXT NOT NULL,
+        protocol_uid  TEXT NOT NULL,
+        source        TEXT NOT NULL,
         hash          TEXT NOT NULL REFERENCES protocol_content(hash),
         valid_from    INTEGER NOT NULL,
         deprecated_at INTEGER
@@ -51,12 +55,18 @@ SCHEMA: tuple[str, ...] = (
         provenance    TEXT
     )
     """,
-    "CREATE INDEX IF NOT EXISTS idx_content_protocol_id "
-    "ON protocol_content (protocol_id)",
-    "CREATE INDEX IF NOT EXISTS idx_history_protocol_id "
-    "ON protocol_history (protocol_id)",
+    "CREATE INDEX IF NOT EXISTS idx_content_protocol_uid "
+    "ON protocol_content (protocol_uid)",
+    "CREATE INDEX IF NOT EXISTS idx_history_protocol_uid "
+    "ON protocol_history (protocol_uid)",
+    "CREATE INDEX IF NOT EXISTS idx_history_source "
+    "ON protocol_history (source, deprecated_at)",
     "CREATE INDEX IF NOT EXISTS idx_history_validity "
     "ON protocol_history (valid_from, deprecated_at)",
+    # One active version per protocol, as a database rule rather than a Python
+    # hope — this is what makes the write path safe without re-checking.
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_history_one_active "
+    "ON protocol_history (protocol_uid) WHERE deprecated_at IS NULL",
 )
 
 
@@ -68,6 +78,8 @@ SCHEMA: tuple[str, ...] = (
 
 class ProtocolEntry(NamedTuple):
     hash: str
+    protocol_uid: str
+    source: str
     protocol_id: str
     protocol_guid: str
     title: str
@@ -94,6 +106,8 @@ def build_protocol_entry(
     created_on = metadata["created_on"]
     return ProtocolEntry(
         hash=hash_bytes(blob),
+        protocol_uid=f"{artefact.source}:{artefact.id}",
+        source=artefact.source,
         protocol_id=str(artefact.id),
         protocol_guid=str(artefact.guid),
         title=artefact.title,
@@ -121,6 +135,8 @@ def format_protocol_entry(
 
 class ProtocolContentEntry(NamedTuple):
     hash: str
+    protocol_uid: str
+    source: str
     protocol_id: str
     protocol_guid: str
     title: str
@@ -154,17 +170,46 @@ def get_protocols(
     )
 
 
+def scope_of(
+    entries: Iterable[ProtocolEntry], source: str | None = None
+) -> tuple[str, str]:
+    """The (column, value) partition one pull writes into.
+
+    Read off the rows, which carry it, so a declared source cannot disagree
+    with what is being written. An empty pull has no rows to read and **must**
+    be told: unscoped, it would deprecate every other platform by absence.
+    """
+    found = sorted({row.source for row in entries})
+    if source is None:
+        if len(found) != 1:
+            raise ValueError(
+                f"cannot infer the partition from {len(found)} sources {found}; "
+                "pass source — an empty pull deprecates its own source only"
+            )
+        return (PROTOCOL_SOURCE, found[0])
+    if disagree := [name for name in found if name != source]:
+        raise ValueError(
+            f"entries from {', '.join(disagree)} in a {source} pull; "
+            "a pull writes one platform's partition"
+        )
+    return (PROTOCOL_SOURCE, source)
+
+
 def diff_protocols(
     db: str,
     protocols: Iterable[ProtocolEntry],
+    source: str | None = None,
     protocol_history: str = PROTOCOL_HISTORY,
-    protocol_id: str = PROTOCOL_ID,
+    protocol_uid: str = PROTOCOL_UID,
 ) -> dict[str, list[str]]:
-    """Compare a pull against the active state.
+    """Compare a pull against the active state, within one source's partition.
 
-    Returns protocol_ids grouped as new / changed / unchanged / absent.
+    Returns protocol_uids grouped as new / changed / unchanged / absent.
     """
-    return version_control_diff(db, protocol_history, protocol_id, protocols)
+    protocols = list(protocols)
+    return version_control_diff(
+        db, protocol_history, protocol_uid, protocols, scope_of(protocols, source)
+    )
 
 
 # -----------------------------------------------------------------------------#
@@ -178,12 +223,20 @@ def write_protocols(
     db: str,
     entries: list[ProtocolEntry],
     pulled_at: int | None = None,
+    source: str | None = None,
     protocol_content: str = PROTOCOL_CONTENT,
     protocol_content_fields: Iterable[str] = PROTOCOL_CONTENT_FIELDS,
     protocol_history: str = PROTOCOL_HISTORY,
-    protocol_id: str = PROTOCOL_ID,
+    protocol_uid: str = PROTOCOL_UID,
 ) -> dict[str, list[str]]:
+    """Apply one source's pull. Absence is computed inside that source alone."""
     insert = insert_statement(protocol_content, protocol_content_fields)
     return write_version_control(
-        db, protocol_history, protocol_id, insert, entries, pulled_at
+        db,
+        protocol_history,
+        protocol_uid,
+        insert,
+        entries,
+        pulled_at,
+        scope_of(entries, source),
     )

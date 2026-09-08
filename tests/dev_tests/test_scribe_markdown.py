@@ -22,7 +22,8 @@ from scribe.markdown import (
 from seal.seal import generate_protocol_lock
 from seal.store import SCHEMA, format_protocol_entry, write_protocols
 from sources.protocols_io.artefact import build_protocol_artefact
-from utils.constants import PROTOCOL_HISTORY, PROTOCOL_ID
+from sources.protocols_io.config import SOURCE_NAME
+from utils.constants import PROTOCOL_HISTORY, PROTOCOL_UID
 from utils.dates import to_epoch
 from utils.intervals import active_hashes
 from utils.store import connect, initialize_db
@@ -42,7 +43,7 @@ def store(db_path, by_id_records):
     write_protocols(db_path, format_protocol_entry(artefacts, PULLED_AT), PULLED_AT)
     with connect(db_path, read_only=True) as conn:
         return db_path, list(
-            active_hashes(conn, PROTOCOL_HISTORY, PROTOCOL_ID).values()
+            active_hashes(conn, PROTOCOL_HISTORY, PROTOCOL_UID).values()
         )
 
 
@@ -56,18 +57,23 @@ def deprecate(db: str, protocol_id: str) -> None:
     """Close a protocol's interval so its pin stops being the live version."""
     with connect(db) as conn:
         conn.execute(
-            "UPDATE protocol_history SET deprecated_at = ? WHERE protocol_id = ?",
+            "UPDATE protocol_history SET deprecated_at = ? WHERE protocol_uid = ?",
             (LATER, protocol_id),
         )
 
 
-def section(rendered: str, protocol_id: str) -> str:
+def uid(pid) -> str:
+    """Locks and history key on the qualified uid, not the bare upstream id."""
+    return f"{SOURCE_NAME}:{pid}"
+
+
+def section(rendered: str, protocol_uid: str) -> str:
     """One protocol's block. Names repeat across the fixture, so an assertion
     about one protocol must not be satisfiable by another's text."""
     blocks = rendered.split("\n## ")
-    match = [b for b in blocks if f"| protocol_id | {protocol_id} |" in b]
+    match = [b for b in blocks if f"| protocol_uid | {protocol_uid} |" in b]
     if len(match) != 1:
-        raise AssertionError(f"{len(match)} blocks for protocol {protocol_id}")
+        raise AssertionError(f"{len(match)} blocks for protocol {protocol_uid}")
     return match[0]
 
 
@@ -156,14 +162,14 @@ class TestMode:
         edited = []
         for raw in by_id_records.values():
             raw = copy.deepcopy(raw)
-            if str(raw["id"]) == victim:
+            if uid(raw["id"]) == victim:
                 raw["title"] = f"{raw['title']} (revised)"
             edited.append(build_protocol_artefact(raw))
         write_protocols(db, format_protocol_entry(edited, LATER), LATER)
 
         with connect(db, read_only=True) as conn:
             assert (
-                active_hashes(conn, PROTOCOL_HISTORY, PROTOCOL_ID)[victim]
+                active_hashes(conn, PROTOCOL_HISTORY, PROTOCOL_UID)[victim]
                 != document["entries"][victim]["hash"]
             )
         rendered = to_markdown(document, db=db)
@@ -278,7 +284,7 @@ class TestAttribution:
 
     def test_creator_and_affiliation_are_their_own_rows(self, lock, by_id_records):
         document, _ = lock
-        pid = str(by_id_records["signed_urls"]["id"])
+        pid = uid(by_id_records["signed_urls"]["id"])
         rendered = section(to_markdown(document), pid)
         assert "| creator | Otto Doe |" in rendered
         assert "| affiliation | Department of Placeholders |" in rendered
@@ -287,7 +293,7 @@ class TestAttribution:
         """Half the live set has an empty `authors` — without this row those
         protocols carry no attribution at all."""
         document, _ = lock
-        pid = str(by_id_records["baseline"]["id"])
+        pid = uid(by_id_records["baseline"]["id"])
         assert document["protocols"][pid]["authors"] == []
         rendered = section(to_markdown(document), pid)
         assert "| creator | Pablo Personman |" in rendered
@@ -296,7 +302,7 @@ class TestAttribution:
     def test_creator_and_authors_both_render(self, lock, by_id_records):
         """The first author's name is an address — upstream really does that."""
         document, _ = lock
-        pid = str(by_id_records["dotted_steps"]["id"])
+        pid = uid(by_id_records["dotted_steps"]["id"])
         rendered = section(to_markdown(document), pid)
         assert "| creator | Jane Doe |" in rendered
         assert (
@@ -307,7 +313,7 @@ class TestAttribution:
     def test_a_lock_without_a_creator_omits_both_rows(self, lock, by_id_records):
         """A lock exported before creator was carried must still render."""
         document, _ = lock
-        pid = str(by_id_records["signed_urls"]["id"])
+        pid = uid(by_id_records["signed_urls"]["id"])
         del document["protocols"][pid]["creator"]
         rendered = section(to_markdown(document), pid)
         assert "| creator |" not in rendered
@@ -315,7 +321,7 @@ class TestAttribution:
 
     def test_a_blank_affiliation_omits_only_that_row(self, lock, by_id_records):
         document, _ = lock
-        pid = str(by_id_records["signed_urls"]["id"])
+        pid = uid(by_id_records["signed_urls"]["id"])
         document["protocols"][pid]["creator"]["affiliation"] = ""
         rendered = section(to_markdown(document), pid)
         assert "| creator | Otto Doe |" in rendered
@@ -327,7 +333,7 @@ class TestAttribution:
         document, db = lock
         del document["protocols"]
         del document["bodies"]
-        pid = str(by_id_records["signed_urls"]["id"])
+        pid = uid(by_id_records["signed_urls"]["id"])
         rendered = section(to_markdown(document, db=db), pid)
         assert "| creator | Otto Doe |" in rendered
         assert "| affiliation | Department of Placeholders |" in rendered

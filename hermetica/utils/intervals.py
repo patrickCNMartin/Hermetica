@@ -9,30 +9,38 @@ from typing import NamedTuple
 from utils.dates import end_of_day, get_timestamp, start_of_day
 from utils.store import connect
 
-# -----------------------------------------------------------------------------#
-# WHAT A HISTORY ROW IS
-# -----------------------------------------------------------------------------#
 
-
+# -----------------------------------------------------------------------------#
+# TYPING INFO
+# -----------------------------------------------------------------------------#
 class VersionInterval(NamedTuple):
     hash: str
     valid_from: int
     deprecated_at: int | None
-
-
 # -----------------------------------------------------------------------------#
 # READ
 # -----------------------------------------------------------------------------#
 def active_hashes(
-    conn: sqlite3.Connection, table: str, id_column: str
+    conn: sqlite3.Connection,
+    table: str,
+    id_column: str,
+    scope: tuple[str, str] | None = None,
 ) -> dict[str, str]:
-    """id -> hash for every version holding the active slot right now."""
+    """id -> hash for every version holding the active slot right now.
+
+    `scope` is a (column, value) pair partitioning the table. Without one,
+    absence is computed against every row — safe only while a single writer
+    owns the table, since anything it did not pull looks absent.
+    """
+    where, params = "deprecated_at IS NULL", ()
+    if scope:
+        where, params = f"{where} AND {scope[0]} = ?", (scope[1],)
     cursor = conn.cursor()
     cursor.row_factory = sqlite3.Row
     return {
         row[id_column]: row["hash"]
         for row in cursor.execute(
-            f"SELECT {id_column}, hash FROM {table} WHERE deprecated_at IS NULL"
+            f"SELECT {id_column}, hash FROM {table} WHERE {where}", params
         )
     }
 
@@ -111,7 +119,7 @@ def diff_entries(
 
 
 # -----------------------------------------------------------------------------#
-# WRITE
+# INTERVALS
 # -----------------------------------------------------------------------------#
 def close_intervals(
     conn: sqlite3.Connection,
@@ -131,29 +139,35 @@ def close_intervals(
 def open_intervals(
     conn: sqlite3.Connection,
     table: str,
-    id_column: str,
-    rows: Iterable[tuple[str, str, int]],
+    columns: tuple[str, ...],
+    rows: Iterable[tuple],
 ) -> None:
-    """Open a fresh interval per (id, hash, valid_from)."""
+    """Open a fresh interval per row. `deprecated_at` is always NULL — that is
+    what open means — so the caller names every other column it fills."""
+    slots = ", ".join("?" * len(columns))
     conn.executemany(
-        f"INSERT INTO {table} ({id_column}, hash, valid_from, deprecated_at) "
-        "VALUES (?, ?, ?, NULL)",
+        f"INSERT INTO {table} ({', '.join(columns)}, deprecated_at) "
+        f"VALUES ({slots}, NULL)",
         list(rows),
     )
 
 
 # -----------------------------------------------------------------------------#
-# ONE WRITE, START TO FINISH
+# WRITING VC
 # -----------------------------------------------------------------------------#
 
 
 def version_control_diff(
-    db: str, history_table: str, id_column: str, entries: Iterable
+    db: str,
+    history_table: str,
+    id_column: str,
+    entries: Iterable,
+    scope: tuple[str, str] | None = None,
 ) -> dict[str, list[str]]:
     """Compare a set of entries against the active state, without writing."""
     with connect(db, read_only=True) as conn:
         return diff_entries(
-            active_hashes(conn, history_table, id_column),
+            active_hashes(conn, history_table, id_column, scope),
             incoming_hashes(entries, id_column),
         )
 
@@ -165,13 +179,14 @@ def write_version_control(
     insert_sql: str,
     entries: list,
     pulled_at: int | None,
+    scope: tuple[str, str] | None = None,
 ) -> dict[str, list[str]]:
 
     pulled_at = pulled_at if pulled_at is not None else get_timestamp()
 
     with connect(db) as conn:
         diff = diff_entries(
-            active_hashes(conn, history_table, id_column),
+            active_hashes(conn, history_table, id_column, scope),
             incoming_hashes(entries, id_column),
         )
         first_time = set(diff["new"]) - seen_before(
@@ -188,13 +203,16 @@ def write_version_control(
         # Bound by name, so valid_from riding along unreferenced is harmless.
         conn.executemany(insert_sql, [row._asdict() for _, row in fresh])
         close_intervals(conn, history_table, id_column, closing, pulled_at)
+        scope_columns = (scope[0],) if scope else ()
+        scope_values = (scope[1],) if scope else ()
         open_intervals(
             conn,
             history_table,
-            id_column,
+            (id_column, *scope_columns, "hash", "valid_from"),
             [
                 (
                     entry_id,
+                    *scope_values,
                     row.hash,
                     row.valid_from if entry_id in first_time else pulled_at,
                 )

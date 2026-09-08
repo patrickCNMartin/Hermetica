@@ -3,7 +3,7 @@
 # -----------------------------------------------------------------------------#
 import json
 
-from seal.seal import generate_protocol_lock, is_verified, verify_lock
+from seal.seal import generate_protocol_lock, verify_lock
 from utils.dates import to_epoch
 
 
@@ -22,7 +22,7 @@ def hydrate_pins(path: str, db: str) -> dict:
     did return something would defeat the pin it was meant to honour.
     """
     drift = verify_lock(path)
-    if not is_verified(drift):
+    if any(drift.values()):
         raise LockDriftError(
             f"{path} does not verify, refusing to hydrate: "
             f"{ {key: value for key, value in drift.items() if value} }"

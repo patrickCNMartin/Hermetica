@@ -15,6 +15,7 @@ from utils.hashing import hash_of
 @dataclass(frozen=True)
 class ProtocolArtefact:
     # --- hashed (HASH_FIELDS) ---------------------------------------------- #
+    source: str
     id: int
     guid: str
     title: str

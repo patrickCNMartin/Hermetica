@@ -9,6 +9,11 @@ from yaml import safe_dump, safe_load
 from compose.compose import PipelineArtefact
 from utils.dates import to_epoch
 
+# -----------------------------------------------------------------------------#
+# Error handling
+# -----------------------------------------------------------------------------#
+
+
 
 # -----------------------------------------------------------------------------#
 # TEMPLATES

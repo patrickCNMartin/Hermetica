@@ -28,6 +28,7 @@ PIPELINE_FIELDS: tuple[str, ...] = PIPELINE_HASH_FIELDS + PIPELINE_METADATA_FIEL
 # PROTOCOLS
 # -----------------------------------------------------------------------------#
 PROTOCOL_HASH_FIELDS: tuple[str, ...] = (
+    "source",
     "doi",
     "reserved_doi",
     "id",
@@ -60,6 +61,8 @@ PROTOCOL_FIELDS: tuple[str, ...] = PROTOCOL_HASH_FIELDS + PROTOCOL_METADATA_FIEL
 # -----------------------------------------------------------------------------#
 PROTOCOL_CONTENT_FIELDS: tuple[str, ...] = (
     "hash",
+    "protocol_uid",
+    "source",
     "protocol_id",
     "protocol_guid",
     "title",
@@ -72,7 +75,10 @@ PROTOCOL_CONTENT_FIELDS: tuple[str, ...] = (
 
 PROTOCOL_CONTENT = "protocol_content"
 PROTOCOL_HISTORY = "protocol_history"
+# Identity is the qualified uid; the bare id alone collides across platforms.
+PROTOCOL_UID = "protocol_uid"
 PROTOCOL_ID = "protocol_id"
+PROTOCOL_SOURCE = "source"
 
 # -----------------------------------------------------------------------------#
 # PIPELINE DB PULLS
@@ -109,7 +115,7 @@ PINS_KEYS: tuple[str, ...] = (
 PROTOCOL_KEYS: tuple[str, ...] = ("protocols", "bodies")
 
 # Need to check this
-PIPELINE_KEYS: tuple[str, ...] = ("dag",)
+PIPELINE_KEYS: tuple[str, ...] = ("pipelines",)
 
 LOCK_KEYS: tuple[str, ...] = PINS_KEYS + PROTOCOL_KEYS + PIPELINE_KEYS
 

@@ -4,7 +4,12 @@
 from typing import Any
 
 from seal.contract import ProtocolArtefact, parse_rich_text
-from sources.protocols_io.config import RICH_TEXT_FIELDS, SIGNED_PARAM, UNIT_KEYS
+from sources.protocols_io.config import (
+    RICH_TEXT_FIELDS,
+    SIGNED_PARAM,
+    SOURCE_NAME,
+    UNIT_KEYS,
+)
 
 
 # -----------------------------------------------------------------------------#
@@ -78,7 +83,9 @@ def get_unit_map(protocol: dict) -> dict[str, str]:
     return {str(uid): catalog[uid] for uid in sorted(cited) if uid in catalog}
 
 
-def build_protocol_artefact(protocol: dict) -> ProtocolArtefact:
+def build_protocol_artefact(
+    protocol: dict, source: str = SOURCE_NAME
+) -> ProtocolArtefact:
     # Scrubbed once, up front: the artefact is frozen, so nothing can be
     # rewritten after construction.
     protocol = scrub_signed_urls(protocol)
@@ -86,6 +93,7 @@ def build_protocol_artefact(protocol: dict) -> ProtocolArtefact:
     chain = get_step_chain(protocol.get("steps") or [])
 
     return ProtocolArtefact(
+        source=source,
         id=protocol["id"],
         guid=protocol["guid"],
         title=protocol["title"],

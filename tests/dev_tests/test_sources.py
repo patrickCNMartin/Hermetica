@@ -6,6 +6,7 @@ protocols.io adapter, and a fake built here from prebuilt artefacts. chronos
 must not be able to tell them apart."""
 
 import copy
+import dataclasses
 import json
 
 import pytest
@@ -21,7 +22,7 @@ from sources.contract import (
 )
 from sources.protocols_io import build_source
 from sources.protocols_io.artefact import build_protocol_artefact
-from utils.constants import PROTOCOL_HISTORY, PROTOCOL_ID
+from utils.constants import PROTOCOL_HISTORY, PROTOCOL_UID
 from utils.dates import to_epoch
 from utils.intervals import active_hashes
 from utils.store import connect, initialize_db
@@ -38,6 +39,8 @@ PROTOCOL_URL = f"{BASE_URL}/v4/protocols/"
 # -----------------------------------------------------------------------------#
 def fake_source(artefacts, retired=(), unreadable=(), name="fake", warnings=()):
     """A source built from artefacts already in hand. No network, no platform."""
+    # Restamped: the name written into identity is the name the source reports.
+    artefacts = [dataclasses.replace(a, source=name) for a in artefacts]
     by_id = {a.id: a for a in artefacts}
     ids = list(by_id) + list(retired) + list(unreadable)
 
@@ -87,7 +90,7 @@ class TestRunPull:
 
         assert entry["sealed"] == len(artefacts)
         with connect(db_path) as conn:
-            assert len(active_hashes(conn, PROTOCOL_HISTORY, PROTOCOL_ID)) == len(
+            assert len(active_hashes(conn, PROTOCOL_HISTORY, PROTOCOL_UID)) == len(
                 artefacts
             )
 
@@ -139,7 +142,7 @@ class TestRunPull:
             )
 
         with connect(db_path) as conn:
-            assert active_hashes(conn, PROTOCOL_HISTORY, PROTOCOL_ID) == {}
+            assert active_hashes(conn, PROTOCOL_HISTORY, PROTOCOL_UID) == {}
 
     def test_a_source_name_that_breaks_uids_is_refused(self, db_path, artefacts):
         initialize_db(db_path, SCHEMA)

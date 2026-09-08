@@ -38,8 +38,11 @@ def build_source(
     page_size: int = 10,
     max_pull: int | None = None,
     raw_dump: str = "",
+    source: str = SOURCE_NAME,
 ) -> ProtocolSource:
-    check_source_name(SOURCE_NAME)
+    # One name for both the artefacts and the ProtocolSource, so the value
+    # written into identity cannot drift from the one the pull reports.
+    check_source_name(source)
     headers = {"Authorization": f"Bearer {api_key}"}
     list_url = list_url or f"{base_url}/v3/protocols"
     protocol_url = protocol_url or f"{base_url}/v4/protocols/"
@@ -74,7 +77,7 @@ def build_source(
         if screened.retired:
             return FetchedProtocol(None, True, screened.warnings)
         return FetchedProtocol(
-            build_protocol_artefact(record), False, screened.warnings
+            build_protocol_artefact(record, source), False, screened.warnings
         )
 
-    return ProtocolSource(SOURCE_NAME, protocol_discover, protocol_fetch)
+    return ProtocolSource(source, protocol_discover, protocol_fetch)

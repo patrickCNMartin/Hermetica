@@ -71,21 +71,23 @@ underneath, append-only.
 
 | Level | Object | Identity | Version |
 |---|---|---|---|
-| 1 | protocol version | `protocol_id` / `protocol_guid` | `hash` |
+| 1 | protocol version | `protocol_uid` / `protocol_guid` | `hash` |
 | 2 | manifest at an instant | — | `manifest_hash` |
-| 3 | pipeline graph | `pipeline_guid` | `graph_hash` |
+| 3 | pipeline graph | `pipeline_guid` | `hash` |
 
 - **Title is display only.** It is hashed (a retitle is a real change) but nothing resolves
   by it.
 - **Lineage is not identity — content is.** A copy and a fork are both new protocols. A
   parent retires only when tagged. `version_class` gates nothing.
 - **A source is an input; a lock is an output.** A lock can never be read back as a source.
-
-> **DANGER — do not add a second source to `chronos.db` until identity is source-aware.**
-> Identity is the bare `protocol_id`, there is no `source` column, and `_diff` computes
-> absence as a set difference over every row in the table. A protocols.io-only pull
-> against a two-source database would deprecate **every other source's protocols** by
-> absence. The `elif` in `build_sources` refusing an unknown name is the only guard.
+- **Identity is source-qualified: `protocol_uid` = `"<source>:<id>"`.** The bare id
+  collides — two platforms can both number a protocol `88578`.
+- **`source` is hashed**, so one protocol mirrored on two platforms is two records that
+  drift independently. `check_source_name` keeps the name free of the separator.
+- **Absence is computed inside one source's partition**, never over the whole table:
+  `active_hashes` takes a `(column, value)` scope, and unscoped, everything another
+  platform holds looks absent. **An empty pull cannot read its own source off its rows and
+  must be told** — that is the case that would deprecate a whole platform.
 
 ### Hashing
 
@@ -106,7 +108,7 @@ underneath, append-only.
 - **`seal` defines it; the adapter builds it.** The scrub, step trimming, chain and unit
   map are one platform's knowledge. `parse_rich_text` is the one exception kept in `seal` —
   moving it would make `scribe` import from `sources`.
-- **Frozen and slotted** — mutating after hashing would desync blob and hash.
+- **Frozen** — mutating after hashing would desync blob and hash.
 - **`scrub_signed_urls` runs once, inside the build**, so hash and stored blob are covered
   together. Only *values* are blanked; the URL and filename stay hashed, so swapping the
   file is a version change. A leading `?` or `&` is required so prose like
@@ -137,14 +139,14 @@ underneath, append-only.
   rejects `bool` — it subclasses `int`, so `True` would become epoch 1.)
 - Each version carries `[valid_from, deprecated_at)`. "Active at T" is a query, not a
   stored snapshot.
-- **`valid_from` backdates to `created_on`** — but **only for a `protocol_id`'s first-ever
-  version**, and "first-ever" means no history at all, not "no live version".
-- **Invariant: at most one active version per `protocol_id` at any instant.** Checking "one
-  row with `deprecated_at IS NULL`" does **not** catch violations — the real check is
-  pairwise interval overlap.
+- **`valid_from` backdates to `created_on`** — but **only for a `protocol_uid`'s
+  first-ever version**, and "first-ever" means no history at all, not "no live version".
+- **Invariant: at most one active version per `protocol_uid` at any instant.** A partial
+  unique index on `deprecated_at IS NULL` enforces the live case. It cannot see overlap
+  between *closed* intervals, so the real check remains pairwise interval overlap.
 - **deprecate-on-change**: a new hash closes the prior interval and opens a new one.
-- **deprecate-on-absence**: a protocol missing from a pull is deprecated by set difference.
-  Content addressing cannot see absence.
+- **deprecate-on-absence**: a protocol missing from its own source's pull is deprecated
+  by set difference within that source. Content addressing cannot see absence.
 - **A blob is never deleted.** Old content stays resolvable by hash forever.
 
 ### Lifecycle — declared, never inferred
@@ -162,7 +164,7 @@ Neither is stored as a reason.
 - **A folder named `Old` is not a signal.** Folder position is diagnostic only, except
   Trash itself. **We track and make visible; we do not decide.**
 - **Planned — `protocol_pins`,** a *policy* list (so it must be editable, so it cannot be a
-  column on append-only history), subtracted in `_diff`:
+  column on append-only history), subtracted in `diff_entries`:
   `absent = active − incoming − skipped − pinned`. `skipped` = we failed to read it.
   `pinned` = policy says keep. Trash/deprecated = retire.
 
@@ -182,9 +184,10 @@ Two flavours: protocols-only, and pipeline (adds the pinned graph).
 - **`verify_lock` returns the drift rather than raising** — a verifier that stops at the
   first problem cannot report the whole picture. Four lists, all empty meaning verified.
   **It reads no database.**
-- Two hashes resolving to one `protocol_id` raise `DuplicateProtocolIdError`.
+- Two hashes resolving to one id raise `DuplicatedIdError` — **at lock generation only.**
+  The write path does not re-check.
 - **`hydrate_pins` cross-checks the rebuilt `manifest_hash`** against the file's: hashes can
-  all resolve and still map to a different `protocol_id`. The DB is the only possible
+  all resolve and still map to a different `protocol_uid`. The DB is the only possible
   source — protocols.io serves current versions only.
 
 ### Rendering
@@ -216,21 +219,22 @@ Two flavours: protocols-only, and pipeline (adds the pinned graph).
 - **`utils.store.connect` is the single connection helper** — `PRAGMA foreign_keys=ON`,
   commit or rollback, **close in a `finally`**. Plain `with sqlite3.connect(...)` commits
   but leaks the handle.
-- **`get_content` returns entries in the order asked for** and raises if *any* hash is
-  absent — a pin silently dropping out of a lock is the failure this prevents.
-  `utils.store.fetch_rows` returns only what it found: **naming an absence is the caller's
-  job, because utils owns no error vocabulary.**
-- **`active_hashes` takes a connection, not a path** (`write_pull` needs it inside its own
-  transaction) and sets `row_factory` on a **cursor it opens itself** — connection-wide
-  would change the row type every other read gets.
+- **`get_protocols` / `get_pipelines` return entries in the order asked for** and raise
+  `MissingHash` if *any* hash is absent — a pin silently dropping out of a lock is the
+  failure this prevents.
+- **`fetch_entry` returns only what it found; `fetch_entries` raises `MissingHash`** — the
+  one error `utils` owns, because the absence is its own lookup failing.
+- **`active_hashes` takes a connection, not a path** (`write_version_control` needs it
+  inside its own transaction) and sets `row_factory` on a **cursor it opens itself** —
+  connection-wide would change the row type every other read gets.
 - **Both stores name their own tables** and pass them into utils, so `scribe` and `chronos`
   never learn a table name.
 - **The store takes artefacts, not dicts.**
 - **Columns are derived from `METADATA_FIELDS`, never restated**, so drift is loud: a
   missing entry field is a `TypeError`, a missing column a `ProgrammingError`, and a
   reorder is harmless because binding is by name.
-- **Three hashed fields are also columns** (`doi`, `reserved_doi`, `uri`) — a denormalized
-  copy for display, never authoritative.
+- **Five hashed fields are also columns** (`source`, `title`, `doi`, `reserved_doi`,
+  `uri`) — a denormalized copy for display and for scoping, never authoritative.
 - **Two SQLite files, deliberately separate.** `chronos.db` is append-only with the **cron
   writer as sole writer**; `compose.db` uses the same interval machinery. `snapshots` is
   schema only.
@@ -273,7 +277,7 @@ Measurements: `docs/protocols_io_findings.md`. All of it lives in
   short page can have more after it.
 - **No page ceiling by default.** A fixed cap is silent truncation; the count check makes
   an unbounded walk safe.
-- **Rate limit: 100 req/min/user**; `_call_api` carries `ratelimit` + `backoff`, giving up
+- **Rate limit: 100 req/min/user**; `call_api` carries `ratelimit` + `backoff`, giving up
   on 4xx other than 429. The PDF endpoint is far stricter (5/min).
 
 ### Response shape
