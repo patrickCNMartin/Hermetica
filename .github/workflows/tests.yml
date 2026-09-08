@@ -33,6 +33,10 @@ jobs:
 
       - run: uv run pytest tests/dev_tests --cov=chronos --cov=seal --cov=compose --cov=scribe --cov=sources --cov-report=term-missing
 
+      # Re-measures the repo and fails if docs/status.md was not regenerated
+      # with the change that made it stale.
+      - run: make audit-check RUN="uv run"
+
   lint:
     name: ruff + detect-secrets
     runs-on: ubuntu-latest
