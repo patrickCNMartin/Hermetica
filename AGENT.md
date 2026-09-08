@@ -137,9 +137,8 @@ underneath, append-only.
 - **All timestamps are unix epoch integers (UTC).** Human forms are produced at the call
   boundary. `get_timestamp` is the single clock read. Seconds, not days. (`to_epoch`
   rejects `bool` — it subclasses `int`, so `True` would become epoch 1.)
-- Each version carries `[valid_from, deprecated_at)`, so "active at T" is answerable as a
-  query rather than a stored snapshot. Only "active **now**" is implemented
-  (`active_hashes`); resolving an arbitrary date lives on `feature/versions-by-date`.
+- Each version carries `[valid_from, deprecated_at)`. "Active at T" is a query, not a
+  stored snapshot.
 - **`valid_from` backdates to `created_on`** — but **only for a `protocol_uid`'s
   first-ever version**, and "first-ever" means no history at all, not "no live version".
 - **Invariant: at most one active version per `protocol_uid` at any instant.** A partial
@@ -177,8 +176,7 @@ Two flavours: protocols-only, and pipeline (adds the pinned graph).
 - **`manifest_hash` covers `entries` alone** — not `created_at`, `provenance` or display
   fields. Two locks pinning the same protocols are the same manifest a year apart.
 - **`as_of` is recorded, never used to resolve.** Resolving a day to a manifest is not
-  written, and the day-to-version query it would build on is parked on
-  `feature/versions-by-date`.
+  written.
 - **Written human-readable, not canonical bytes.** Verification re-canonicalizes, so
   reformatting cannot break a lock.
 - **`export_lock` raises if built `with_bodies=False`** rather than writing a file that

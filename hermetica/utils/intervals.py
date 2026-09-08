@@ -3,11 +3,20 @@
 # -----------------------------------------------------------------------------#
 import sqlite3
 from collections.abc import Iterable
+from datetime import date, datetime
+from typing import NamedTuple
 
-from utils.dates import get_timestamp
+from utils.dates import end_of_day, get_timestamp, start_of_day
 from utils.store import connect
 
 
+# -----------------------------------------------------------------------------#
+# TYPING INFO
+# -----------------------------------------------------------------------------#
+class VersionInterval(NamedTuple):
+    hash: str
+    valid_from: int
+    deprecated_at: int | None
 # -----------------------------------------------------------------------------#
 # READ
 # -----------------------------------------------------------------------------#
@@ -50,6 +59,30 @@ def seen_before(
             ids,
         )
     }
+
+
+def versions_on_date(
+    conn: sqlite3.Connection,
+    table: str,
+    id_column: str,
+    when: int | float | str | date | datetime,
+) -> dict[str, list[VersionInterval]]:
+    """id -> every version that held the active slot on `when`'s UTC day."""
+    opens, closes = start_of_day(when), end_of_day(when)
+    cursor = conn.cursor()
+    cursor.row_factory = sqlite3.Row
+    versions: dict[str, list[VersionInterval]] = {}
+    for row in cursor.execute(
+        f"SELECT {id_column}, hash, valid_from, deprecated_at FROM {table} "
+        "WHERE valid_from <= ? "
+        "AND (deprecated_at IS NULL OR deprecated_at > ?) "
+        f"ORDER BY {id_column}, valid_from",
+        (closes, opens),
+    ):
+        versions.setdefault(row[id_column], []).append(
+            VersionInterval(row["hash"], row["valid_from"], row["deprecated_at"])
+        )
+    return versions
 
 
 # -----------------------------------------------------------------------------#

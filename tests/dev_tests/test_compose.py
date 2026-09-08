@@ -33,7 +33,7 @@ from utils.constants import (
 )
 from utils.dates import to_epoch
 from utils.hashing import canonical_json
-from utils.intervals import active_hashes
+from utils.intervals import active_hashes, versions_on_date
 from utils.store import MissingHash, connect, initialize_db, verify_blobs
 
 TEMPLATE = Path(__file__).parents[2] / "config" / "pg_core_templates.yaml"
@@ -318,6 +318,47 @@ class TestGetPipelines:
 
     def test_no_hashes_asks_nothing(self, db):
         assert get_pipelines(db, []) == []
+
+
+class TestPipelinesOnDate:
+    def test_a_version_active_on_that_day_is_returned(self, db, pipeline):
+        write_pipeline(db, format_pipeline_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
+        with connect(db, read_only=True) as conn:
+            versions = versions_on_date(
+                conn, PIPELINE_HISTORY, PIPELINE_GUID, "2026-09-01"
+            )
+        assert list(versions) == ["abc123"]
+
+    def test_both_versions_are_returned_for_the_day_they_swapped(self, db, pipeline):
+        """Two edits inside one day — the case a single date cannot disambiguate."""
+        write_pipeline(db, format_pipeline_entry([pipeline()], MORNING), MORNING)
+        write_pipeline(
+            db, format_pipeline_entry([pipeline(DAG={"A": ["B"]})], EVENING), EVENING
+        )
+        with connect(db, read_only=True) as conn:
+            versions = versions_on_date(conn, PIPELINE_HISTORY, PIPELINE_GUID, SWAP_DAY)
+        assert len(versions["abc123"]) == 2
+
+    def test_a_version_closed_at_midnight_is_not_active_that_day(self, db, pipeline):
+        """The interval is half-open: closing at 00:00:00 means it held nothing
+        on the day that starts there."""
+        write_pipeline(db, format_pipeline_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
+        write_pipeline(
+            db, format_pipeline_entry([pipeline(DAG={"A": ["B"]})], LATER), LATER
+        )
+        with connect(db, read_only=True) as conn:
+            versions = versions_on_date(
+                conn, PIPELINE_HISTORY, PIPELINE_GUID, "2026-09-08"
+            )
+        assert len(versions["abc123"]) == 1
+
+    def test_a_day_before_anything_existed_is_empty(self, db, pipeline):
+        write_pipeline(db, format_pipeline_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
+        with connect(db, read_only=True) as conn:
+            assert (
+                versions_on_date(conn, PIPELINE_HISTORY, PIPELINE_GUID, "2020-01-01")
+                == {}
+            )
 
 
 # -----------------------------------------------------------------------------#

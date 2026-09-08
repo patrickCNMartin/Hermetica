@@ -8,6 +8,7 @@ import pytest
 from utils.dates import (
     as_date,
     as_iso,
+    end_of_day,
     from_epoch,
     get_timestamp,
     to_epoch,
@@ -66,6 +67,21 @@ class TestFromEpoch:
 
     def test_as_iso(self):
         assert as_iso(EPOCH) == "2025-04-29T13:44:14+00:00"
+
+
+class TestEndOfDay:
+    def test_last_instant_of_the_day(self):
+        assert end_of_day(EPOCH) == DAY_END
+        assert as_date(end_of_day(EPOCH)) == "2025-04-29"
+
+    def test_accepts_a_date_string(self):
+        assert end_of_day("2025-04-29") == DAY_END
+
+    def test_bounds_the_whole_day(self):
+        """'As of date D' must include everything stamped during D."""
+        assert to_epoch("2025-04-29T00:00:00Z") <= end_of_day("2025-04-29")
+        assert to_epoch("2025-04-29T23:59:59Z") <= end_of_day("2025-04-29")
+        assert to_epoch("2025-04-30T00:00:00Z") > end_of_day("2025-04-29")
 
 
 class TestNow:
