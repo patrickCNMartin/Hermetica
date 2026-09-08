@@ -28,6 +28,8 @@ SCHEMA: tuple[str, ...] = (
         manifest_hash    TEXT,
         root             TEXT,
         DAG              TEXT NOT NULL,
+        nodes            TEXT NOT NULL,
+        node_hashes      TEXT NOT NULL,
         pipeline         TEXT NOT NULL,
         created_on       INTEGER,
         creator          TEXT
@@ -63,6 +65,8 @@ class PipelineEntry(NamedTuple):
     manifest_hash: str | None
     root: str | None
     DAG: str
+    nodes: str
+    node_hashes: str
     pipeline: str
     created_on: int | None
     creator: str | None
@@ -84,6 +88,8 @@ def build_pipeline_entry(
         manifest_hash=artefact.manifest_hash,
         root=artefact.root,
         DAG=encode_entry(artefact.DAG),
+        nodes=encode_entry(artefact.nodes),
+        node_hashes=encode_entry(artefact.node_hashes),
         pipeline=blob.decode("ascii"),
         valid_from=to_epoch(created_on) if created_on else pulled_at,
         **metadata,
@@ -110,6 +116,8 @@ class PipelineContentEntry(NamedTuple):
     manifest_hash: str | None
     root: str | None
     DAG: str
+    nodes: str
+    node_hashes: str
     created_on: int | None
     creator: str | None
     pipeline: str | None = None

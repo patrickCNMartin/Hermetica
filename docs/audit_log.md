@@ -547,7 +547,7 @@ widened to `str`, hashed fields made nullable, and `reserved_doi` collapsed into
 
 ---
 
-## 2026-09-08 — `<hash of the commit carrying this work>` — the executor moves from the pipeline to the protocol
+## 2026-09-08 — a0c718e — the executor moves from the pipeline to the protocol
 
 **Discovered:** `executor` was a hashed field on `PipelineArtefact`, which asserts that one
 pipeline runs on one thing. It does not. A real pipeline hands a plate from a human to a
@@ -591,3 +591,177 @@ every value on the next pull will be `""` until the lab tags them.
 **Rode along:** `tests/dev_tests/test_lifecycle.py` still imported `seal.lifecycle`, which
 had moved to `sources/protocols_io/`, so the whole suite failed to collect. Import fixed;
 602 tests pass.
+
+---
+
+## 2026-09-08 — `<hash of the commit carrying this work>` — pipelines pin protocols: `hash_dag` and `hydrate_pipeline`
+
+**Decided:** `PipelineArtefact` gains a second graph. `DAG` stays what a person writes —
+protocols named by `protocol_uid`, `protocol_guid` or the bare `protocol_id`, whichever the
+author of the template had to hand. `hash_dag` is that same graph with every name replaced
+by the protocol hash active at hydration time. **Both are hashed**, and `hash_dag` is a
+`NOT NULL` column on `pipeline_content`.
+
+**Why both:** the readable graph is the intent and the hash graph is what reproduces, and
+neither substitutes for the other. Dropping `DAG` would leave a pipeline nobody can read or
+edit; dropping `hash_dag` would leave a pipeline that cannot reproduce, since a name
+resolves to whatever is active *today* rather than what ran. Hashing only one of them would
+make the other free to drift.
+
+**Why hashing `hash_dag` is the point, not a side effect:** re-hydrating a pipeline after
+one of its protocols has been superseded produces a different `hash_dag`, therefore a
+different pipeline hash, therefore a new version under the same `pipeline_guid`. A pipeline
+whose protocols moved *is* a different pipeline. Left unhashed, that change would be
+invisible and every lock pinning the pipeline would quietly describe a graph that no longer
+exists.
+
+**Decided:** `hydrate_pipeline(pipeline, db)` resolves against the **active** slot only —
+`protocol_history` where `deprecated_at IS NULL`, joined to `protocol_content` for the
+three names a node may use. A retired protocol therefore has no hash to give and raises
+`UnresolvedProtocolError`, which carries `.unresolved` so a caller can read the ids rather
+than parse a message. Rejected: falling back to the most recent closed interval. That would
+let a template silently pin a protocol the lab has declared out of use, which is the exact
+thing lifecycle exists to prevent.
+
+**Decided:** a bare `protocol_id` that answers for two active protocols raises
+`AmbiguousProtocolError`, naming the candidates. Not asked for, and added anyway: `984a02b`
+introduced `protocol_uid` precisely because two platforms can each number a protocol
+`88578`, and a resolver that picked one of them would reintroduce that bug one layer up,
+where it would be much harder to see. The uid still resolves cleanly when the bare id does
+not, so the escape hatch is to name it properly.
+
+**Also decided:** `hash_dag` successors are always a list, even where the template writes a
+lone successor as a bare string (`"319531": "400843"`). The shapes are equivalent to a
+reader and not to a serializer, so without this the same graph written two ways would be
+two hashes.
+
+**Cost:** every stored pipeline re-hashes and `compose.db` must be rebuilt — `hash_dag` is
+`NOT NULL` and no existing row has one. Nothing had been written yet, so this is free
+again, and it is the last cheap moment. `compose` now reads `chronos.db`; the two files
+stay separate and only this direction crosses, passed in as an argument rather than
+resolved from config. The shipped `config/pg_core_templates.yaml` still carries placeholder
+graphs (`{"A":["B","C"]}`), so **it cannot be hydrated** until real protocol ids replace
+them — `pipelines_from_template` is unaffected, hydration is a separate step.
+`tests/fixtures/pipeline_template.yaml` was carrying a `"D"` left over from those
+placeholders, which named no protocol in the by-ID fixture; its graph is now real ids.
+617 tests pass.
+
+**Open:** nothing calls `hydrate_pipeline` yet — there is no compose entry point. And
+`compose.active_protocols` is still dead and still wrong: it reads `pipeline_history` for
+hashes and then looks them up in `protocol_content`, which cannot match. Left alone
+deliberately, flagged here rather than fixed inside an unrelated change.
+
+---
+
+## 2026-09-08 — a0c718e — the outside-tool transport: a thin HTTP API, planned
+
+**Decided:** outside tools reach Hermetica through a **thin HTTP/JSON API** over the two
+ports `AGENT.md` already names — read-only `query` over `chronos.db`, read-write `compose`
+over `compose.db`. Recorded as planned in the module table, same status as prose-from-lock:
+designed, unbuilt. The API process is the only thing that opens either `.db` file; no
+outside tool mounts the volume. No tracked file changed but this one and the `AGENT.md`
+amendment beside it.
+
+**Why:** the near consumer is a pipeline portal, deployed next to Hermetica under docker
+compose, where people build pipelines from currently-active protocols (titles only, read
+only), start from the shipped templates, and **save the result back** to `compose.db`.
+That is three things a shared mount handles badly: a writer in a separate container, a
+consumer that is not Python and differs the most between deployments, and a schema that
+would then be a published interface. HTTP + JSON + an OpenAPI description is the
+interoperable boundary that survives all three — it is what "transport swappable" was
+holding the place for.
+
+Rejected:
+
+- **Shared read-only mount + `import hermetica`** — the recommendation this discussion
+  started from, and still right for a co-located Python reader that only needs the query
+  port. It fails the portal on every one of the three points above. Kept as the fallback
+  for that narrower case, not the default.
+- **Lock files as the integration format.** A lock is an output and a reproducible
+  receipt, not a live CRUD surface: the portal must read the active set and write new
+  versions, and a lock does neither. Locks stay what they are — the artefact the larger
+  system archives or hands on — and gain nothing here. This is where the "lock files feel
+  iffy as the boundary" doubt raised in the discussion landed.
+- **A fat service with its own model.** The store functions exist (`active_protocols`,
+  `get_protocols`, `hydrate_pipeline`, `write_pipeline`); the layer is ~7 endpoints
+  binding them to HTTP, stable ids on the wire (`protocol_uid`, `hash`, `pipeline_guid`,
+  `manifest_hash`), no rowids, no raw SQL. FastAPI for the OpenAPI description at no cost.
+- **More than one API replica.** `compose.db` is SQLite; multiple writing processes on one
+  file is the corruption case, worse on a non-local volume. One instance, WAL,
+  `busy_timeout`, serialised writes. Pipeline saves are human-paced — not a throughput
+  problem.
+
+**Cost:** nothing built, nothing re-hashed. It moves one existing item off "optional":
+the **history-protection triggers must land before the portal writes**, because
+`compose.db` stops having a single trusted writer. `compose.active_protocols` — still dead
+and still wrong per the entry above — gets fixed when the picker endpoint becomes its
+first real caller, not before. No compose entry point exists yet, so the API is also what
+finally exercises `hydrate_pipeline`.
+
+
+---
+
+## 2026-09-08 — `<hash of the commit carrying this work>` — a node is not a protocol: node ids, `node_hashes`, and a cycle check
+
+**Supersedes the entry above**, which landed `hash_dag` as a second graph keyed on protocol
+hash. That shape was wrong in a way only branching exposed, and it lasted one commit.
+
+**Discovered:** keying the graph on protocols means a protocol can appear at exactly one
+point in a pipeline. Branching itself was fine — the fixture's diamond fanned out, joined,
+and round-tripped correctly. But "wash, digest, wash again" is inexpressible, and the
+attempt at it is **silently accepted as a cycle**: `{568614: 319531, 319531: 400843,
+400843: 319531}` hydrated without complaint into a graph that cannot run. Nothing checked
+acyclicity, so an unrunnable pipeline could take a hash and go in the store.
+
+**Discovered:** successor order was reaching the hash. The same fork written
+`["319531","201297"]` and `["201297","319531"]` produced two pipeline hashes
+(`de17dca…` and `cbb1829…`) for one graph. Forks here are parallel and conditional, so the
+order is not information.
+
+**Decided:** node ids become the pipeline's own, independent of protocols. `DAG` is keyed
+on node ids, and a new `nodes` field maps node id -> the protocol that node runs. Reuse is
+then ordinary: two node ids, one protocol name, two entries sharing a hash.
+
+**Decided:** `hash_dag` becomes `node_hashes` and **stops being a graph**. Once nodes have
+their own ids, the pins are a flat node id -> protocol hash map, and the topology lives in
+`DAG` alone. This is smaller than what it replaces, not larger: the graph is stored once
+rather than twice, so the two copies cannot drift into disagreeing about the shape. All
+three fields are hashed — `DAG` and `nodes` are the intent, `node_hashes` is what
+reproduces.
+
+**Decided:** `validate_dag` refuses two things before anything is stored. The node set of
+`DAG` must equal the keys of `nodes` (`NodeMismatchError`, reporting both directions — a
+successor that runs no protocol, and a protocol on no node). And the graph must be acyclic
+(`PipelineCycleError`, carrying the cycle). Acyclicity is `graphlib.TopologicalSorter`
+rather than a hand-written walk; it is fed successors where it expects predecessors, which
+reverses the order it would produce and leaves cycle detection exactly correct, since a
+cycle is direction-agnostic. It runs at template read *and* at hydration, so a hand-built
+artefact cannot slip past.
+
+**Decided:** `normalize_dag` sorts successors and lifts a bare string into a one-item list.
+**It is a plain function called by `pipelines_from_template`, not `__post_init__`.** The
+dataclass hook would have made every artefact canonical however it was constructed, which
+is stronger; it was rejected because normalization would then happen invisibly inside
+construction, and a frozen dataclass rewriting its own fields via `object.__setattr__` is
+the kind of thing you have to already know about to reason about a hash. An artefact built
+by hand carries whatever order it was given, and the caller normalizes.
+
+**Decided:** the template key `protocol_dag` is renamed to `dag`, and `dag`/`nodes` are
+**required rather than defaulted**. The old key keyed protocols and the new one keys nodes,
+so a template left on the old name would have parsed cleanly and pinned a graph that means
+something else. Renamed, it fails at read with the pipeline named.
+
+**Cost:** every stored pipeline re-hashes and `compose.db` must be rebuilt — `nodes` and
+`node_hashes` are both `NOT NULL`. Free again, and this is genuinely the last free moment:
+nothing is stored. Both templates are rewritten. `tests/fixtures/pipeline_template.yaml`
+gets real node names (`lyse`, `digest_human`, `digest_biomek`, `elute`) over the by-ID
+fixture's protocols. `config/pg_core_templates.yaml` keeps placeholder graphs and **still
+does not hydrate** by design, which is now asserted rather than assumed. 629 tests pass.
+
+**Rode along:** the re-hydration test had been writing a single edited protocol as a whole
+pull, which deprecates every other protocol in that source by absence — the test passed
+only because its pipeline had one node. Now it writes the full set with one record edited,
+which is what a real pull looks like.
+
+**Open:** unchanged from the entry above — nothing calls `hydrate_pipeline` yet, and
+`compose.active_protocols` is still dead and still wrong.

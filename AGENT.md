@@ -51,6 +51,7 @@ names it in a warning, then is discarded.
 | `scribe` | a lock back into something a human reads | works, fidelity partial |
 | `utils` | mechanics — canonical form, hashing, dates, sqlite, intervals | works |
 | *(planned)* | prose generation from a lock | **a sixth module, not part of `scribe`** |
+| *(planned)* | HTTP/JSON API over the query and compose ports — the transport for outside tools | **thin; no raw SQL, stable ids only, sole opener of both `.db` files** |
 
 **`chronos` decides *when* to look; an adapter knows *what a platform's bytes are*; `seal`
 decides *what they mean*.** A rule about identity is seal's even if cron calls it. A rule
@@ -222,6 +223,37 @@ Two flavours: protocols-only, and pipeline (adds the pinned graph).
 - **`pipeline_guid` is identity; the hash is the version.** Minted once in the template,
   survives every edit. **Reading never mints** — a silent re-mint orphans everything
   stored under the old guid.
+- **A node is not a protocol.** `DAG` is keyed on the pipeline's own node ids, and `nodes`
+  maps each node id to the protocol it runs. That separation is what lets one protocol run
+  at several points in one graph — `{wash_1: 568614, wash_2: 568614}` is two steps, one
+  protocol. Keyed on protocols directly, a repeat is inexpressible and an attempt at one
+  silently becomes a cycle.
+- **Three fields, all hashed: `DAG`, `nodes`, `node_hashes`.** The first two are what a
+  person writes and edits; `node_hashes` is node id -> the protocol hash active when
+  `hydrate_pipeline` ran. The graph is stored **once**, in node space — `node_hashes` is a
+  flat map, not a second graph, so the two cannot disagree about topology.
+- **`hydrate_pipeline` resolves against *active* versions only**, so a deprecated protocol
+  has no hash to give and **raises** (`UnresolvedProtocolError`) rather than pinning
+  something stale. Re-hydrating after a protocol moves on is therefore a new pipeline
+  version, not a silent edit — which is the whole reason `node_hashes` is hashed.
+- **A bare `protocol_id` that answers for two active protocols raises**
+  (`AmbiguousProtocolError`), naming the candidates. This is the cross-source collision
+  `protocol_uid` exists to prevent; resolving it by picking one would reintroduce it.
+- **A fork is parallel and conditional**, so which branch was written first is not
+  information. `normalize_dag` sorts every successor list and lifts a bare string into a
+  one-item list, so one graph written several ways is one hash. **It is a plain function
+  called by `pipelines_from_template`, deliberately not `__post_init__`** — normalization
+  stays visible at the call site instead of happening inside construction. An artefact
+  built by hand is therefore not normalized: call `normalize_dag` yourself.
+- **A graph that cannot run never gets a hash.** `validate_dag` checks that the node set of
+  `DAG` equals the keys of `nodes` (`NodeMismatchError`, naming both sides) and that the
+  graph is acyclic (`PipelineCycleError`, naming the cycle) via `graphlib.TopologicalSorter`
+  — fed successors where it expects predecessors, which reverses the order it would produce
+  and leaves cycle detection exactly right. It runs at template read **and** at hydration,
+  so a hand-built artefact cannot slip past.
+- **The template's keys are `nodes` and `dag`, and both are required.** `protocol_dag` was
+  renamed rather than reused: it keyed protocols, `dag` keys nodes, so an old template left
+  to default would parse and pin a graph that means something else.
 - **Pinned to hashes**, so a pipeline reproduces even after a protocol is deprecated.
 - **A pipeline has no executor.** It once did, which said every node in the graph ran on
   the same thing; a real pipeline hands off between a human and two robots. The executor
@@ -248,6 +280,9 @@ Two flavours: protocols-only, and pipeline (adds the pinned graph).
 - **Columns are derived from `METADATA_FIELDS`, never restated**, so drift is loud: a
   missing entry field is a `TypeError`, a missing column a `ProgrammingError`, and a
   reorder is harmless because binding is by name.
+- **`compose` reads `chronos.db`, never the reverse.** `hydrate_pipeline` takes the
+  protocol store as an argument and reads `protocol_content` joined to the live rows of
+  `protocol_history`. The two files stay separate; only this direction crosses.
 - **Six hashed fields are also columns** (`source`, `title`, `doi`, `reserved_doi`,
   `uri`, `executor`) — a denormalized copy for display and for scoping, never
   authoritative.
@@ -257,7 +292,15 @@ Two flavours: protocols-only, and pipeline (adds the pinned graph).
 - **The store must refuse to overwrite or delete history** — to be enforced by sqlite
   triggers so the rule holds whoever opens the file. **Not implemented.**
 - **Access model:** read-only on the VC, read-write on graphs, never raw SQL — a **query
-  port** and a **compose port**. Transport swappable.
+  port** and a **compose port**. Transport swappable; the planned transport is a thin
+  HTTP/JSON API (see the module table), and it is the only process that opens either
+  `.db` file. Outside tools talk to it, never to a shared mount.
+- **`compose.db` gains a second writer** — the pipeline portal writes user-composed
+  pipelines back through the compose port. One API instance, WAL, serialised writes,
+  never on a network filesystem. This is why the history-protection triggers stop being
+  optional before deploy.
+- **A lock file is an export, not the integration bus.** Outside systems work live
+  through the ports; a lock is the reproducible receipt they archive or hand on.
 
 ---
 

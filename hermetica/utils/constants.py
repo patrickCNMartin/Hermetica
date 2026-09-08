@@ -12,6 +12,8 @@ PIPELINE_HASH_FIELDS: tuple[str, ...] = (
     "title",
     "manifest_hash",
     "DAG",
+    "nodes",
+    "node_hashes",
     "root",
 )
 # Specify other in
@@ -94,6 +96,8 @@ PIPELINE_CONTENT_FIELDS: tuple[str, ...] = (
     "manifest_hash",
     "root",
     "DAG",
+    "nodes",
+    "node_hashes",
     "pipeline",
 ) + PIPELINE_METADATA_FIELDS
 

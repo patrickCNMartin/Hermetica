@@ -3,6 +3,10 @@
 # The structure will pull from the a live protocol database if one exists.
 # I am keeping this pretty minimal because it should also be able to be updated
 # Using a specific manifest hash.
+#
+# `nodes` says which protocol each step runs; `dag` wires the steps together.
+# Node ids are the pipeline's own, so the same protocol may run at more than one
+# step. The graphs below are still placeholders and will not hydrate.
 
 
 creator: "Homunculus Pat"
@@ -12,40 +16,54 @@ pipelines:
         pipeline_guid: null
         manifest_hash: null
         root: null
-        protocol_dag: {"A":["B","C"],"B":"D","C":"D"}
+        nodes: {A: "A", B: "B", C: "C", D: "D"}
+        dag: {A: ["B", "C"], B: ["D"], C: ["D"], D: []}
+        node_hashes: null
 
     FFPE_digestion_base:
         pipeline_guid: null
         manifest_hash: null
         root: null
-        protocol_dag: {}
+        nodes: {}
+        dag: {}
+        node_hashes: null
 
     In_gel_digestion_base:
         pipeline_guid: null
         manifest_hash: null
         root: null
-        protocol_dag: {}
+        nodes: {}
+        dag: {}
+        node_hashes: null
 
     IP_base:
         pipeline_guid: null
         manifest_hash: null
         root: null
-        protocol_dag: {}
+        nodes: {}
+        dag: {}
+        node_hashes: null
 
     IPMS_base:
         pipeline_guid: null
         manifest_hash: null
         root: null
-        protocol_dag: {}
+        nodes: {}
+        dag: {}
+        node_hashes: null
 
     FF_SDS_base:
         pipeline_guid: null
         manifest_hash: null
         root: null
-        protocol_dag: {}
+        nodes: {}
+        dag: {}
+        node_hashes: null
 
     Frozen_tissue_base:
         pipeline_guid: null
         manifest_hash: null
         root: null
-        protocol_dag: {}
+        nodes: {}
+        dag: {}
+        node_hashes: null
