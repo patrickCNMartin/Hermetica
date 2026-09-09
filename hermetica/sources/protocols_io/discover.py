@@ -22,9 +22,7 @@ class IncompleteDiscoveryError(RuntimeError):
 
     def __init__(self, read: int, reported: int, refusing: str):
         self.read, self.reported = read, reported
-        super().__init__(
-            f"read {read} of {reported} reported; refusing to {refusing}"
-        )
+        super().__init__(f"read {read} of {reported} reported; refusing to {refusing}")
 
 
 # -----------------------------------------------------------------------------#
