@@ -765,3 +765,73 @@ is now a second exception. The `tests` column double-counts — a test file impo
 modules is counted against both, which is why the column sums to 1176 against a 629-test
 suite — so it reads as attention, not as a test census. `make audit` runs the full suite
 with coverage, which makes it a slow target and adds a second pytest run to CI.
+
+---
+
+## 2026-09-09 — 7ffe7e8 — `compose.active_protocols` deleted rather than fixed
+
+**Decided:** `active_protocols` is removed, not repaired. It read hashes from
+`pipeline_history` scoped by `pipeline_guid` and looked them up in `protocol_content`,
+which cannot match; nothing called it and no test touched it. `709df6b` flagged it as
+"still dead and still wrong", and `d539f32` deferred the fix to the picker endpoint that
+would become its first real caller.
+
+**Why:** that caller does not exist, so there is nothing to keep the function honest — a
+broken function waiting for its first user is a trap for whoever writes that user, who
+will reasonably assume it works. `active_protocol_aliases` already does the real
+resolution, against the correct tables. When the compose port needs hash → title for a
+picker it is a three-line query written against a live requirement, which is cheaper than
+auditing a function nobody has ever run.
+
+**Cost:** 34 lines and four imports gone. `compose` coverage 93.1 → 98.1 — the deleted
+lines were the uncovered ones. 629 tests pass unchanged.
+
+---
+
+## 2026-09-09 — 7ffe7e8 — an exception carries its data, not just a sentence
+
+**Decided:** every error class in `hermetica/` now takes the *data* of the failure as
+constructor arguments, stores it as attributes and formats the message in `__init__`.
+`MissingHash(table, missing)`, `DuplicatedIdError(kind, identifier)`,
+`MalformedLockError(path, missing)`, `IncompleteDiscoveryError(read, reported, refusing)`,
+`OrderError(repeated, missing, unknown)`, `UnrenderableProtocolError(needs, identifiers)`,
+`MailNotSentError(error, draft)`, `UnreadableProtocolError(source, protocol_id)`,
+`LockDriftError(path, drift)`, `ManifestMismatchError(path, rebuilt, recorded)`.
+`compose`'s four already worked this way; this makes the repo consistent with them rather
+than with the bare-docstring form.
+
+**Why:** the raise sites already held the structured data — `store.py` computed a sorted
+`missing` list and dropped it into a string — so the only way for a caller to learn *which*
+hash was absent was to parse the message. The planned HTTP compose port has to turn these
+into JSON responses, and prose is the wrong wire format. Formatting in `__init__` also
+gives one wording per error instead of one per raise site: `DuplicatedIdError` spelled its
+sentence out twice.
+
+**Why this is not the "no prose in a data structure" rule:** that rule bans *commentary* —
+a field explaining why the code did something, which is a comment that learned to travel.
+An error message is the failure's only output, read by a human at the worst moment, and it
+should be explicit. `AGENT.md` now says which is which, under *Indirection must earn its
+link*.
+
+**Decided — `LockDriftError` splits into two classes.** Its two raise sites are two
+failures: the file does not verify against its own bytes (`LockDriftError`, carrying
+`.drift`), versus the file verifies but the store now holds a different identity for those
+hashes (`ManifestMismatchError`, carrying `.rebuilt`/`.recorded`). Widening one signature
+to cover both would have been the config bag the capsule rule bans. Rejected — making the
+second a subclass of the first: it inherits a docstring that is not true of it, since
+nothing about that lock is corrupt, and it only existed to spare one test an import.
+
+**Rode along:** `resolve_order` reported the first fault it found and stopped. It now
+computes `repeated`, `missing` and `unknown` together and raises once with all three — the
+same reasoning as `verify_lock` returning its drift rather than raising, since a caller
+fixing an order wants the whole picture. `Counter` replaces the `set`-length comparison,
+which had no way to name the repeats it detected.
+
+**Cost:** no message loses information; one test changed — the store-disagrees case
+asserted `LockDriftError` with `match="does not match"` and now names
+`ManifestMismatchError`, which is what it was always testing for. 629 pass. Nine classes
+gained an `__init__` and one was added, net +42 lines over seven files in five modules.
+Total coverage 91.4 → 92.1, but **`chronos` slips 69.8 → 69.7**: `MailNotSentError.__init__`
+sits on the SMTP-failure path, which had no test before this change either. Any caller
+constructing one of these with a bare string now breaks loudly at the call — the intended
+failure mode, and with nothing deployed it costs nothing.
