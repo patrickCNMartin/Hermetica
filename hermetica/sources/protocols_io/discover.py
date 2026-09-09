@@ -20,6 +20,12 @@ from sources.protocols_io.config import (
 class IncompleteDiscoveryError(RuntimeError):
     """A discovery read collected fewer records than the server said it holds."""
 
+    def __init__(self, read: int, reported: int, refusing: str):
+        self.read, self.reported = read, reported
+        super().__init__(
+            f"read {read} of {reported} reported; refusing to {refusing}"
+        )
+
 
 # -----------------------------------------------------------------------------#
 # WORKSPACE ITEMS
@@ -97,8 +103,7 @@ def search_workspace_items(
 
     if total is not None and len(items) != total:
         raise IncompleteDiscoveryError(
-            f"workspace search yielded {len(items)} items but the server reports "
-            f"{total}; refusing to treat a short read as an absence"
+            len(items), total, "treat a short workspace search as an absence"
         )
     return items
 
@@ -141,8 +146,7 @@ def fetch_protocol_list(
             break
         if attempt == 2:
             raise IncompleteDiscoveryError(
-                f"pulled {len(protocols)} protocols but the server reports "
-                f"{total}; refusing to write a partial pull"
+                len(protocols), total, "write a partial pull"
             )
         print(
             f"Incomplete pull: got {len(protocols)} of {total} reported. Retrying once."

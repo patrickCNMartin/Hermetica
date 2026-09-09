@@ -12,6 +12,10 @@ from utils.hashing import hash_bytes
 class MissingHash(ValueError):
     """Hash value not found in the database."""
 
+    def __init__(self, table: str, missing: list[str]):
+        self.table, self.missing = table, missing
+        super().__init__(f"not in {table}: {', '.join(missing)}")
+
 
 # -----------------------------------------------------------------------------#
 # CONNECTION
@@ -77,7 +81,7 @@ def fetch_entries(
         }
     missing = sorted(set(wanted) - set(found))
     if missing:
-        raise MissingHash(f"not in {table}: {', '.join(missing)}")
+        raise MissingHash(table, missing)
     return [found[key] for key in wanted]
 
 

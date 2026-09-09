@@ -1,19 +1,15 @@
 # -----------------------------------------------------------------------------#
 # IMPORT LIBS
 # -----------------------------------------------------------------------------#
-import sqlite3
 from dataclasses import asdict, dataclass, replace
 from graphlib import CycleError, TopologicalSorter
 
 from utils.constants import (
-    PIPELINE_GUID,
     PIPELINE_HASH_FIELDS,
-    PIPELINE_HISTORY,
     PIPELINE_METADATA_FIELDS,
     PROTOCOL_CONTENT,
     PROTOCOL_HISTORY,
 )
-from utils.intervals import active_hashes
 from utils.store import connect
 
 
@@ -93,36 +89,6 @@ class PipelineArtefact:
     def metadata(self) -> dict:
         """Get meta data fields"""
         return {field: getattr(self, field) for field in PIPELINE_METADATA_FIELDS}
-
-
-# -----------------------------------------------------------------------------#
-# FETCH PROTOCOLS
-# -----------------------------------------------------------------------------#
-
-
-def active_protocols(
-    db_path: str,
-    pipeline_history: str = PIPELINE_HISTORY,
-    pipeline_guid: str = PIPELINE_GUID,
-) -> dict[str, str]:
-    """hash -> title for every protocol version currently active."""
-    with connect(db_path, read_only=True) as conn:
-        protocol_set = list(
-            active_hashes(conn, pipeline_history, pipeline_guid).values()
-        )
-        if not protocol_set:
-            return {}
-        hash_list = ",".join("?" * len(protocol_set))
-        cursor = conn.cursor()
-        cursor.row_factory = sqlite3.Row
-        protocols = {
-            row["hash"]: row["title"]
-            for row in cursor.execute(
-                f"SELECT hash, title FROM protocol_content WHERE hash IN ({hash_list})",
-                protocol_set,
-            )
-        }
-    return protocols
 
 
 # -----------------------------------------------------------------------------#

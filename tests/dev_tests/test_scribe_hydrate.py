@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from scribe.hydrate import LockDriftError, hydrate_pins
+from scribe.hydrate import LockDriftError, ManifestMismatchError, hydrate_pins
 from seal.seal import export_pins, generate_protocol_lock
 from seal.store import SCHEMA, format_protocol_entry, write_protocols
 from sources.protocols_io.artefact import build_protocol_artefact
@@ -123,5 +123,5 @@ class TestHydrateRefuses:
                 "UPDATE protocol_content SET protocol_guid = 'TAMPERED' "
                 "WHERE hash = (SELECT hash FROM protocol_content LIMIT 1)"
             )
-        with pytest.raises(LockDriftError, match="does not match"):
+        with pytest.raises(ManifestMismatchError):
             hydrate_pins(path, db)

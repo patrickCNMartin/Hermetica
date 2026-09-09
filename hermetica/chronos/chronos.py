@@ -83,6 +83,13 @@ PULL_STRATEGY = os.getenv("PULL_STRATEGY", "workspace")
 class UnreadableProtocolError(ValueError):
     """Cannot read the protocol from a given source"""
 
+    def __init__(self, source: str, protocol_id: str):
+        self.source, self.protocol_id = source, protocol_id
+        super().__init__(
+            f"{source} returned no artefact for {protocol_id} and did "
+            f"not declare it retired"
+        )
+
 
 # -----------------------------------------------------------------------------#
 # MULTI SOURCE CONSTRUCTOR
@@ -159,10 +166,7 @@ def pull_protocols(db_name: str, pulled_at: int, source: ProtocolSource) -> dict
         # skipped set is subtracted inside _diff, the only safe answer is to
         # stop: nothing is written, so nothing is deprecated by absence.
         if fetched.artefact is None:
-            raise UnreadableProtocolError(
-                f"{source.name} returned no artefact for {protocol_id} and did "
-                f"not declare it retired"
-            )
+            raise UnreadableProtocolError(source.name, protocol_id)
         artefacts.append(fetched.artefact)
 
     protocol_entries = format_protocol_entry(artefacts, pulled_at)

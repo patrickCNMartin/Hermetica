@@ -397,8 +397,17 @@ that justifies indirection does not apply here.
   call, inline it.
 - **Constants are exempt.** Repetition of a *decision* is a hazard; repetition of a *call*
   is typing.
-- **Never put prose in a data structure.** Signal the one bit (`"degraded": True`) and let
-  the explanation live in the docs.
+- **Never put *commentary* in a data structure.** A field holding the reason the code did
+  something is a comment that learned to travel. Signal the one bit (`"degraded": True`)
+  and let the explanation live in the docs.
+- **An error message is not commentary — it is the failure's only output**, so it is
+  spelled out in full and read by a human at the worst moment. Prose belongs there.
+
+**An exception takes data, not a sentence.** Constructor arguments in, attributes stored,
+message formatted in `__init__` — so a caller reads `error.missing` instead of parsing a
+string, one wording lives in one place, and every raise site is the fault and nothing else.
+Two raise sites that cannot share a message are two errors: give each its own class rather
+than widen one signature to cover both.
 
 **Prefer constructs that make the wrong thing impossible or loud** — an allowlist, a frozen
 dataclass, derived columns, named parameter binding, a raise on a malformed step number,

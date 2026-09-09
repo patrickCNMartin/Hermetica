@@ -5,6 +5,7 @@ import html
 import json
 import os
 import re
+from collections import Counter
 from collections.abc import Sequence
 
 from scribe.richtext import render_document
@@ -32,9 +33,23 @@ DISPLAY_FIELDS: tuple[str, ...] = (
 class OrderError(ValueError):
     """`order` is not an exact permutation of the lock's pin set."""
 
+    def __init__(self, repeated: list[str], missing: list[str], unknown: list[str]):
+        self.repeated, self.missing, self.unknown = repeated, missing, unknown
+        super().__init__(
+            "order must cover the pin set exactly; "
+            f"repeats {repeated}, missing {missing}, unknown {unknown}"
+        )
+
 
 class UnrenderableProtocolError(ValueError):
     """A protocol must be inlined but its body is in neither the lock nor the DB."""
+
+    def __init__(self, needs: str, identifiers: list[str]):
+        self.needs, self.identifiers = needs, identifiers
+        super().__init__(
+            f"{len(identifiers)} protocol(s) need {needs} from a database and "
+            f"none was given: {', '.join(identifiers)}"
+        )
 
 
 # -----------------------------------------------------------------------------#
@@ -45,17 +60,13 @@ def resolve_order(entries: dict, order: Sequence[str] | None) -> list[str]:
     if order is None:
         return sorted(entries)
     order = [str(pid) for pid in order]
-    if len(set(order)) != len(order):
-        raise OrderError("order repeats a protocol_id")
-    missing, unknown = (
+    repeated, missing, unknown = (
+        sorted(pid for pid, n in Counter(order).items() if n > 1),
         sorted(set(entries) - set(order)),
         sorted(set(order) - set(entries)),
     )
-    if missing or unknown:
-        raise OrderError(
-            "order must cover the pin set exactly; "
-            f"missing {missing}, unknown {unknown}"
-        )
+    if repeated or missing or unknown:
+        raise OrderError(repeated, missing, unknown)
     return order
 
 
@@ -83,10 +94,7 @@ def collect_bodies(
     if not missing:
         return bodies
     if not db:
-        raise UnrenderableProtocolError(
-            f"{len(missing)} protocol(s) must be inlined but the lock carries no "
-            "bodies and no database was given"
-        )
+        raise UnrenderableProtocolError("bodies", missing)
     for row in get_protocols(db, missing):
         bodies[row.hash] = json.loads(row.protocol)
     return bodies
@@ -111,9 +119,7 @@ def collect_display(
 
     if unresolved:
         if not db:
-            raise UnrenderableProtocolError(
-                "a pins-only lock carries no titles; rendering one needs a database"
-            )
+            raise UnrenderableProtocolError("titles", unresolved)
         rows = get_protocols(
             db, [entries[pid]["hash"] for pid in unresolved], with_blob=False
         )

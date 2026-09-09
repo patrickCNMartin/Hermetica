@@ -8,7 +8,28 @@ from utils.dates import to_epoch
 
 
 class LockDriftError(ValueError):
-    """The store disagrees with the pin set the lock file records."""
+    """The lock file does not verify against its own bytes."""
+
+    def __init__(self, path: str, drift: dict[str, list[str]]):
+        self.path, self.drift = path, drift
+        super().__init__(
+            f"{path} does not verify, refusing to hydrate: "
+            f"{ {key: value for key, value in drift.items() if value} }"
+        )
+
+
+class ManifestMismatchError(ValueError):
+    """The pins resolved, but the store holds a different identity for them.
+
+    Not a LockDriftError: that file verified against its own bytes. Nothing is
+    corrupt — the store moved underneath a lock that is still internally sound.
+    """
+
+    def __init__(self, path: str, rebuilt: str, recorded: str):
+        self.path, self.rebuilt, self.recorded = path, rebuilt, recorded
+        super().__init__(
+            f"rebuilt manifest {rebuilt} does not match {recorded} recorded in {path}"
+        )
 
 
 # -----------------------------------------------------------------------------#
@@ -23,10 +44,7 @@ def hydrate_pins(path: str, db: str) -> dict:
     """
     drift = verify_lock(path)
     if any(drift.values()):
-        raise LockDriftError(
-            f"{path} does not verify, refusing to hydrate: "
-            f"{ {key: value for key, value in drift.items() if value} }"
-        )
+        raise LockDriftError(path, drift)
 
     with open(path, encoding="utf-8") as handle:
         document = json.load(handle)
@@ -47,8 +65,7 @@ def hydrate_pins(path: str, db: str) -> dict:
     # The pins resolved, but the store could still hold a different protocol_id or
     # guid for one of those hashes — that document would mean something else.
     if lock["manifest_hash"] != document["manifest_hash"]:
-        raise LockDriftError(
-            f"rebuilt manifest {lock['manifest_hash']} does not match "
-            f"{document['manifest_hash']} recorded in {path}"
+        raise ManifestMismatchError(
+            path, lock["manifest_hash"], document["manifest_hash"]
         )
     return lock

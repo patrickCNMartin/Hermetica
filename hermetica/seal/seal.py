@@ -17,9 +17,20 @@ from utils.hashing import decode_entry, hash_of
 class DuplicatedIdError(ValueError):
     """Duplicated entries in the version control data base"""
 
+    def __init__(self, kind: str, identifier: str):
+        self.kind, self.identifier = kind, identifier
+        super().__init__(
+            f"two versions of {kind} {identifier} in one lock; "
+            f"at most one version of a {kind} may be active"
+        )
+
 
 class MalformedLockError(ValueError):
     """The file is not a lock document — a key the format requires is missing."""
+
+    def __init__(self, path: str, missing: list[str]):
+        self.path, self.missing = path, missing
+        super().__init__(f"not a lock document: {path} is missing {', '.join(missing)}")
 
 
 # -----------------------------------------------------------------------------#
@@ -41,10 +52,7 @@ def generate_protocol_lock(
     entries, display, bodies = {}, {}, {}
     for protocol in protocols:
         if protocol.protocol_uid in entries:
-            raise DuplicatedIdError(
-                f"two versions of protocol {protocol.protocol_uid} in one lock; "
-                "at most one version of a protocol may be active"
-            )
+            raise DuplicatedIdError("protocol", protocol.protocol_uid)
         entries[protocol.protocol_uid] = {
             "guid": protocol.protocol_guid,
             "hash": protocol.hash,
@@ -89,10 +97,7 @@ def generate_pipeline_lock(
     entries, display = {}, {}
     for pipeline in get_pipelines(db, hashes):
         if pipeline.pipeline_guid in entries:
-            raise DuplicatedIdError(
-                f"two versions of pipeline {pipeline.pipeline_guid} in one lock; "
-                "at most one version of a pipeline may be active"
-            )
+            raise DuplicatedIdError("pipeline", pipeline.pipeline_guid)
         entries[pipeline.pipeline_guid] = {
             "guid": pipeline.pipeline_guid,
             "hash": pipeline.hash,
@@ -182,7 +187,7 @@ def verify_lock(path: str) -> dict[str, list[str]]:
 
     missing = [key for key in ("manifest_hash", "entries") if key not in document]
     if missing:
-        raise MalformedLockError(f"not a lock document: missing {', '.join(missing)}")
+        raise MalformedLockError(path, missing)
 
     entries = document["entries"]
     drift: dict[str, list[str]] = {key: [] for key in DRIFT}

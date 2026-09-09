@@ -34,6 +34,10 @@ SUBJECT_FAILED = "Hermetica pull FAILED: {stamp}"
 class MailNotSentError(RuntimeError):
     """The report was built but the transport refused it."""
 
+    def __init__(self, error: Exception, draft: str):
+        self.error, self.draft = error, draft
+        super().__init__(f"{type(error).__name__}: {error} — message kept at {draft}")
+
 
 # -----------------------------------------------------------------------------#
 # FORMATTING
@@ -235,8 +239,6 @@ def send_report(
         # Keep the message: a send that failed is the case where its contents
         # matter most.
         path = write_draft(db_dir, message)
-        raise MailNotSentError(
-            f"{type(error).__name__}: {error} — message kept at {path}"
-        ) from error
+        raise MailNotSentError(error, path) from error
 
     return f"  report mailed to {', '.join(addresses)} via {host}:{port}"
