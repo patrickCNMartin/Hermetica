@@ -14,7 +14,12 @@ from utils.constants import (
 from utils.dates import get_timestamp, to_epoch
 from utils.hashing import canonical_json, encode_entry, hash_bytes
 from utils.intervals import version_control_diff, write_version_control
-from utils.store import fetch_entries, insert_statement
+from utils.store import (
+    append_only_triggers,
+    fetch_entries,
+    immutable_triggers,
+    insert_statement,
+)
 
 # -----------------------------------------------------------------------------#
 # BUILD PROTOCOL PIPELINE DB
@@ -49,6 +54,13 @@ SCHEMA: tuple[str, ...] = (
     "ON pipeline_history (pipeline_guid)",
     "CREATE INDEX IF NOT EXISTS idx_pipeline_history_validity "
     "ON pipeline_history (valid_from, deprecated_at)",
+    # One active version per pipeline, mirroring idx_history_one_active. The
+    # portal is a second writer on this file, which is what makes a Python-only
+    # invariant insufficient here.
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_pipeline_history_one_active "
+    "ON pipeline_history (pipeline_guid) WHERE deprecated_at IS NULL",
+    *immutable_triggers(PIPELINE_CONTENT),
+    *append_only_triggers(PIPELINE_HISTORY, ("pipeline_guid", "hash", "valid_from")),
 )
 
 

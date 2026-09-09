@@ -308,6 +308,75 @@ class TestConnectionLifetime:
 
 
 # -----------------------------------------------------------------------------#
+# 4b. WRITE PROTECTION — THE SCHEMA REFUSES, NOT THE PYTHON
+# -----------------------------------------------------------------------------#
+class TestHistoryIsAppendOnly:
+    """Triggers, so the rule holds for whoever opens the file. A PRAGMA is
+    per-connection; `sqlite3 chronos.db` sets none of ours."""
+
+    @pytest.fixture
+    def written(self, db_path, protocol):
+        initialize_db(db_path, SCHEMA)
+        write_protocols(db_path, rows_for([protocol(1)]))
+        return db_path
+
+    def refuses(self, db: str, sql: str) -> None:
+        with pytest.raises(sqlite3.IntegrityError):
+            with connect(db) as conn:
+                conn.execute(sql)
+
+    def test_history_is_never_deleted(self, written):
+        self.refuses(written, "DELETE FROM protocol_history")
+
+    def test_content_is_never_deleted(self, written):
+        self.refuses(written, "DELETE FROM protocol_content")
+
+    def test_content_is_never_updated(self, written):
+        """Addressed by the hash of its own bytes, so an edit is a lie."""
+        self.refuses(written, "UPDATE protocol_content SET title = 'X'")
+
+    def test_closing_an_open_interval_is_allowed(self, written):
+        """The one legal update — what close_intervals does on every pull."""
+        with connect(written) as conn:
+            conn.execute(
+                "UPDATE protocol_history SET deprecated_at = 99 "
+                "WHERE deprecated_at IS NULL"
+            )
+        assert query(written, "SELECT deprecated_at FROM protocol_history") == [(99,)]
+
+    def test_a_closed_interval_cannot_be_reopened(self, written):
+        with connect(written) as conn:
+            conn.execute("UPDATE protocol_history SET deprecated_at = 99")
+        self.refuses(written, "UPDATE protocol_history SET deprecated_at = NULL")
+
+    def test_a_closed_interval_cannot_be_restamped(self, written):
+        """Moving a deprecation date rewrites when a version stopped being true."""
+        with connect(written) as conn:
+            conn.execute("UPDATE protocol_history SET deprecated_at = 99")
+        self.refuses(written, "UPDATE protocol_history SET deprecated_at = 100")
+
+    def test_every_column_but_deprecated_at_is_frozen(self, written):
+        """Columns read from the table itself, so adding one without adding it
+        to the trigger's immutable tuple fails here rather than silently.
+
+        Each statement also closes the interval, so the only clause that can
+        fire is the frozen-column one — otherwise `NEW.deprecated_at IS NULL`
+        would abort these for the wrong reason and prove nothing.
+        """
+        columns = [
+            name
+            for _, name, *_ in query(written, "PRAGMA table_info(protocol_history)")
+            if name != "deprecated_at"
+        ]
+        assert columns, "table_info returned nothing — the query is wrong"
+        for column in columns:
+            self.refuses(
+                written,
+                f"UPDATE protocol_history SET {column} = 'X', deprecated_at = 99",
+            )
+
+
+# -----------------------------------------------------------------------------#
 # 3. DATA INSERTED CORRECTLY
 # -----------------------------------------------------------------------------#
 class TestDataInsertion:
@@ -508,18 +577,24 @@ class TestStoredHashIntegrity:
         write_protocols(db_path, rows_for([protocol(1)]))
         assert verify_blobs(db_path, "protocol_content", "hash", "protocol") == []
 
-    def test_verify_catches_tampering(self, db_path, protocol):
-        """Editing a stored blob out from under its hash must be detectable."""
-        initialize_db(db_path, SCHEMA)
-        write_protocols(db_path, rows_for([protocol(1)]))
+    def test_verify_catches_a_blob_that_does_not_match_its_key(self, db_path):
+        """A row whose blob does not hash to its own key must be named.
 
+        Built by INSERT, not by editing a good row — content is immutable in the
+        schema. The corruption this guards against never arrives through SQL
+        anyway: bit-rot, a partial write, a restore from a bad backup.
+        """
+        initialize_db(db_path, SCHEMA)
+        liar = "sha256:" + "0" * 64
         with connect(db_path) as conn:
             conn.execute(
-                "UPDATE protocol_content SET protocol = ?",
-                ('{"id":1,"title":"TAMPERED"}',),
+                "INSERT INTO protocol_content (hash, protocol_uid, source, "
+                "protocol_id, protocol_guid, title, protocol) "
+                "VALUES (?, 'protocols_io:1', 'protocols_io', '1', 'g1', 'T', ?)",
+                (liar, '{"id":1,"title":"TAMPERED"}'),
             )
 
-        assert len(verify_blobs(db_path, "protocol_content", "hash", "protocol")) == 1
+        assert verify_blobs(db_path, "protocol_content", "hash", "protocol") == [liar]
 
     def test_unicode_title_round_trips(self, db_path, protocol):
         """NFD input is normalized once, so the stored blob still verifies."""

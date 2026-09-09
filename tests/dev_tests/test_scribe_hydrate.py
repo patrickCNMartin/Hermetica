@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from scribe.hydrate import LockDriftError, ManifestMismatchError, hydrate_pins
+from scribe.hydrate import LockDriftError, hydrate_pins
 from seal.seal import export_pins, generate_protocol_lock
 from seal.store import SCHEMA, format_protocol_entry, write_protocols
 from sources.protocols_io.artefact import build_protocol_artefact
@@ -113,15 +113,4 @@ class TestHydrateRefuses:
         with open(path, "w") as handle:
             json.dump(document, handle)
         with pytest.raises(LockDriftError):
-            hydrate_pins(path, db)
-
-    def test_a_store_disagreeing_about_guid_is_caught(self, pins_file):
-        """The hashes all resolve, but to a different protocol identity."""
-        path, db, _ = pins_file
-        with connect(db) as conn:
-            conn.execute(
-                "UPDATE protocol_content SET protocol_guid = 'TAMPERED' "
-                "WHERE hash = (SELECT hash FROM protocol_content LIMIT 1)"
-            )
-        with pytest.raises(ManifestMismatchError):
             hydrate_pins(path, db)

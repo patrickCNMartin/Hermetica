@@ -147,9 +147,10 @@ underneath, append-only.
   (`active_hashes`); resolving an arbitrary date lives on `feature/versions-by-date`.
 - **`valid_from` backdates to `created_on`** — but **only for a `protocol_uid`'s
   first-ever version**, and "first-ever" means no history at all, not "no live version".
-- **Invariant: at most one active version per `protocol_uid` at any instant.** A partial
-  unique index on `deprecated_at IS NULL` enforces the live case. It cannot see overlap
-  between *closed* intervals, so the real check remains pairwise interval overlap.
+- **Invariant: at most one active version per `protocol_uid` at any instant**, and per
+  `pipeline_guid` in `compose.db`. A partial unique index on `deprecated_at IS NULL` enforces
+  the live case on both history tables. It cannot see overlap between *closed* intervals, so
+  the real check remains pairwise interval overlap.
 - **deprecate-on-change**: a new hash closes the prior interval and opens a new one.
 - **deprecate-on-absence**: a protocol missing from its own source's pull is deprecated
   by set difference within that source. Content addressing cannot see absence.
@@ -199,9 +200,11 @@ Two flavours: protocols-only, and pipeline (adds the pinned graph).
   **It reads no database.**
 - Two hashes resolving to one id raise `DuplicatedIdError` — **at lock generation only.**
   The write path does not re-check.
-- **`hydrate_pins` cross-checks the rebuilt `manifest_hash`** against the file's: hashes can
-  all resolve and still map to a different `protocol_uid`. The DB is the only possible
-  source — protocols.io serves current versions only.
+- **`hydrate_pins` does not re-check the rebuilt `manifest_hash`, deliberately.**
+  `protocol_uid` is `f"{source}:{id}"` and `source`, `id` and `guid` are all hashed, so every
+  field in `entries` is a function of the hash: an honest store cannot rebuild them
+  differently, and a dishonest one is refused by the content triggers. The DB is still the
+  only possible source — protocols.io serves current versions only.
 
 ### Rendering
 
@@ -289,8 +292,15 @@ Two flavours: protocols-only, and pipeline (adds the pinned graph).
 - **Two SQLite files, deliberately separate.** `chronos.db` is append-only with the **cron
   writer as sole writer**; `compose.db` uses the same interval machinery. `snapshots` is
   schema only.
-- **The store must refuse to overwrite or delete history** — to be enforced by sqlite
-  triggers so the rule holds whoever opens the file. **Not implemented.**
+- **The store refuses to overwrite or delete history, in the schema.** `append_only_triggers`
+  puts it on both history tables: no `DELETE` ever, and the only legal `UPDATE` is closing an
+  open interval — `deprecated_at` NULL → a timestamp, every other column frozen. Reopening,
+  re-stamping and repointing all `RAISE(ABORT)`.
+- **`immutable_triggers` makes both content tables insert-only** — no `UPDATE`, no `DELETE`.
+  A row addressed by the hash of its own bytes cannot be edited into still being itself.
+- **Why triggers and not the FK.** `connect` sets `PRAGMA foreign_keys = ON`, but a PRAGMA is
+  *per connection* and defaults to off, so `sqlite3 chronos.db` has none of our protection. A
+  trigger is in the schema and binds whoever opens the file. Verified against the bare CLI.
 - **Access model:** read-only on the VC, read-write on graphs, never raw SQL — a **query
   port** and a **compose port**. Transport swappable; the planned transport is a thin
   HTTP/JSON API (see the module table), and it is the only process that opens either

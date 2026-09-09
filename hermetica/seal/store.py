@@ -15,7 +15,12 @@ from utils.constants import (
 from utils.dates import get_timestamp, to_epoch
 from utils.hashing import canonical_json, encode_entry, hash_bytes
 from utils.intervals import version_control_diff, write_version_control
-from utils.store import fetch_entries, insert_statement
+from utils.store import (
+    append_only_triggers,
+    fetch_entries,
+    immutable_triggers,
+    insert_statement,
+)
 
 # -----------------------------------------------------------------------------#
 # SCHEMA
@@ -68,6 +73,10 @@ SCHEMA: tuple[str, ...] = (
     # hope — this is what makes the write path safe without re-checking.
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_history_one_active "
     "ON protocol_history (protocol_uid) WHERE deprecated_at IS NULL",
+    *immutable_triggers(PROTOCOL_CONTENT),
+    *append_only_triggers(
+        PROTOCOL_HISTORY, ("protocol_uid", "source", "hash", "valid_from")
+    ),
 )
 
 

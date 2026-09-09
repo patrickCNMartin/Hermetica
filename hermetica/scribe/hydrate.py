@@ -18,20 +18,6 @@ class LockDriftError(ValueError):
         )
 
 
-class ManifestMismatchError(ValueError):
-    """The pins resolved, but the store holds a different identity for them.
-
-    Not a LockDriftError: that file verified against its own bytes. Nothing is
-    corrupt — the store moved underneath a lock that is still internally sound.
-    """
-
-    def __init__(self, path: str, rebuilt: str, recorded: str):
-        self.path, self.rebuilt, self.recorded = path, rebuilt, recorded
-        super().__init__(
-            f"rebuilt manifest {rebuilt} does not match {recorded} recorded in {path}"
-        )
-
-
 # -----------------------------------------------------------------------------#
 # HYDRATE
 # -----------------------------------------------------------------------------#
@@ -61,11 +47,8 @@ def hydrate_pins(path: str, db: str) -> dict:
             "source_created_at": document.get("created_at"),
         },
     )
-
-    # The pins resolved, but the store could still hold a different protocol_id or
-    # guid for one of those hashes — that document would mean something else.
-    if lock["manifest_hash"] != document["manifest_hash"]:
-        raise ManifestMismatchError(
-            path, lock["manifest_hash"], document["manifest_hash"]
-        )
+    # No cross-check on the rebuilt manifest_hash: protocol_uid is
+    # f"{source}:{id}" and source, id and guid are all hashed, so every field in
+    # `entries` is a function of the hash. An honest store cannot rebuild them
+    # differently, and a dishonest one is refused by the content triggers.
     return lock

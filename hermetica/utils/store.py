@@ -46,6 +46,59 @@ def initialize_db(db: str, schema: Iterable[str]) -> None:
 
 
 # -----------------------------------------------------------------------------#
+# WRITE PROTECTION
+# -----------------------------------------------------------------------------#
+# In the schema rather than in Python, because a PRAGMA is per-connection and
+# `sqlite3 the.db` sets none of ours. A trigger binds whoever opens the file.
+def _abort_trigger(table: str, event: str, reason: str, when: str = "") -> str:
+    """A BEFORE trigger that refuses `event`. `when` narrows it to the illegal
+    cases; empty refuses every one. RAISE(ABORT) reaches Python as
+    sqlite3.IntegrityError carrying `reason`."""
+    guard = f"WHEN {when} " if when else ""
+    return (
+        f"CREATE TRIGGER IF NOT EXISTS {table}_no_{event.lower()} "
+        f"BEFORE {event} ON {table} {guard}"
+        f"BEGIN SELECT RAISE(ABORT, '{table}: {reason}'); END"
+    )
+
+
+def immutable_triggers(table: str) -> tuple[str, str]:
+    """Nothing in `table` is ever updated or deleted.
+
+    For a content table the row is addressed by the hash of its own bytes, so
+    an edit is a lie — the row would no longer be what its key says it is.
+    """
+    return (
+        _abort_trigger(table, "DELETE", "content is never deleted"),
+        _abort_trigger(
+            table, "UPDATE", "content is addressed by its hash, never edited"
+        ),
+    )
+
+
+def append_only_triggers(table: str, immutable: tuple[str, ...]) -> tuple[str, str]:
+    """No deletes, and the only legal UPDATE is closing an open interval:
+    `deprecated_at` NULL -> a timestamp, every `immutable` column untouched.
+
+    `IS NOT` is null-safe inequality, so a NULL column cannot slip through.
+    """
+    frozen = " OR ".join(f"NEW.{column} IS NOT OLD.{column}" for column in immutable)
+    return (
+        _abort_trigger(table, "DELETE", "history is never deleted"),
+        _abort_trigger(
+            table,
+            "UPDATE",
+            "the only legal update is closing an open interval",
+            when=(
+                "OLD.deprecated_at IS NOT NULL "  # already closed
+                "OR NEW.deprecated_at IS NULL "  # reopening
+                f"OR {frozen}"  # rewriting the row's identity
+            ),
+        ),
+    )
+
+
+# -----------------------------------------------------------------------------#
 # READ
 # -----------------------------------------------------------------------------#
 def format_entries(build: Callable, artefacts: Iterable, pulled_at: int | None) -> list:

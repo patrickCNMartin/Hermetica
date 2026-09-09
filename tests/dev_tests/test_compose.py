@@ -6,6 +6,7 @@ a new hash closes the old interval and opens a new one. The guid is minted once
 in the template and is the identity that survives every edit."""
 
 import copy
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -186,6 +187,51 @@ class TestDatabaseBuild:
 
 
 # -----------------------------------------------------------------------------#
+# 2b. WRITE PROTECTION
+# -----------------------------------------------------------------------------#
+class TestPipelineHistoryIsAppendOnly:
+    """The same triggers as protocols. compose.db is the file that gains a
+    second writer, so these are the ones that stop being optional."""
+
+    @pytest.fixture
+    def written(self, db, pipeline):
+        write_pipeline(db, format_pipeline_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
+        return db
+
+    def refuses(self, db: str, sql: str) -> None:
+        with pytest.raises(sqlite3.IntegrityError):
+            with connect(db) as conn:
+                conn.execute(sql)
+
+    def test_history_is_never_deleted(self, written):
+        self.refuses(written, "DELETE FROM pipeline_history")
+
+    def test_content_is_never_updated(self, written):
+        self.refuses(written, "UPDATE pipeline_content SET title = 'X'")
+
+    def test_a_pipeline_cannot_be_repointed(self, written):
+        """Rewriting `hash` would move a version without recording that it moved."""
+        self.refuses(
+            written,
+            "UPDATE pipeline_history SET hash = 'X', deprecated_at = 99",
+        )
+
+    def test_two_active_versions_of_one_pipeline_are_refused(self, written):
+        """idx_pipeline_history_one_active — the invariant a second writer breaks."""
+        guid, digest = query(
+            written, "SELECT pipeline_guid, hash FROM pipeline_history"
+        )[0]
+        with pytest.raises(sqlite3.IntegrityError):
+            with connect(written) as conn:
+                conn.execute(
+                    "INSERT INTO pipeline_history "
+                    "(pipeline_guid, hash, valid_from, deprecated_at) "
+                    "VALUES (?, ?, 1, NULL)",
+                    (guid, digest),
+                )
+
+
+# -----------------------------------------------------------------------------#
 # 3. BUILDING AN ENTRY
 # -----------------------------------------------------------------------------#
 class TestBuildEntry:
@@ -349,15 +395,18 @@ class TestVerifyPipelines:
         write_pipeline(db, format_pipeline_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
         assert verify_blobs(db, "pipeline_content", "hash", "pipeline") == []
 
-    def test_a_tampered_blob_is_named(self, db, pipeline):
-        write_pipeline(db, format_pipeline_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
-        known = query(db, "SELECT hash FROM pipeline_content")[0][0]
+    def test_a_blob_that_does_not_match_its_key_is_named(self, db):
+        """Built by INSERT: content is immutable in the schema, and disk
+        corruption never arrives through SQL anyway."""
+        liar = "sha256:" + "0" * 64
         with connect(db) as conn:
             conn.execute(
-                "UPDATE pipeline_content SET pipeline = ? WHERE hash = ?",
-                ('{"tampered":true}', known),
+                "INSERT INTO pipeline_content (hash, pipeline_guid, title, DAG, "
+                "nodes, node_hashes, pipeline) "
+                "VALUES (?, 'g1', 'T', '{}', '{}', '{}', ?)",
+                (liar, '{"tampered":true}'),
             )
-        assert verify_blobs(db, "pipeline_content", "hash", "pipeline") == [known]
+        assert verify_blobs(db, "pipeline_content", "hash", "pipeline") == [liar]
 
 
 # -----------------------------------------------------------------------------#

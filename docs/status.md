@@ -18,11 +18,11 @@ the `tests` column sums to more than `SUITE`, the number pytest ran.
 ```
 module	files	lines	public_fns	tests	covered	statements	cov_pct
 chronos	4	550	18	44	161	231	69.7
-compose	4	464	15	67	158	161	98.1
-scribe	4	544	22	70	242	248	97.6
-seal	4	528	18	291	179	197	90.9
-sources	8	771	26	367	255	255	100.0
-utils	6	570	26	337	163	165	98.8
-TOTAL	30	3427	125	1176	1158	1257	92.1
-SUITE	629 tests passed
+compose	4	476	15	71	158	161	98.1
+scribe	4	527	22	69	236	242	97.5
+seal	4	537	18	301	179	197	90.9
+sources	8	771	26	377	255	255	100.0
+utils	6	623	28	347	171	173	98.8
+TOTAL	30	3484	127	1209	1160	1259	92.1
+SUITE	639 tests passed
 ```
