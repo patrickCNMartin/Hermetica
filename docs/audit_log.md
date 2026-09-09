@@ -835,3 +835,62 @@ Total coverage 91.4 → 92.1, but **`chronos` slips 69.8 → 69.7**: `MailNotSen
 sits on the SMTP-failure path, which had no test before this change either. Any caller
 constructing one of these with a bare string now breaks loudly at the call — the intended
 failure mode, and with nothing deployed it costs nothing.
+
+---
+
+## 2026-09-09 — 658c4f8 — history protection moves from Python into the schema
+
+**Decided:** both history tables refuse `DELETE` outright and accept exactly one `UPDATE` —
+closing an open interval, `deprecated_at` NULL → a timestamp with every other column frozen.
+Both content tables refuse `UPDATE` and `DELETE` outright. Enforced by sqlite triggers built
+in `utils.store` (`append_only_triggers`, `immutable_triggers`) and carried in each store's
+`SCHEMA`, so `initialize_db` installs them on every run with no migration step.
+
+**Why a trigger and not the FK.** `connect` sets `PRAGMA foreign_keys = ON`, which is what
+had been stopping a referenced `protocol_content` row being deleted. A PRAGMA is *per
+connection* and defaults to off, so that protection was never there for anyone opening the
+file any other way. Verified rather than assumed: against a database opened with the bare
+`sqlite3` CLI, `PRAGMA foreign_keys` reads `0` and all four illegal statements are still
+refused, while `UPDATE protocol_history SET deprecated_at = 99` succeeds and leaves the hash
+untouched. That is the whole point — the rule now holds for whoever opens the file, which is
+what `compose.db` needs before the portal becomes its second writer.
+
+**Why the update rule is a `WHEN` clause and not a ban:** `close_intervals`
+(`utils/intervals.py:99`) is a legitimate `UPDATE`, and deprecate-on-change and
+deprecate-on-absence both route through it. The guard names the three illegal shapes —
+`OLD.deprecated_at IS NOT NULL` (re-stamping a closed interval), `NEW.deprecated_at IS NULL`
+(reopening one), and `NEW.<col> IS NOT OLD.<col>` over the immutable columns (repointing a
+row at another hash). `IS NOT` is null-safe, so a NULL column cannot slip through.
+
+**Decided — `pipeline_history` gains the partial unique index it was missing.**
+`protocol_history` has enforced one active version per protocol in the database since
+`984a02b`; the pipeline side had the same invariant in Python only. A second writer is
+precisely the thing Python-only invariants do not survive.
+
+**Decided — the `hydrate_pins` manifest cross-check is deleted**, with
+`ManifestMismatchError` and its test. `protocol_uid` is `f"{source}:{id}"` (`seal/store.py`)
+and `source`, `id` and `guid` are all in `PROTOCOL_HASH_FIELDS`, so every field in `entries`
+is a pure function of the hash: an honest store cannot rebuild a different `manifest_hash`.
+Its only reachable failure mode was hand-edited content, which is exactly what its test did
+to reach it — and what the content triggers now refuse. The check was structurally
+unreachable, not merely redundant. `verify_lock` and `LockDriftError` stay; those check the
+*file*, which nothing in the database can vouch for.
+
+**Rode along — the two `verify_blobs` tamper tests are rewritten to build the bad row by
+`INSERT`** rather than by editing a good one. `verify_blobs` is still worth having: it
+catches corruption that never came through SQL at all — bit-rot, a partial write, a restore
+from a bad backup — and the rewritten tests no longer depend on rows being updatable, which
+makes them better tests than the ones they replace.
+
+**Cost:** 639 tests pass (629 + 11 new − 1 deleted). One assumption was checked before
+anything was written: `conn.execute` does accept a `CREATE TRIGGER` despite the semicolons
+inside `BEGIN … END`, so `initialize_db` needed no change. The frozen-column test reads
+`PRAGMA table_info` and closes the interval in the same statement, so it fails if a column is
+added to a history table without being added to the trigger's immutable tuple — the one real
+weakness of naming those columns twice. Coverage unchanged at 92.1 total.
+
+**Open:** the committed `db/chronos.db` still predates the `protocol_uid` rename and cannot
+take this schema — it could not take the current one either, since
+`CREATE UNIQUE INDEX … (protocol_uid)` already fails against it. Delete-and-rebuild, per
+`984a02b`; not done here. WAL and `busy_timeout` remain deploy-time configuration for the API
+layer, not schema.
