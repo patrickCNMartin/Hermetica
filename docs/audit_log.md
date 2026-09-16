@@ -894,3 +894,151 @@ take this schema — it could not take the current one either, since
 `CREATE UNIQUE INDEX … (protocol_uid)` already fails against it. Delete-and-rebuild, per
 `984a02b`; not done here. WAL and `busy_timeout` remain deploy-time configuration for the API
 layer, not schema.
+
+---
+
+## 2026-09-16 — a341fbe — the v3 folder walk is gone, and the open item it left behind closes
+
+**Discovered:** three rules in `AGENT.md`'s Acquisition section were not stale but *false*.
+It described the default pull as a walk over `/v3/folders/<guid>/ids`, claimed "the walk
+publishes no global total — the only completeness check is per folder", and named
+`IncompleteWalkError`. The code has used the v4 workspace search for some time:
+`search_workspace_items` sweeps the workspace flat, opens no folder, reads a global
+`pagination.total_results`, and raises `IncompleteDiscoveryError` on a short read.
+`IncompleteWalkError` does not exist. Discovery and fetch are both v4; the only `[Archived]`
+endpoint still called is `/v3/protocols`, and only by the degraded `filter` fallback.
+
+The supersession itself was never given an entry — the walk was replaced and the file was
+not brought with it. That is the failure mode the "every line must be true today" rule
+exists to prevent, and it cost a session: the open item below was re-derived from a file
+that no longer described the code.
+
+**Closed — `d4f4ff1`'s "a protocol filed in no folder is invisible to the walk".** It was
+true of the folder walk and is unreachable now: there is no traversal, so folder membership
+cannot hide anything, and the global `total_results` check is strictly stronger than the
+per-folder count it replaced. `AGENT.md` gains an explicit bullet saying a protocol filed
+nowhere is still found, so the item cannot be re-derived a third time.
+
+**Decided — six constants deleted** from `sources/protocols_io/config.py`:
+`FOLDER_CONTENT_TYPE`, `FIRST_FOLDER_PAGE`, `FOLDER_PAGE_SIZE`, `ITEM_BATCH`,
+`TRASH_DEFAULT_ID`, `TRASH_FOLDER_TITLE`. Nothing in `hermetica/` or `tests/` referenced any
+of them. Their comment blocks went with them — including the note on how the Trash folder
+identifies itself by `default_id`, which only mattered to code that opened folders. One
+comment was kept in edited form: the `/v3/protocols` 0-indexing note lived inside the
+deleted folder-pager block but still applies to `FIRST_PAGE`, so it now sits on `FIRST_PAGE`
+and names both conventions, the v4 search being 1-indexed.
+
+**Also corrected — `PULL_STRATEGY=walk|filter` never existed.** `discover` raises on
+anything but `workspace` or `filter`. A documented value the code rejects is worse than an
+undocumented one.
+
+**Cost:** 639 tests pass unchanged, ruff clean, `sources` drops 17 lines and stays at 100%.
+No behaviour changed; every line removed was already unreachable.
+
+**Open — the fixture keeps the walk's shape.** `tests/fixtures/workspace_search.json` still
+carries `folder_pages` and `items` from the v3 walk, and four tests in `test_fixture.py`
+assert their structure. Nothing in `hermetica/` reads either key, so those tests guard a
+fixture nothing consumes. Recorded in `AGENT.md` rather than deleted, because the fixture
+guards are allowlist-based and thinning one deserves its own pass.
+
+---
+
+## 2026-09-16 — a341fbe (no tracked file changed) — the rebuild recipe, and what a nix GC does to a git hook
+
+**Decided — rebuilding a database is delete-and-run, and it is run as a module.**
+
+```sh
+rm db/chronos.db db/compose.db
+nix develop --command uv run python -m chronos.chronos
+```
+
+`initialize_db` runs every schema statement as `IF NOT EXISTS`, so it can only build a fresh
+file — it cannot upgrade a stale one. Deleting first is what makes a new schema apply, which
+is how `658c4f8`'s triggers and unique index reach an existing checkout.
+
+**`python -m`, never by file path.** `python hermetica/chronos/chronos.py` puts
+`hermetica/chronos/` on `sys.path`, so `chronos` resolves to the *script* and the first
+import fails with "'chronos' is not a package". `pyproject.toml` sets
+`package-dir = {"" = "hermetica"}`, so the modules install as top-level packages and `-m`
+finds them through the install. The rule was already in `AGENT.md` under Conventions; it was
+still got wrong in practice, which is an argument for the Makefile target and not for more
+prose.
+
+**Run from the repo root.** `chronos.py` reads `Path.cwd() / "env" / ".env"` and `DB_OUT`
+defaults to `db`, both relative to cwd. From anywhere else the pull silently gets no API key
+and writes the database somewhere new.
+
+**Corrected — `db/chronos.db` is not committed**, contrary to `658c4f8`'s closing note.
+`db/` is in `.gitignore` and `git ls-files db/` is empty. It is a local file, so the rebuild
+destroys nothing shared and needs no migration story.
+
+**Discovered — a garbage-collected nix store path can break a git hook, and it does not look
+like a nix problem.** `.git/hooks/pre-commit` failed with
+`/nix/store/…-pre-commit-4.5.1/bin/pre-commit: No such file or directory`. The hook was a
+generated script with that absolute store path baked in and `exec`'d unconditionally, having
+been installed by a `pre-commit` that was itself running from the store. **Cause confirmed by
+the coder:** a `nix-collect-garbage` run against a checkout whose `flake.lock` had not been
+updated in a long time. The lock has since moved nixpkgs forward and the shell's
+`pre-commit` is 4.6.2, a different hash; the hook kept pointing at the collected 4.5.1.
+
+`.git/hooks/pre-push`, generated through the venv, resolves its interpreter at *run* time and
+falls back to `command -v pre-commit`, so it survived the same collection. **Install hooks
+through `uv run`, never from a bare `nix develop` shell** — `nix develop --command uv run
+pre-commit install -t pre-push` produces the fallback form.
+
+**Deleted rather than repaired:** `.pre-commit-config.yaml` has `default_stages: [pre-push]`,
+so no hook wanted the commit stage at all. The file was a leftover from before that switch.
+`.git/hooks/` now holds `pre-push` only.
+
+---
+
+## 2026-09-16 — a341fbe (no tracked file changed) — the project's record lives in the repo, nowhere else
+
+**Decided:** nothing about Hermetica is written outside this repo. `AGENT.md` and this file
+are the record; scratch goes to a temp directory. No agent transcripts, memory or state in
+`~/.claude/projects/`.
+
+**Why:** that directory had accumulated 21M of session transcripts, cached tool output,
+subagent state and a memory store, none of it visible from inside the repo and none of it
+reviewable the way a tracked file is. Hidden state that shapes an agent's behaviour is
+indistinguishable from an undocumented rule: it cannot be read in a diff, cannot be
+corrected, and outlives the reasoning that produced it. The rules that matter belong in
+`AGENT.md`, where every line is checkable.
+
+**Purged:** `memory/` (two behaviour rules), every `subagents/` and `workflows/` directory,
+and the persisted `tool-results/` caches. The 22 `.jsonl` transcripts could not be deleted
+from inside a session — the harness refuses it as transcript tampering, a guard against an
+agent erasing its own record — so they were removed by the coder directly.
+
+**Of the two purged memory rules, one was already covered** by the Nix line under
+Conventions. The other was not, and is recorded here rather than lost: *Hermetica is
+pre-stable, so decide the behaviour first and rewrite or delete tests that encode superseded
+behaviour, instead of picking a weaker design to keep a test green. Report plainly which
+tests were removed and why. Test preservation becomes meaningful once the package ships, not
+now.*
+
+**The rule is standing and applies to every project, not only Hermetica**, so enforcement
+is in `~/.claude/settings.json` rather than here: **`autoMemoryEnabled: false`**, which stops
+memory being read or written at all, and `cleanupPeriodDays: 1`, which expires transcripts
+daily. Both apply to IDE-extension sessions, which is how this project is actually worked on.
+Backup at `~/.claude/settings.json.bak`.
+
+**A first attempt got the mechanism wrong** and is recorded because the reasoning recurs:
+`--no-session-persistence` was put in a `claude` alias in `~/.zshrc`. A shell alias reaches
+interactive terminal launches only, so it does nothing for a session started from the IDE —
+the common case. It also addressed transcripts while leaving the memory store, which was the
+actual complaint, untouched. The alias is kept (harmless, and it does close the terminal
+path); `~/.zshrc.bak-before-claude-alias` is the backup. The lesson is the one this file
+keeps relearning: check where a mechanism actually applies before claiming it enforces
+anything.
+
+**Purged elsewhere, same rule:** three empty `memory/` directories under other projects.
+One project (`SciLifeLab-Vaults`) holds four real memories — three feedback rules and an
+agreed spec for folder summaries — left in place rather than deleted, because they have no
+other home yet. By this rule they belong in that project's own tracked files; until moved,
+`autoMemoryEnabled: false` means nothing reads them.
+
+**Cost:** `--resume` and `--continue` no longer carry this project's history; continuity
+between sessions is whatever `AGENT.md` and this file say. That is the intended trade — it
+is also why a stale line in either file is expensive here, and why the Acquisition section
+being false for weeks cost a session earlier today.

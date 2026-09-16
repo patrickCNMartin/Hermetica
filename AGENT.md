@@ -478,6 +478,13 @@ the problem wins. Say so and why.
 
 - **Entry point:** `python -m chronos.chronos`, never by file path — by path Python puts
   the file's directory on `sys.path` and `chronos` resolves to the module, not the package.
+- **Nothing about this project is written outside this repo.** The record is `AGENT.md` and
+  `docs/audit_log.md`; scratch goes to a temp directory. No agent memory, history or state in
+  `~/.claude/projects/`. `.claude/` here is gitignored and is the only local exception. This
+  is a standing rule across every project, not a Hermetica one, so it is enforced in
+  `~/.claude/settings.json`: **`autoMemoryEnabled: false`** (no memory is read or written,
+  ever) and `cleanupPeriodDays: 1` (transcripts expire daily). Neither is visible from inside
+  a session, so **check rather than assume** — see `docs/audit_log.md`.
 - **`SOURCES`** picks adapters in order; one clock read is shared by all, each gets its own
   log entry, reports concatenate into one `pull_report.txt`. **`PULL_STRATEGY=workspace|filter`.**
 - **The `try/except` is inside the source loop, not around it.** One platform being down
