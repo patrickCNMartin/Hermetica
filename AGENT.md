@@ -321,21 +321,24 @@ Measurements: `docs/protocols_io_findings.md`. All of it lives in
 `hermetica/sources/protocols_io/` and nowhere else.
 
 ### Acquisition
-- **The workspace walk is the default.** It uses endpoints upstream marks `[Archived]`
-  because they are the only ones that enumerate a private workspace — the v4 replacements
-  return 400 — and unlike `/v3/protocols` they **do not collapse a version family**.
-- **`[Archived]` does not mean going away** — the dev team confirmed support continues,
-  with advance notice and a replacement promised.
-- **`/v3/folders/<guid>/ids` is 1-indexed; `/v3/protocols` is 0-indexed.** Page 0 on the
-  folder pager returns an empty array *with* a populated `next_page`, so a pager written
-  against the other endpoint finds nothing and exits cleanly.
-- **The walk publishes no global total** — the only completeness check is per folder,
-  raising `IncompleteWalkError`.
+- **The v4 workspace search is the default.** One flat paginated sweep returns folders,
+  protocols, records and files together, each protocol already carrying the `id`, `type_id`
+  and `in_trash` a gate needs, so **no folder is ever opened**. Unlike `/v3/protocols` it
+  does not collapse a version family.
+- **Folder membership decides nothing, and a protocol filed nowhere is still found** —
+  the sweep is over the workspace, not over a tree. Nothing traverses folders.
+- **It takes the workspace *uri*** — the slug in the browser address bar — not a numeric id
+  or a guid. **1-indexed, and its `next_page` is a URL, not a page number.**
+- **It publishes a global `total_results`.** A short sweep raises
+  `IncompleteDiscoveryError` rather than passing a partial read off as an absence.
 - **Selection is `discovered − trash − not-a-protocol`.** **How a protocol was discovered
   qualifies nothing** — a gate reading provenance can only shrink a pull for a reason we
   invented.
 - **`filter=shared_with_user` returns 0 and cannot be trusted** — every protocol it omits
   still fetches by id on the same token.
+- **`/v3/protocols` is the only `[Archived]` endpoint still called**, and only by that
+  fallback. `[Archived]` does not mean going away — the dev team confirmed support
+  continues, with advance notice and a replacement promised.
 - **The `filter` fallback is degraded four ways:** stores trashed protocols, misses other
   members' published ones, misses older family members, and retires a versioned protocol's
   predecessor by absence. Kept, not maintained.
@@ -476,7 +479,7 @@ the problem wins. Say so and why.
 - **Entry point:** `python -m chronos.chronos`, never by file path — by path Python puts
   the file's directory on `sys.path` and `chronos` resolves to the module, not the package.
 - **`SOURCES`** picks adapters in order; one clock read is shared by all, each gets its own
-  log entry, reports concatenate into one `pull_report.txt`. **`PULL_STRATEGY=walk|filter`.**
+  log entry, reports concatenate into one `pull_report.txt`. **`PULL_STRATEGY=workspace|filter`.**
 - **The `try/except` is inside the source loop, not around it.** One platform being down
   must not stop the others, and a source that raises writes nothing — so none of its
   protocols are deprecated by absence. Any failed source exits non-zero.
@@ -518,9 +521,11 @@ that must find zero matches).
 - **Records are named for their structure**, never by protocol id — `dotted_steps` reaches
   step `"10"`, without which the chain-ordering bug cannot be caught.
 - **Signing values are adversarial to the scrub, not credential-like.**
-- **The walk fixture carries the shapes that bite:** 1-indexed pagination across two pages,
-  a nested folder, an empty folder, a trashed folder holding an *unflagged* protocol, a
-  protocol in two folders, a version family, and a Collection that must not be sealed.
+- **`workspace_search.json` carries the shapes that bite:** 1-indexed pagination across two
+  pages, a `total_results` the pages must add up to, a trashed protocol, a trashed folder,
+  a version family, non-protocol content types, and a Collection (`type_id` 3) that must
+  not be sealed. Its `folder_pages`/`items` keys are left over from the retired v3 folder
+  walk — only `test_fixture.py` still reads them.
 
 ### `.gitignore` — a denylist
 
