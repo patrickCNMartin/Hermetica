@@ -1042,3 +1042,50 @@ other home yet. By this rule they belong in that project's own tracked files; un
 between sessions is whatever `AGENT.md` and this file say. That is the intended trade — it
 is also why a stale line in either file is expensive here, and why the Acquisition section
 being false for weeks cost a session earlier today.
+
+---
+
+## 2026-09-17 — d03dea7 (uncommitted work) — the v3 walk's fixture keys are gone; the Vaults memories are closed
+
+**Closed — `a341fbe`'s "the fixture keeps the walk's shape".** `folder_pages` and `items` are
+deleted from `tests/fixtures/workspace_search.json`. Nothing in `hermetica/` read them. The
+file stays sorted and newline-terminated, and all its words still pass the lexicon check.
+
+**Three shape tests moved onto the sweep instead of being deleted.** A trashed protocol, a
+shared version family, and a Collection (`type_id` 3) are what the selection gate has to
+survive, and `search_pages` already carries all three. The Trash-folder test only moved,
+because it already read the sweep.
+
+**Six tests deleted, because only folder membership gave them a meaning:** a folder spanning
+two pages, per-folder counts matching `total_results`, an empty folder, a trashed folder
+holding an unflagged protocol, one protocol filed in two folders, and the check that both
+halves described the same folders. The sweep's own pagination and `total_results` tests
+already cover the pager. The trashed-folder case can't be expressed any more: a protocol in
+the sweep has no parent, and the gate reads only the protocol's own `in_trash`.
+
+**Closed — `SciLifeLab-Vaults` memories**, from the 2026-09-16 entry. The coder marked it done.
+
+**Cost:** 633 tests pass (639 − 6), ruff clean. No production code changed.
+
+---
+
+## 2026-09-17 — d03dea7 (uncommitted work) — `protocol_pins` dropped from the plan
+
+**Decided:** the planned `protocol_pins` table won't be built. It was a policy list of
+protocols to keep active when a pull couldn't see them, subtracted from `absent`
+alongside `skipped`.
+
+**Why:** the case it was designed for, protocols inserted by hand, stopped needing it when
+`984a02b` made identity source-aware. Absence is computed inside the pulled source's
+partition, so a protocol under its own source is never marked absent. The other use,
+keeping a protocol active after upstream dropped it, is the store deciding rather than
+tracking. Reproduction doesn't need it either: locks and pipelines pin hashes, and blobs are
+never deleted. The one visible effect is that `hydrate_pipeline` raises for a template naming
+a protocol that has gone. That failure is loud, which is the outcome we want.
+
+**Kept — `skipped`.** It is still planned: unreadable ids subtracted from `absent`, replacing
+the `UnreadableProtocolError` stop in `chronos.py`, which currently blocks a whole source
+over one protocol.
+
+**Cost:** docs only. `AGENT.md` records that there is no keep-list and keeps `skipped` as
+the open item.

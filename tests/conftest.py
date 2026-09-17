@@ -80,7 +80,7 @@ def record(by_id_records):
 
 @pytest.fixture(scope="session")
 def workspace_records() -> dict:
-    """The synthetic workspace: the v4 search sweep, folder pages, items."""
+    """The synthetic workspace: the v4 search sweep."""
     return json.loads(SEARCH_FIXTURE.read_text(encoding="utf-8"))
 
 

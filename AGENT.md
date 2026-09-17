@@ -176,10 +176,12 @@ Neither is stored as a reason.
 - **Removing a flag opens a NEW interval, never reopens the closed one.**
 - **A folder named `Old` is not a signal.** Folder position is diagnostic only, except
   Trash itself. **We track and make visible; we do not decide.**
-- **Planned — `protocol_pins`,** a *policy* list (so it must be editable, so it cannot be a
-  column on append-only history), subtracted in `diff_entries`:
-  `absent = active − incoming − skipped − pinned`. `skipped` = we failed to read it.
-  `pinned` = policy says keep. Trash/deprecated = retire.
+- **There is no keep-list.** A hand-added protocol lives under its own source, which no pull
+  scopes, so absence cannot reach it. Keeping a protocol active against upstream would be
+  deciding, not tracking.
+- **Planned — subtract `skipped` in `diff_entries`:** `absent = active − incoming − skipped`,
+  where `skipped` = we failed to read it. Until then one unreadable protocol raises
+  `UnreadableProtocolError` and the whole source writes nothing.
 
 ### Lock files
 
@@ -531,8 +533,7 @@ that must find zero matches).
 - **`workspace_search.json` carries the shapes that bite:** 1-indexed pagination across two
   pages, a `total_results` the pages must add up to, a trashed protocol, a trashed folder,
   a version family, non-protocol content types, and a Collection (`type_id` 3) that must
-  not be sealed. Its `folder_pages`/`items` keys are left over from the retired v3 folder
-  walk — only `test_fixture.py` still reads them.
+  not be sealed. It holds the sweep and nothing else.
 
 ### `.gitignore` — a denylist
 
