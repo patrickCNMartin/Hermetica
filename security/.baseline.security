@@ -137,6 +137,22 @@
     }
   ],
   "results": {
+    "tests/dev_tests/test_api.py": [
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/dev_tests/test_api.py",
+        "hashed_secret": "9d09a437ac0f6754b6602239fa7b79cc30fa7437",
+        "is_verified": false,
+        "line_number": 49
+      },
+      {
+        "type": "Hex High Entropy String",
+        "filename": "tests/dev_tests/test_api.py",
+        "hashed_secret": "654467bd9ec97ec66a4beb3709549cf2086cc1e4",
+        "is_verified": false,
+        "line_number": 50
+      }
+    ],
     "tests/fixtures/protocols_by_id.json": [
       {
         "type": "Hex High Entropy String",
@@ -630,5 +646,5 @@
       }
     ]
   },
-  "generated_at": "2026-08-05T08:36:50Z"
+  "generated_at": "2026-09-17T14:09:34Z"
 }

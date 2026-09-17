@@ -1722,3 +1722,18 @@ The code was restored, and 688 pass.
 
 **Next:** Phase 2, the transport. Reading a lock the user brings stays a separate planned
 concern.
+
+**Secrets baseline updated, same session.** `detect-secrets-hook` flagged
+`tests/dev_tests/test_api.py:49-50`, the `LYSE` and `ELUTE` constants. They are
+`protocol_guid`s copied from `protocols_by_id.json`, whose own guids were already
+baselined, so they are fixture values and not credentials.
+- **Method:** `detect-secrets scan --baseline` over the tracked files plus untracked,
+  non-ignored ones, first run on a copy.
+  - `test_api.py` is not tracked yet, so a plain `scan` would have missed it.
+  - The copy kept all 70 existing `protocols_by_id.json` entries and added exactly 2.
+- **Caught before applying:** scanning a copy made detect-secrets record the copy's
+  scratchpad path in the baseline's own `should_exclude_file` filter, which would have
+  stopped the baseline excluding itself. It was restored to `security/.baseline.security`.
+- **Final diff:** the 2 new entries and `generated_at`.
+- **Result:** the hook reports no secrets. It still exits 123 until the baseline is
+  staged, which is expected, and staging is left to the coder.
