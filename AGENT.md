@@ -52,7 +52,7 @@ names it in a warning, then is discarded.
 | `scribe` | a lock back into something a human reads | works, fidelity partial |
 | `utils` | mechanics — canonical form, hashing, dates, sqlite, intervals | works |
 | *(planned)* | prose generation from a lock | **a sixth module, not part of `scribe`** |
-| *(planned)* | HTTP/JSON API over the query and compose ports — the transport for outside tools | **thin; no raw SQL, stable ids only, sole opener of both `.db` files** |
+| *(planned)* | HTTP/JSON API over the query and compose ports — the transport for outside tools | **thin; no raw SQL, stable ids only, the only way outside tools reach either `.db` file** |
 
 **`chronos` decides *when* to look; an adapter knows *what a platform's bytes are*; `seal`
 decides *what they mean*.** A rule about identity is seal's even if cron calls it. A rule
@@ -154,7 +154,8 @@ underneath, append-only.
   the real check remains pairwise interval overlap.
 - **deprecate-on-change**: a new hash closes the prior interval and opens a new one.
 - **deprecate-on-absence**: a protocol missing from its own source's pull is deprecated
-  by set difference within that source. Content addressing cannot see absence.
+  by set difference within that source. Content addressing cannot see absence. **Protocols
+  only** — a pull is a snapshot, a pipeline save is an edit (`absence=False`).
 - **A blob is never deleted.** Old content stays resolvable by hash forever.
 
 ### Lifecycle — declared, never inferred
@@ -265,6 +266,11 @@ Two flavours: protocols-only, and pipeline (adds the pinned graph).
   the same thing; a real pipeline hands off between a human and two robots. The executor
   is the protocol's, and hashed there.
 - **No graph database** — violates the local/sovereign/no-heavy-dep principles.
+- **Pipelines are never deprecated by absence.** They are saved one at a time, so a
+  pipeline left out of a write is not gone — `write_pipeline` passes `absence=False`, or
+  every save would retire every other pipeline. **Retiring is explicit:**
+  `retire_pipeline` closes one interval and raises `InactivePipelineError` if there is
+  nothing open. Saving it again opens a new interval.
 - **Not built:** validation against the read-only VC, fork-on-edit, parent links.
 
 ### Storage
@@ -306,12 +312,19 @@ Two flavours: protocols-only, and pipeline (adds the pinned graph).
   trigger is in the schema and binds whoever opens the file. Verified against the bare CLI.
 - **Access model:** read-only on the VC, read-write on graphs, never raw SQL — a **query
   port** and a **compose port**. Transport swappable; the planned transport is a thin
-  HTTP/JSON API (see the module table), and it is the only process that opens either
-  `.db` file. Outside tools talk to it, never to a shared mount.
+  HTTP/JSON API (see the module table). **`chronos` stays the one writer of `chronos.db`
+  and opens it directly; the API opens `chronos.db` read-only and `compose.db` read-write.**
+  Outside tools talk to the API, never to either file or a shared mount.
 - **`compose.db` gains a second writer** — the pipeline portal writes user-composed
-  pipelines back through the compose port. One API instance, WAL, serialised writes,
-  never on a network filesystem. This is why the history-protection triggers stop being
-  optional before deploy.
+  pipelines back through the compose port. One API instance, serialised writes. This is
+  why the history-protection triggers stop being optional before deploy.
+- **Both files are WAL, set by `initialize_db`** — it is stored in the file, so a commit
+  never waits on a reader mid-query. **Every process must be on one host:** a shared
+  Docker volume works, NFS/SMB does not. Lock waits use sqlite3's default 5 s timeout.
+- **⚠ Before any deploy — the API has no auth.** The network is the only guard. In Docker
+  Compose it listens on `0.0.0.0` (so the portal container can reach it) and **its port
+  is never published** — no `ports:` on the Hermetica service; the portal reaches it by
+  service name. Check this every deploy until auth exists.
 - **A lock file is an export, not the integration bus.** Outside systems work live
   through the ports; a lock is the reproducible receipt they archive or hand on.
 

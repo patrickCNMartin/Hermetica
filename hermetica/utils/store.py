@@ -39,8 +39,14 @@ def connect(db: str, read_only: bool = False) -> Iterator[sqlite3.Connection]:
 # SCHEMA
 # -----------------------------------------------------------------------------#
 def initialize_db(db: str, schema: Iterable[str]) -> None:
-    """Run a schema's statements against `db`. Each must be IF NOT EXISTS."""
+    """Run a schema's statements against `db`. Each must be IF NOT EXISTS.
+
+    WAL is set here because it is stored in the file, not the connection: the
+    nightly writer and the API's readers then stop blocking each other. It needs
+    every process on one host — a shared volume, never a network filesystem.
+    """
     with connect(db) as conn:
+        conn.execute("PRAGMA journal_mode = WAL")
         for statement in schema:
             conn.execute(statement)
 

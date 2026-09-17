@@ -163,6 +163,30 @@ class TestInitializeDb:
         with connect(db_path, read_only=True) as conn:
             assert conn.execute("SELECT COUNT(*) FROM thing").fetchone() == (0,)
 
+    def test_the_file_is_left_in_wal_mode(self, db_path):
+        """Stored in the file, so every later connection — the nightly writer and
+        the API's readers alike — gets it without asking."""
+        initialize_db(db_path, SCHEMA)
+        with connect(db_path, read_only=True) as conn:
+            assert conn.execute("PRAGMA journal_mode").fetchone() == ("wal",)
+
+    def test_a_write_commits_while_a_reader_is_mid_read(self, db_path):
+        """The point of WAL. Without it the commit waits on the reader's lock and
+        fails with "database is locked" — the pull would die whenever the API
+        happened to be answering a query."""
+        initialize_db(db_path, SCHEMA)
+        statement = insert_statement("thing", ("hash", "name", "blob"))
+        with connect(db_path, read_only=True) as reader:
+            reader.execute("BEGIN")
+            reader.execute("SELECT COUNT(*) FROM thing").fetchone()
+            with connect(db_path) as writer:
+                writer.execute(
+                    statement, {"hash": "sha256:a", "name": "a", "blob": "{}"}
+                )
+            assert reader.execute("SELECT COUNT(*) FROM thing").fetchone() == (0,)
+        with connect(db_path, read_only=True) as fresh:
+            assert fresh.execute("SELECT COUNT(*) FROM thing").fetchone() == (1,)
+
 
 class TestFetchRows:
     @pytest.fixture

@@ -24,11 +24,13 @@ from compose.compose import (
 )
 from compose.store import (
     SCHEMA,
+    InactivePipelineError,
     PipelineEntry,
     build_pipeline_entry,
     diff_pipelines,
     format_pipeline_entry,
     get_pipelines,
+    retire_pipeline,
     write_pipeline,
 )
 from compose.templates import (
@@ -311,18 +313,31 @@ class TestWritePipeline:
             == []
         )
 
-    def test_a_pipeline_missing_from_the_write_is_deprecated_by_absence(
-        self, db, pipeline
-    ):
+    def test_a_pipeline_missing_from_the_write_stays_active(self, db, pipeline):
+        """Pipelines are saved one at a time. Absence from a write means nothing,
+        or every save would retire every other pipeline."""
         write_pipeline(
             db,
             format_pipeline_entry([pipeline("a"), pipeline("b")], WRITTEN_AT),
             WRITTEN_AT,
         )
-        diff = write_pipeline(db, format_pipeline_entry([pipeline("a")], LATER), LATER)
+        edited = pipeline("a", DAG={"A": ["B"], "B": "D"})
+        diff = write_pipeline(db, format_pipeline_entry([edited], LATER), LATER)
 
-        assert diff["absent"] == ["b"]
-        assert set(live(db)) == {"a"}
+        assert diff["absent"] == []
+        assert set(live(db)) == {"a", "b"}
+
+    def test_diff_pipelines_never_reports_absence(self, db, pipeline):
+        write_pipeline(
+            db,
+            format_pipeline_entry([pipeline("a"), pipeline("b")], WRITTEN_AT),
+            WRITTEN_AT,
+        )
+
+        diff = diff_pipelines(db, format_pipeline_entry([pipeline("a")], LATER))
+
+        assert diff["absent"] == []
+        assert diff["unchanged"] == ["a"]
 
     def test_the_old_blob_survives_deprecation(self, db, pipeline):
         """A pinned pipeline must still resolve after it is superseded."""
@@ -351,6 +366,62 @@ class TestWritePipeline:
         entries = format_pipeline_entry([pipeline()], WRITTEN_AT)
         assert diff_pipelines(db, entries)["new"] == ["abc123"]
         assert query(db, "SELECT COUNT(*) FROM pipeline_history") == [(0,)]
+
+
+class TestRetirePipeline:
+    def write(self, db, pipeline, *guids):
+        entries = format_pipeline_entry([pipeline(g) for g in guids], WRITTEN_AT)
+        write_pipeline(db, entries, WRITTEN_AT)
+
+    def test_it_closes_only_that_pipeline(self, db, pipeline):
+        self.write(db, pipeline, "a", "b")
+
+        retire_pipeline(db, "a", LATER)
+
+        assert set(live(db)) == {"b"}
+        assert query(
+            db, "SELECT deprecated_at FROM pipeline_history WHERE pipeline_guid = 'a'"
+        ) == [(LATER,)]
+
+    def test_it_returns_the_hash_it_retired(self, db, pipeline):
+        self.write(db, pipeline, "a")
+        active = live(db)["a"]
+
+        assert retire_pipeline(db, "a", LATER) == active
+
+    def test_the_content_survives_retirement(self, db, pipeline):
+        """A lock pinned to it must still resolve."""
+        self.write(db, pipeline, "a")
+        digest = retire_pipeline(db, "a", LATER)
+
+        assert get_pipelines(db, [digest])[0].hash == digest
+
+    def test_an_unknown_pipeline_is_refused(self, db):
+        with pytest.raises(InactivePipelineError) as error:
+            retire_pipeline(db, "nope", LATER)
+
+        assert error.value.guid == "nope"
+
+    def test_retiring_twice_is_refused(self, db, pipeline):
+        """A second retire would otherwise look like success on nothing."""
+        self.write(db, pipeline, "a")
+        retire_pipeline(db, "a", LATER)
+
+        with pytest.raises(InactivePipelineError):
+            retire_pipeline(db, "a", LATER)
+
+    def test_saving_it_again_opens_a_new_interval(self, db, pipeline):
+        """Never reopens the closed one — history stays append-only."""
+        self.write(db, pipeline, "a")
+        retire_pipeline(db, "a", LATER)
+
+        diff = write_pipeline(db, format_pipeline_entry([pipeline("a")], LATER), LATER)
+
+        assert diff["new"] == ["a"]
+        assert query(
+            db,
+            "SELECT valid_from, deprecated_at FROM pipeline_history ORDER BY rowid",
+        ) == [(CREATED_ON, LATER), (LATER, None)]
 
 
 # -----------------------------------------------------------------------------#

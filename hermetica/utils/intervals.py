@@ -61,12 +61,14 @@ def incoming_hashes(entries: Iterable, id_column: str) -> dict[str, str]:
 
 
 def diff_entries(
-    active: dict[str, str], incoming: dict[str, str]
+    active: dict[str, str], incoming: dict[str, str], absence: bool = True
 ) -> dict[str, list[str]]:
     """Group ids as new / changed / unchanged / absent.
 
     Pure: two id -> hash maps in, four sorted id lists out. `absent` is what
     makes deprecate-on-absence possible — content addressing cannot see it.
+    `absence=False` is for writes that are edits, not snapshots: what was not
+    written is not gone, so `absent` stays empty.
     """
     new, changed, unchanged = [], [], []
     for entry_id, incoming_hash in incoming.items():
@@ -81,7 +83,7 @@ def diff_entries(
         "new": sorted(new),
         "changed": sorted(changed),
         "unchanged": sorted(unchanged),
-        "absent": sorted(set(active) - set(incoming)),
+        "absent": sorted(set(active) - set(incoming)) if absence else [],
     }
 
 
@@ -130,12 +132,14 @@ def version_control_diff(
     id_column: str,
     entries: Iterable,
     scope: tuple[str, str] | None = None,
+    absence: bool = True,
 ) -> dict[str, list[str]]:
     """Compare a set of entries against the active state, without writing."""
     with connect(db, read_only=True) as conn:
         return diff_entries(
             active_hashes(conn, history_table, id_column, scope),
             incoming_hashes(entries, id_column),
+            absence,
         )
 
 
@@ -147,6 +151,7 @@ def write_version_control(
     entries: list,
     pulled_at: int | None,
     scope: tuple[str, str] | None = None,
+    absence: bool = True,
 ) -> dict[str, list[str]]:
 
     pulled_at = pulled_at if pulled_at is not None else get_timestamp()
@@ -155,6 +160,7 @@ def write_version_control(
         diff = diff_entries(
             active_hashes(conn, history_table, id_column, scope),
             incoming_hashes(entries, id_column),
+            absence,
         )
         first_time = set(diff["new"]) - seen_before(
             conn, history_table, id_column, diff["new"]

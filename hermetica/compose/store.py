@@ -13,9 +13,15 @@ from utils.constants import (
 )
 from utils.dates import get_timestamp, to_epoch
 from utils.hashing import canonical_json, encode_entry, hash_bytes
-from utils.intervals import version_control_diff, write_version_control
+from utils.intervals import (
+    active_hashes,
+    close_intervals,
+    version_control_diff,
+    write_version_control,
+)
 from utils.store import (
     append_only_triggers,
+    connect,
     fetch_entries,
     immutable_triggers,
     insert_statement,
@@ -24,6 +30,16 @@ from utils.store import (
 # -----------------------------------------------------------------------------#
 # BUILD PROTOCOL PIPELINE DB
 # -----------------------------------------------------------------------------#
+
+
+class InactivePipelineError(ValueError):
+    """Retiring a pipeline that has no active version."""
+
+    def __init__(self, guid: str):
+        self.guid = guid
+        super().__init__(f"pipeline {guid} has no active version to retire")
+
+
 SCHEMA: tuple[str, ...] = (
     """
     CREATE TABLE IF NOT EXISTS pipeline_content (
@@ -166,8 +182,10 @@ def diff_pipelines(
     pipeline_history: str = PIPELINE_HISTORY,
     pipeline_guid: str = PIPELINE_GUID,
 ) -> dict[str, list[str]]:
-    """Compare a set of pipelines against the active state."""
-    return version_control_diff(db, pipeline_history, pipeline_guid, pipelines)
+    """Compare a set of pipelines against the active state. Never reports absence."""
+    return version_control_diff(
+        db, pipeline_history, pipeline_guid, pipelines, absence=False
+    )
 
 
 # -----------------------------------------------------------------------------#
@@ -182,8 +200,34 @@ def write_pipeline(
     pipeline_history: str = PIPELINE_HISTORY,
     pipeline_guid: str = PIPELINE_GUID,
 ) -> dict[str, list[str]]:
-    """Apply one set of pipelines and return its diff."""
+    """Apply one set of pipelines and return its diff.
+
+    A pipeline is edited one at a time, not pulled as a snapshot, so a pipeline
+    left out of this write is not gone. Retiring is `retire_pipeline`.
+    """
     insert = insert_statement(pipeline_content, pipleline_content_fields)
     return write_version_control(
-        db, pipeline_history, pipeline_guid, insert, entries, pulled_at
+        db, pipeline_history, pipeline_guid, insert, entries, pulled_at, absence=False
     )
+
+
+def retire_pipeline(
+    db: str,
+    guid: str,
+    retired_at: int | None = None,
+    pipeline_history: str = PIPELINE_HISTORY,
+    pipeline_guid: str = PIPELINE_GUID,
+) -> str:
+    """Close a pipeline's active interval. Returns the hash that was retired.
+
+    Its content and history stay; writing it again opens a new interval.
+    """
+    retired_at = retired_at if retired_at is not None else get_timestamp()
+    with connect(db) as conn:
+        active = active_hashes(
+            conn, pipeline_history, pipeline_guid, (pipeline_guid, guid)
+        )
+        if guid not in active:
+            raise InactivePipelineError(guid)
+        close_intervals(conn, pipeline_history, pipeline_guid, [guid], retired_at)
+    return active[guid]

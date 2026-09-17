@@ -1294,3 +1294,182 @@ operator is the env file, and the report is where they will find that out.
 behaviour now live in the `__main__` loop. Added 2 `TestConfigureSource` tests and 3
 `TestRunSource` tests: a missing workspace id is reported, an unknown source is reported,
 and a configured source reports its pull. Ruff clean, `docs/status.md` regenerated.
+
+---
+
+## 2026-09-17 — 38fd5c2 (plan, one AGENT.md fix) — an API over both stores, and the pipeline-absence bug it exposed
+
+**Corrected in `AGENT.md`:** the planned API was described as "the only process that opens
+either `.db` file". That was never true, because `chronos` writes `chronos.db` directly
+and is meant to keep doing so. The line now says `chronos` stays the one writer and opens
+the file directly. The API opens `chronos.db` read-only and `compose.db` read-write, and
+outside tools reach either file only through the API.
+
+**Decided by the coder:** the seal side also goes behind the API, as a read-only query
+port, not only the compose side. The reasons:
+- A direct reader couples every outside tool to table and column names.
+- SQLite on a network mount is unsafe, so remote tools need a server anyway.
+- `hydrate_pipeline` needs seal's data, so both ports sharing one process costs nothing.
+
+**Discovered — blocker:** `write_pipeline` calls `write_version_control` with no scope. The
+diff is therefore taken against every active pipeline, and any pipeline missing from the
+write lands in `absent` and gets its interval closed. The tests never write two pipelines
+in separate calls, so nothing caught it. Nothing calls `write_pipeline` outside tests
+today, so no data is affected. A compose port that saves one pipeline per request would
+deprecate every other pipeline on each save. Recorded as Open under Pipelines in
+`AGENT.md`.
+
+**The plan.** It is ordered so that each phase is useful and testable before the next.
+
+*Phase 0 — prerequisites, no HTTP*
+1. **Pipeline writes never deprecate by absence.** A pipeline is edited one at a time, not
+   pulled as a snapshot, so absence means nothing for it. Retiring a pipeline becomes an
+   explicit `retire_pipeline(db, guid)` that closes its open interval. The test is two
+   pipelines written in separate calls, both still active.
+2. **WAL and `busy_timeout`.** `initialize_db` sets `PRAGMA journal_mode=WAL`, which is
+   stored in the file, and `connect` sets `busy_timeout` on every connection. Without these,
+   the nightly write and the API's reads lock each other out.
+3. **CI coverage:** add `--cov=utils`, which is missing today, and the new package.
+
+*Phase 1 — the ports as plain functions, new top-level package `api`*
+
+Functions take database paths as arguments and return JSON-ready dicts keyed by stable ids.
+Every read uses `connect(..., read_only=True)`, which already exists.
+
+- `api/query.py`, against `chronos.db`, read-only:
+  - `list_protocols(db)`: the active version of each protocol, without the body. It needs
+    **new SQL**: history's live rows joined to content, the same join
+    `active_protocol_aliases` uses.
+  - `protocol_versions(db, protocol_uid)`: every interval for one protocol. **New SQL.**
+  - `get_protocol(db, hash)`: one version with its body, via `get_protocols`.
+  - `build_lock(db, hashes)`: `generate_protocol_lock`, returned as a document and not
+    written to a file.
+- `api/compose.py`, against `compose.db` read-write plus `chronos.db` read-only:
+  - `list_pipelines`: new SQL, like `list_protocols`.
+  - `get_pipeline(guid)`.
+  - `save_pipeline(payload, guid=None)`:
+    1. Normalize the DAG with `normalize_dag`.
+    2. Validate it with `validate_dag`.
+    3. Mint a guid only when none is given, since reading never mints.
+    4. Resolve node hashes with `hydrate_pipeline`.
+    5. Build the entry with `build_pipeline_entry`.
+    6. Write it with `write_pipeline`.
+    7. Return the guid, hash and new/changed/unchanged status.
+
+    The `dag`/`nodes` key checks now live inside `pipelines_from_template`, which reads a
+    file. They move into a function that builds one pipeline from a dict, shared by the
+    template reader and this port, so the two cannot drift.
+  - `retire_pipeline(guid)`.
+  - `pipeline_lock(guid)`: `generate_pipeline_lock`, plus `generate_protocol_lock` over its
+    `node_hashes`, merged by `generate_lock`.
+- **The query port is checked by a test against a `chmod 0444` database file.** A write
+  added to the query port then fails that test.
+
+*Phase 2 — transport*
+- A route table mapping method and path to a port function.
+- Errors map by exception class, which works because exceptions already carry data:
+  - `MissingHash` → 404.
+  - `UnresolvedProtocolError`, `AmbiguousProtocolError`, `NodeMismatchError`,
+    `PipelineCycleError`, and malformed input → 422, with the exception's attributes as
+    the JSON body.
+  - Anything else → 500, with no traceback in the response.
+- Binds `127.0.0.1` by default. Request bodies have a size cap, since all input is
+  untrusted. JSON only.
+- Entry point `python -m api.server`. Paths and port come from `env/.env`, read once in
+  `__main__`.
+
+*Phase 3 — docs*
+- Update the `AGENT.md` module table and Storage section.
+- Add `api` to `known-first-party` in `pyproject.toml` and to `--cov` in CI.
+- Run `make audit`.
+
+**Deferred, on purpose:**
+- Verifying an uploaded lock, since `verify_lock` takes a path today.
+- Versions by date, parked on `feature/versions-by-date`.
+- Markdown and PDF rendering.
+- `snapshots`.
+- Loading templates from `PIPE_TEMPLATE`.
+
+**Open, for the coder:**
+1. **Transport.** Standard-library `http.server` with no new dependency, or a framework
+   such as Starlette or FastAPI that brings request validation and OpenAPI docs for the
+   portal.
+2. **Authentication.** None, bound to localhost for now, or a bearer token from the first
+   release.
+3. **Pipeline retirement.** Explicit only, as recommended, or something else.
+4. **First-cut query scope.** Whether `protocol_versions` is in, or `list_protocols` and
+   `get_protocol` are enough to start.
+
+**Decided by the coder, same session:**
+1. **Transport: standard-library `http.server`.** The first deployment runs Hermetica and
+   the portal as containers in one Docker Compose stack on one server. Generated API docs
+   are wanted, so others can see what the API offers. FastAPI was considered and set aside
+   for now as a heavy dependency: it brings Starlette, Pydantic and a server such as
+   Uvicorn. **Proposed instead:** a hand-written `api/openapi.json` served at
+   `GET /openapi.json`, with a test that the route table and the document list exactly the
+   same paths and methods, so the docs cannot drift from the code. Any OpenAPI viewer can
+   render it. Revisit FastAPI when request validation becomes enough work to justify it.
+   *Awaiting the coder's confirmation of this docs approach.*
+2. **No authentication during development.** It is added as a feature later. Until then the
+   only protection is the network. Inside Compose the server must listen on `0.0.0.0`,
+   because `127.0.0.1` in a container is unreachable from the portal container. **The API
+   port must not be published to the host.** Other containers on the Compose network reach
+   it, and nothing outside the stack does. This belongs in the deployment docs, and a
+   published port is the thing to check before any deploy.
+3. **Explicit `retire_pipeline`**, exposed to the portal as a remove action.
+4. **`protocol_versions` is in the first cut.**
+
+**Deployment note for Phase 0.2:** WAL needs every process sharing a database file to
+share memory on one host. Containers mounting the same Docker volume on one machine meet
+that. A bind mount onto a network filesystem such as NFS or SMB does not.
+
+---
+
+## 2026-09-17 — 38fd5c2 (uncommitted work) — API Phase 0: pipelines stop deprecating by absence, WAL, CI coverage
+
+**Confirmed by the coder:**
+- The transport is `http.server`, with a hand-written `openapi.json` and a test that
+  keeps it matched to the routes. FastAPI stays a later option.
+- The unpublished-port rule is recorded in `AGENT.md` under Storage, marked ⚠ as a
+  pre-deploy check.
+
+**0.1 — pipeline absence.**
+- `diff_entries`, `version_control_diff` and `write_version_control` take
+  `absence: bool = True`. With `False`, `absent` is empty and so nothing is closed by it.
+  The decision lives in one place, `diff_entries`, and the other two pass it through.
+  Protocols keep the default.
+- `write_pipeline` and `diff_pipelines` pass `absence=False`.
+- New `retire_pipeline(db, guid, retired_at)` closes one interval and returns the retired
+  hash. It raises `InactivePipelineError(guid)` if there is no open interval, which
+  includes a second retire, so a portal button cannot report success on nothing.
+
+**Corrected — last entry's claim that no test wrote two pipelines separately was wrong.**
+`test_a_pipeline_missing_from_the_write_is_deprecated_by_absence` asserted the old
+behaviour on purpose. That design is superseded, so under the pre-stable rule the test was
+**replaced**, not kept: `test_a_pipeline_missing_from_the_write_stays_active`.
+
+**0.2 — WAL.** `initialize_db` runs `PRAGMA journal_mode = WAL` before the schema. The
+test commits a write while a read-only connection holds a read transaction. **It was
+checked against the code with the PRAGMA removed, and failed with `database is locked`
+after 5 s.** A first version of the test only checked that a reader is not blocked by an
+uncommitted write. That also passes without WAL, so it proved nothing and was replaced
+before commit. **`busy_timeout` was not added:** `sqlite3.connect` already waits 5 s by
+default, which is the same mechanism. Revisit if real lock waits run longer.
+
+**0.3 — CI.** Added `--cov=utils`, which the "a new package must join `--cov`" rule had
+missed.
+
+**Tests:** 611 → 620.
+- 1 replaced.
+- 1 added for `diff_pipelines` never reporting absence.
+- 6 added for `retire_pipeline`: closes only that pipeline, returns the hash, content
+  survives, unknown guid refused, second retire refused, a re-save opens a new interval.
+- 2 added for WAL: the file is left in WAL mode, and a commit succeeds while a read is in
+  progress.
+
+Ruff clean. `make audit`: compose 98.3%, utils 98.9%, total 92.6%.
+
+**Local databases:** `db/chronos.db` and `db/compose.db` switch to WAL the next time
+`initialize_db` runs against them. The schema itself is unchanged.
+
+**Next:** Phase 1, the ports as plain functions in `api/`.
