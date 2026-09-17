@@ -12,7 +12,6 @@ from seal.contract import ProtocolArtefact
 # -----------------------------------------------------------------------------#
 class DiscoveredProtocols(NamedTuple):
     ids: list[int]
-    strategy: str  # this is only useful for the log
     detail: dict
 
 

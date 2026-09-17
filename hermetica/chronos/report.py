@@ -61,10 +61,7 @@ def header(entry: dict, outcome: str) -> list[str]:
     # A run may cover several sources; naming it is what keeps them apart.
     if entry.get("source"):
         lines.append(f"  source                {entry['source']}")
-    lines += [
-        f"  strategy              {entry.get('strategy', 'unknown')}",
-        f"  outcome               {outcome}",
-    ]
+    lines.append(f"  outcome               {outcome}")
     return lines
 
 
@@ -74,7 +71,7 @@ def format_report(entry: dict) -> str:
     warnings = entry.get("warnings") or []
     deprecated = entry.get("deprecated") or []
 
-    outcome = "DRY RUN" if entry.get("dry_run") else "OK"
+    outcome = "OK"
     if warnings:
         outcome += f"  ({len(warnings)} warning{'s' if len(warnings) > 1 else ''})"
     lines = header(entry, outcome)
@@ -82,28 +79,19 @@ def format_report(entry: dict) -> str:
     lines += ["", "DISCOVERY"]
     if "workspace_items" in entry:
         lines.append(line("workspace items", entry["workspace_items"]))
-    if "shared_with_user" in entry:
-        lines.append(line("shared_with_user", entry["shared_with_user"]))
     lines.append(line("selected", entry.get("selected", 0)))
     lines.append(line("trashed, skipped", len(entry.get("trashed") or [])))
     lines.append(
         line("excluded", len(entry.get("excluded") or []), ids(entry.get("excluded")))
     )
-    if entry.get("degraded"):
-        lines += [
-            "",
-            "  NOTE: the fallback strategy is incomplete by construction.",
-            "  See docs/protocols_io_findings.md sections 4 and 5.",
-        ]
 
-    if not entry.get("dry_run"):
-        lines += ["", "SEALED"]
-        lines.append(line("fetched", entry.get("fetched", 0)))
-        lines.append(line("deprecated tag", len(deprecated), ids(deprecated)))
-        lines.append(line("sealed", entry.get("sealed", 0)))
-        for key in ("new", "changed", "unchanged", "absent"):
-            if key in diff:
-                lines.append(line(key, len(diff[key]), ids(diff[key])))
+    lines += ["", "SEALED"]
+    lines.append(line("fetched", entry.get("fetched", 0)))
+    lines.append(line("deprecated tag", len(deprecated), ids(deprecated)))
+    lines.append(line("sealed", entry.get("sealed", 0)))
+    for key in ("new", "changed", "unchanged", "absent"):
+        if key in diff:
+            lines.append(line(key, len(diff[key]), ids(diff[key])))
 
     lines += ["", f"WARNINGS ({len(warnings)})"]
     lines += [f"  - {w}" for w in warnings] or ["  none"]

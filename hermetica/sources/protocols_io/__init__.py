@@ -17,7 +17,7 @@ from sources.protocols_io.config import (
     SOURCE_NAME,
     WORKSPACE_SEARCH_PATH,
 )
-from sources.protocols_io.discover import discover
+from sources.protocols_io.discover import search_workspace
 from sources.protocols_io.lifecycle import screen_protocol
 
 
@@ -31,12 +31,8 @@ from sources.protocols_io.lifecycle import screen_protocol
 def build_source(
     base_url: str,
     api_key: str,
-    strategy: str = "workspace",
-    workspace_id: str = "",
-    list_url: str = "",
+    workspace_id: str,
     protocol_url: str = "",
-    page_size: int = 10,
-    max_pull: int | None = None,
     raw_dump: str = "",
     source: str = SOURCE_NAME,
 ) -> ProtocolSource:
@@ -44,14 +40,15 @@ def build_source(
     # written into identity cannot drift from the one the pull reports.
     check_source_name(source)
     headers = {"Authorization": f"Bearer {api_key}"}
-    list_url = list_url or f"{base_url}/v3/protocols"
     protocol_url = protocol_url or f"{base_url}/v4/protocols/"
+    # No uri, no sweep — and an empty pull deprecates a whole platform.
+    if not workspace_id:
+        raise ValueError(
+            "protocols_io needs WORKSPACE_ID — the workspace uri, "
+            "the slug the browser shows for the workspace"
+        )
     # The workspace *uri* — the slug in the browser address bar, not a guid.
-    workspace_url = (
-        base_url + WORKSPACE_SEARCH_PATH.format(workspace_id=workspace_id)
-        if workspace_id
-        else ""
-    )
+    workspace_url = base_url + WORKSPACE_SEARCH_PATH.format(workspace_id=workspace_id)
 
     dump_path = Path(raw_dump) / RAW_DUMP_NAME if raw_dump else None
     if dump_path is not None:
@@ -65,7 +62,7 @@ def build_source(
     # It all boils down to having a common interface layer for any new tool
     # make me wonder if there is a even more common interface.
     def protocol_discover() -> DiscoveredProtocols:
-        return discover(strategy, list_url, headers, workspace_url, page_size, max_pull)
+        return search_workspace(headers, workspace_url)
 
     def protocol_fetch(protocol_id: int) -> FetchedProtocol:
         record = fetch_protocol(protocol_id, protocol_url, headers)

@@ -1,14 +1,11 @@
 # -----------------------------------------------------------------------------#
 # TESTS — the v4 workspace search and what it selects
 # -----------------------------------------------------------------------------#
-"""The workspace route exists because `/v3/protocols` collapses a version family
-to one item and cannot see trash or another member's published protocols. Every
-assertion here defends one of those, plus the traps the sweep itself carries:
-it is 1-indexed, it wraps its answer in `payload`, and its `next_page` is a URL
-rather than a page number, so only truthiness can drive the loop.
-
-The pager underneath is `fetch_pages`, tested against the protocol list in
-test_request.py. What is tested here is the workspace route on top of it."""
+"""The workspace search is the only discovery. It must return every member of a
+version family, see trash, and see other members' published protocols. It also
+carries its own traps: it is 1-indexed, it wraps its answer in `payload`, and its
+`next_page` is a URL rather than a page number, so only truthiness can drive the
+loop."""
 
 import json
 from urllib.parse import parse_qs, urlsplit
@@ -20,7 +17,6 @@ from sources.protocols_io.config import FIRST_SEARCH_PAGE, PROTOCOL_TYPE_ID
 from sources.protocols_io.discover import (
     IncompleteDiscoveryError,
     as_workspace_item,
-    discover,
     search_workspace,
     search_workspace_items,
     select_protocols,
@@ -28,7 +24,6 @@ from sources.protocols_io.discover import (
 
 BASE_URL = "https://api.example.org"
 WORKSPACE_URL = f"{BASE_URL}/v4/filemanager/workspaces/institute/search"
-LIST_URL = f"{BASE_URL}/v3/protocols"
 HEADERS = {"Authorization": "Bearer test-token"}
 
 # Ids the fixture workspace holds, named so a failure reads as a story.
@@ -167,6 +162,44 @@ class TestWorkspaceSweep:
 
         assert len(search_workspace_items(WORKSPACE_URL, HEADERS)) == 1
 
+    @responses.activate
+    def test_an_empty_page_ends_the_sweep(self):
+        """A `next_page` pointing at nothing must not loop forever."""
+        responses.add(
+            responses.GET,
+            WORKSPACE_URL,
+            json={"payload": {"items": [], "pagination": {"next_page": "?page_id=2"}}},
+        )
+
+        assert search_workspace_items(WORKSPACE_URL, HEADERS) == []
+        assert len(responses.calls) == 1
+
+    @responses.activate
+    def test_a_short_page_with_a_next_page_keeps_going(self):
+        """Page length says nothing when the envelope is there — only `next_page`."""
+        responses.add(
+            responses.GET,
+            WORKSPACE_URL,
+            json={
+                "payload": {
+                    "items": [{"id": 1}],
+                    "pagination": {"next_page": "?page_id=2", "total_results": 2},
+                }
+            },
+        )
+        responses.add(
+            responses.GET,
+            WORKSPACE_URL,
+            json={
+                "payload": {
+                    "items": [{"id": 2}],
+                    "pagination": {"next_page": None, "total_results": 2},
+                }
+            },
+        )
+
+        assert len(search_workspace_items(WORKSPACE_URL, HEADERS)) == 2
+
 
 # -----------------------------------------------------------------------------#
 # 2. THE ITEM — discovery keeps what gates an id, and nothing else
@@ -221,9 +254,6 @@ class TestSearchWorkspace:
         )
         assert not any(pid > 1000 for pid in seen)
 
-    def test_it_names_its_strategy(self, found):
-        assert found.strategy == "workspace"
-
     def test_the_detail_counts_both_halves_of_the_sweep(self, found, workspace_records):
         swept = sum(
             len(p["payload"]["items"]) for p in workspace_records["search_pages"]
@@ -239,7 +269,7 @@ class TestSearchWorkspace:
         assert PUBLIC in found.ids
 
     def test_both_members_of_a_version_family_are_returned(self, found):
-        """`/v3/protocols` collapses these two to one. This route must not."""
+        """Two members of one version family are two protocols, not one."""
         assert {LIVE[0], FAMILY_SIBLING} <= set(found.ids)
 
     def test_a_trashed_protocol_is_reported_but_not_returned(self, found):
@@ -315,39 +345,3 @@ class TestSelection:
         selection = select_protocols(items)
 
         assert UNDER_TRASHED_FOLDER in {i.id for i in selection.selected}
-
-
-# -----------------------------------------------------------------------------#
-# 5. ROUTING
-# -----------------------------------------------------------------------------#
-class TestDiscoverRouting:
-    @responses.activate
-    def test_the_workspace_strategy_sweeps(self, workspace_records):
-        mount(workspace_records)
-
-        discovered = discover("workspace", LIST_URL, HEADERS, WORKSPACE_URL)
-
-        assert discovered.strategy == "workspace"
-        assert set(discovered.ids) == EVERY_PROTOCOL - {TRASHED, COLLECTION}
-
-    def test_the_workspace_strategy_without_a_uri_refuses(self):
-        """No uri, no sweep — and an empty pull deprecates a whole platform."""
-        with pytest.raises(ValueError, match="WORKSPACE_ID"):
-            discover("workspace", LIST_URL, HEADERS, workspace_url="")
-
-    @responses.activate
-    def test_the_filter_strategy_declares_itself_degraded(self, list_items):
-        responses.add(
-            responses.GET,
-            LIST_URL,
-            json={"items": list_items(2), "pagination": {"next_page": None}},
-        )
-
-        discovered = discover("filter", LIST_URL, HEADERS)
-
-        assert discovered.strategy == "filter"
-        assert discovered.detail["degraded"] is True
-
-    def test_an_unknown_strategy_is_refused(self):
-        with pytest.raises(ValueError, match="unknown PULL_STRATEGY"):
-            discover("walk", LIST_URL, HEADERS, WORKSPACE_URL)

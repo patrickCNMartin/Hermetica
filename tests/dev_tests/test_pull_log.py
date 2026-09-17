@@ -53,7 +53,7 @@ class TestRecordPull:
 
     def test_the_caller_payload_is_preserved(self, tmp_path):
         detail = {
-            "strategy": "workspace",
+            "source": "protocols_io",
             "diff": {"new": [112516], "changed": []},
             "warnings": ["something worth reading later"],
         }

@@ -22,7 +22,6 @@ def entry():
     return {
         "pulled_at": 1700000000,
         "pulled_at_iso": "2023-11-14T22:13:20+00:00",
-        "strategy": "workspace",
         "workspace_items": 67,
         "selected": 57,
         "trashed": list(range(200, 209)),
@@ -44,11 +43,10 @@ def entry():
 # 1. A GOOD PULL
 # -----------------------------------------------------------------------------#
 class TestFormatReport:
-    def test_it_leads_with_when_and_how(self, entry):
+    def test_it_leads_with_when_and_outcome(self, entry):
         text = format_report(entry)
 
         assert "2023-11-14T22:13:20+00:00" in text
-        assert "workspace" in text
         assert "OK" in text
 
     def test_the_headline_counts_are_present(self, entry):
@@ -89,27 +87,10 @@ class TestFormatReport:
         """Buried at the bottom they get skimmed past."""
         entry["warnings"] = ["something happened"]
 
-        assert "1 warning" in format_report(entry).splitlines()[3]
+        lines = format_report(entry).splitlines()
+        outcome = next(line for line in lines if line.strip().startswith("outcome"))
 
-    def test_a_dry_run_says_so_and_skips_the_sealed_block(self, entry):
-        dry = {k: v for k, v in entry.items() if k not in ("diff", "sealed", "fetched")}
-        dry["dry_run"] = True
-
-        text = format_report(dry)
-
-        assert "DRY RUN" in text
-        assert "SEALED" not in text
-
-    def test_the_degraded_fallback_is_called_out(self, entry):
-        entry["degraded"] = True
-
-        text = format_report(entry)
-
-        assert "incomplete by construction" in text
-        assert "protocols_io_findings" in text
-
-    def test_a_workspace_pull_does_not_claim_to_be_degraded(self, entry):
-        assert "incomplete by construction" not in format_report(entry)
+        assert "1 warning" in outcome
 
     def test_deprecated_protocols_are_named(self, entry):
         entry["deprecated"] = [4242]
@@ -122,7 +103,7 @@ class TestFormatReport:
 # -----------------------------------------------------------------------------#
 class TestFormatFailure:
     def test_it_names_the_error_and_its_type(self):
-        entry = {"pulled_at": 1700000000, "strategy": "workspace"}
+        entry = {"pulled_at": 1700000000, "source": "protocols_io"}
 
         text = format_failure(entry, ValueError("folder guid was rejected"))
 

@@ -45,10 +45,8 @@ load_dotenv(dotenv_path=dotenv_path)
 
 API_KEY = os.getenv("API_KEY", "")
 BASE_URL = os.getenv("BASE_URL", "")
-PROTOCOL_LIST_URL = os.getenv("PROTOCOL_LIST_URL", "")
 PROTOCOL_URL = os.getenv("PROTOCOL_URL", "")
-# The workspace uri, as it appears in the browser address bar. Required by the
-# workspace strategy; ignored by the filter one.
+# The workspace uri, as it appears in the browser address bar. Required.
 WORKSPACE_ID = os.getenv("WORKSPACE_ID", "")
 
 CLIENT_ID = os.getenv("CLIENT_ID", "")
@@ -73,9 +71,6 @@ PIPE_TEMPLATE = os.getenv("PIPE_TEMPLATE", "")
 # Which platforms tonight's run reads, in order. Comma separated.
 SOURCES = os.getenv("SOURCES", "protocols_io")
 
-# Using workspace search as default
-PULL_STRATEGY = os.getenv("PULL_STRATEGY", "workspace")
-
 
 # -----------------------------------------------------------------------------#
 # CHRONOS ERRORS
@@ -92,44 +87,30 @@ class UnreadableProtocolError(ValueError):
 
 
 # -----------------------------------------------------------------------------#
-# MULTI SOURCE CONSTRUCTOR
+# SOURCE CONSTRUCTOR
 # -----------------------------------------------------------------------------#
-def build_sources(
-    names: list[str],
+def configure_source(
+    name: str,
     base_url: str,
     api_key: str,
-    strategy: str = "workspace",
     workspace_id: str = "",
-    list_url: str = "",
     protocol_url: str = "",
-    page_size: int = 10,
-    max_pull: int | None = None,
     raw_dump: str = "",
-) -> list[ProtocolSource]:
-    """Turn source names into configured adapters.
+) -> ProtocolSource:
+    """Turn one source name into a configured adapter.
 
     Every value arrives as an argument — the env is read once, in __main__, and
     passed down. A new platform is one more branch here plus its own arguments.
     """
-    sources = []
-    for name in names:
-        if name == "protocols_io":
-            sources.append(
-                protocols_io.build_source(
-                    base_url=base_url,
-                    api_key=api_key,
-                    strategy=strategy,
-                    workspace_id=workspace_id,
-                    list_url=list_url,
-                    protocol_url=protocol_url,
-                    page_size=page_size,
-                    max_pull=max_pull,
-                    raw_dump=raw_dump,
-                )
-            )
-        else:
-            raise ValueError(f"unknown source {name!r}")
-    return sources
+    if name == "protocols_io":
+        return protocols_io.build_source(
+            base_url=base_url,
+            api_key=api_key,
+            workspace_id=workspace_id,
+            protocol_url=protocol_url,
+            raw_dump=raw_dump,
+        )
+    raise ValueError(f"unknown source {name!r}")
 
 
 # -----------------------------------------------------------------------------#
@@ -144,10 +125,7 @@ def pull_protocols(db_name: str, pulled_at: int, source: ProtocolSource) -> dict
     check_source_name(source.name)
 
     discovery = source.discover()
-    print(
-        f"{source.name}: strategy={discovery.strategy} -> "
-        f"{len(discovery.ids)} protocols to fetch"
-    )
+    print(f"{source.name}: {len(discovery.ids)} protocols to fetch")
     for warning in discovery.detail.get("warnings", []):
         print(f"  WARNING: {warning}")
 
@@ -174,7 +152,6 @@ def pull_protocols(db_name: str, pulled_at: int, source: ProtocolSource) -> dict
 
     return {
         "source": source.name,
-        "strategy": discovery.strategy,
         **discovery.detail,
         "fetched": len(discovery.ids),
         "deprecated": sorted(retired),
@@ -182,6 +159,37 @@ def pull_protocols(db_name: str, pulled_at: int, source: ProtocolSource) -> dict
         "diff": {key: sorted(value) for key, value in diff_protocols.items()},
         "warnings": discovery.detail.get("warnings", []) + warnings,
     }
+
+
+def run_source(
+    db_name: str,
+    pulled_at: int,
+    name: str,
+    base_url: str,
+    api_key: str,
+    workspace_id: str = "",
+    protocol_url: str = "",
+    raw_dump: str = "",
+) -> tuple[dict, str]:
+    """Configure and pull one source. Returns (log entry, report text).
+
+    Configuring happens inside the try, so a source missing from the env file
+    fails alone and reaches the report like any other failure. A source that
+    raises writes nothing, so none of its protocols are deprecated by absence.
+    """
+    try:
+        source = configure_source(
+            name, base_url, api_key, workspace_id, protocol_url, raw_dump
+        )
+        entry = pull_protocols(db_name, pulled_at, source)
+    except Exception as error:
+        entry = {
+            "source": name,
+            "failed": True,
+            "error": f"{type(error).__name__}: {error}",
+        }
+        return entry, format_failure({**entry, "pulled_at": pulled_at}, error)
+    return entry, format_report({**entry, "pulled_at": pulled_at})
 
 
 # -----------------------------------------------------------------------------#
@@ -200,39 +208,25 @@ if __name__ == "__main__":
     pulled_at = get_timestamp()
     names = [name.strip() for name in SOURCES.split(",") if name.strip()]
 
-    source_constructors = build_sources(
-        names,
-        base_url=BASE_URL,
-        api_key=API_KEY,
-        strategy=PULL_STRATEGY,
-        workspace_id=WORKSPACE_ID,
-        list_url=PROTOCOL_LIST_URL,
-        protocol_url=PROTOCOL_URL,
-        raw_dump=DB_OUT,
-    )
-
     reports, failed = [], False
-    for source in source_constructors:
-        # Per source, not around the loop: one platform being down must not stop
-        # the others, and a source that raises writes nothing, so none of its
-        # protocols are deprecated by absence.
-        try:
-            entry = pull_protocols(protcol_db, pulled_at, source)
-        except Exception as error:
-            failed = True
-            entry = {
-                "source": source.name,
-                "strategy": PULL_STRATEGY,
-                "failed": True,
-                "error": f"{type(error).__name__}: {error}",
-            }
-            record_pull(LOGS, pulled_at, entry)
-            reports.append(format_failure({**entry, "pulled_at": pulled_at}, error))
-            print(f"{source.name}: pull FAILED — Check pull logs")
-            continue
-
+    # Per source, not around the loop: one platform down or misconfigured must
+    # not stop the others.
+    for name in names:
+        entry, text = run_source(
+            protcol_db,
+            pulled_at,
+            name,
+            base_url=BASE_URL,
+            api_key=API_KEY,
+            workspace_id=WORKSPACE_ID,
+            protocol_url=PROTOCOL_URL,
+            raw_dump=DB_OUT,
+        )
         record_pull(LOGS, pulled_at, entry)
-        reports.append(format_report({**entry, "pulled_at": pulled_at}))
+        reports.append(text)
+        if entry.get("failed"):
+            failed = True
+            print(f"{name}: pull FAILED — Check pull logs")
 
     report = "\n".join(reports)
     write_report(LOGS, report)

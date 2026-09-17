@@ -12,7 +12,12 @@ import json
 import pytest
 import responses
 
-from chronos.chronos import UnreadableProtocolError, build_sources, pull_protocols
+from chronos.chronos import (
+    UnreadableProtocolError,
+    configure_source,
+    pull_protocols,
+    run_source,
+)
 from seal.store import SCHEMA
 from sources.contract import (
     DiscoveredProtocols,
@@ -30,7 +35,8 @@ from utils.store import connect, initialize_db
 PULLED_AT = to_epoch("2026-07-27")
 
 BASE_URL = "https://api.example.org"
-LIST_URL = f"{BASE_URL}/v3/protocols"
+WORKSPACE = "institute"
+WORKSPACE_URL = f"{BASE_URL}/v4/filemanager/workspaces/{WORKSPACE}/search"
 PROTOCOL_URL = f"{BASE_URL}/v4/protocols/"
 
 
@@ -45,7 +51,7 @@ def fake_source(artefacts, retired=(), unreadable=(), name="fake", warnings=()):
     ids = list(by_id) + list(retired) + list(unreadable)
 
     def _discover():
-        return DiscoveredProtocols(ids, "fake", {"selected": len(ids)})
+        return DiscoveredProtocols(ids, {"selected": len(ids)})
 
     def _fetch(protocol_id):
         if protocol_id in retired:
@@ -157,12 +163,18 @@ class TestRunPull:
 class TestBuildSource:
     def mount(self, records):
         ids = [r["id"] for r in records]
+        items = [
+            {"id": i, "content_type_id": 1, "type_id": 1, "in_trash": False}
+            for i in ids
+        ]
         responses.add(
             responses.GET,
-            LIST_URL,
+            WORKSPACE_URL,
             json={
-                "items": [{"id": i} for i in ids],
-                "pagination": {"total_results": len(ids), "next_page": None},
+                "payload": {
+                    "items": items,
+                    "pagination": {"total_results": len(ids), "next_page": None},
+                }
             },
         )
         for record in records:
@@ -171,10 +183,17 @@ class TestBuildSource:
             )
 
     def source(self, **kwargs):
-        return build_source(base_url=BASE_URL, api_key="k", strategy="filter", **kwargs)
+        return build_source(
+            base_url=BASE_URL, api_key="k", workspace_id=WORKSPACE, **kwargs
+        )
 
     def test_it_is_named_for_its_platform(self):
         assert self.source().name == "protocols_io"
+
+    def test_no_workspace_id_is_refused_at_construction(self):
+        """No uri, no sweep — and an empty pull deprecates a whole platform."""
+        with pytest.raises(ValueError, match="WORKSPACE_ID"):
+            build_source(base_url=BASE_URL, api_key="k", workspace_id="")
 
     @responses.activate
     def test_discover_yields_ids(self, by_id_records):
@@ -241,29 +260,54 @@ class TestBuildSource:
 
 
 # -----------------------------------------------------------------------------#
-# 4. CHOOSING SOURCES
+# 4. CHOOSING AND RUNNING A SOURCE
 # -----------------------------------------------------------------------------#
-class TestBuildSources:
+class TestConfigureSource:
     """Testable because every value is an argument: nothing is read from the
     module, so there is no frame to patch."""
 
     def test_a_known_name_is_configured(self):
-        sources = build_sources(["protocols_io"], base_url=BASE_URL, api_key="k")
+        source = configure_source(
+            "protocols_io", base_url=BASE_URL, api_key="k", workspace_id=WORKSPACE
+        )
 
-        assert [s.name for s in sources] == ["protocols_io"]
-
-    def test_names_keep_their_order(self):
-        names = ["protocols_io", "protocols_io"]
-
-        sources = build_sources(names, base_url=BASE_URL, api_key="k")
-
-        assert [s.name for s in sources] == names
-
-    def test_an_empty_list_pulls_nothing(self):
-        assert build_sources([], base_url=BASE_URL, api_key="k") == []
+        assert source.name == "protocols_io"
 
     def test_an_unknown_name_is_refused(self):
-        """Better to stop than to run a night's pull against fewer sources than
-        the operator asked for."""
         with pytest.raises(ValueError, match="unknown source"):
-            build_sources(["kantele"], base_url=BASE_URL, api_key="k")
+            configure_source("kantele", base_url=BASE_URL, api_key="k")
+
+
+class TestRunSource:
+    """A source that cannot even be configured is a failed pull, reported like
+    any other — not a crash that takes the night's other sources with it."""
+
+    def run(self, db_path, name, **kwargs):
+        initialize_db(db_path, SCHEMA)
+        return run_source(
+            db_path, PULLED_AT, name, base_url=BASE_URL, api_key="k", **kwargs
+        )
+
+    def test_a_missing_workspace_id_is_reported_not_raised(self, db_path):
+        entry, text = self.run(db_path, "protocols_io", workspace_id="")
+
+        assert entry["failed"] is True
+        assert entry["source"] == "protocols_io"
+        assert "WORKSPACE_ID" in entry["error"]
+        assert "FAILED" in text and "WORKSPACE_ID" in text
+
+    def test_an_unknown_source_is_reported_not_raised(self, db_path):
+        entry, text = self.run(db_path, "kantele")
+
+        assert entry["failed"] is True
+        assert "unknown source" in text
+
+    @responses.activate
+    def test_a_configured_source_reports_its_pull(self, db_path, by_id_records):
+        TestBuildSource().mount([copy.deepcopy(r) for r in by_id_records.values()])
+
+        entry, text = self.run(db_path, "protocols_io", workspace_id=WORKSPACE)
+
+        assert "failed" not in entry
+        assert entry["sealed"] == len(by_id_records)
+        assert "OK" in text

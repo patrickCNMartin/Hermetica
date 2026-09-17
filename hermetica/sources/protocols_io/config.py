@@ -24,8 +24,6 @@ WORKSPACE_SEARCH_PATH = "/v4/filemanager/workspaces/{workspace_id}/search"
 FIRST_SEARCH_PAGE = 1
 SEARCH_PAGE_SIZE = 100
 
-# /v3/protocols is 0-indexed; the v4 search above is 1-indexed.
-FIRST_PAGE = 0
 # Backoff - max api calls per minute
 CALLS_PER_MINUTE = 100
 

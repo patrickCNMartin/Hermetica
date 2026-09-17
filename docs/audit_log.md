@@ -1089,3 +1089,208 @@ over one protocol.
 
 **Cost:** docs only. `AGENT.md` records that there is no keep-list and keeps `skipped` as
 the open item.
+
+---
+
+## 2026-09-17 — 05f0276 (uncommitted work) — second stale sweep of `AGENT.md`
+
+**Method:** every identifier, env var, file and count named in `AGENT.md` was checked
+against `hermetica/`, `tests/`, `.gitignore`, `pyproject.toml` and the CI workflow.
+
+**Corrected:**
+- The Authentication section still described the retired folder walk as the default, and
+  called the v4 workspace search an untested open thread that returns `invalid params`. The
+  search is the default route. What stays true is kept: no API route returns a private
+  `workspace_uri`, so it is read from the browser address bar into `WORKSPACE_ID`.
+- `CLIENT_ACCESS_TOKEN` is not an env var anywhere. The token lives in `API_KEY`.
+- "an unbounded walk" became "an unbounded sweep". "A per-folder count check" became "a global
+  `total_results` check".
+- The `compose` row said "no validation". `validate_dag` exists. The row now says nothing
+  calls `hydrate_pipeline`.
+- The pull writes to env `DB`, not `DB_OUT`. `DB_OUT` is only the Python name.
+- `.gitignore` ignores `docs/*` except `audit_log.md` and `status.md`, so the
+  `protocols_io_*` docs are local only. That is now stated. `docs/status.md` joins the file table.
+
+**Found, not changed:**
+- CI's `--cov=` list omits `utils`, which is exactly what the rule in Conventions warns about.
+- `scribe/markdown.py` reads `VIEW_URL` with `os.getenv` at module level, which breaks the
+  capsule rule.
+- `PIPE_TEMPLATE` is read in `chronos.py` and used nowhere.
+- `docs/protocols_io_findings.md` §4 still records the v4 search as returning 400 for
+  everything. It is untracked, so it was left alone.
+
+**Cost:** docs only.
+
+**Closed, same session — the `shared_with_user` "returns 0" belief.** The coder reports
+that the workspace search and `filter=shared_with_user` both work. The 0 came from `""`
+versus `''` quoting in the probe, not from the token, authorship or permissions. Pruned from
+`AGENT.md`: "`shared_with_user` returns 0 and cannot be trusted", "neither token is a see
+everything key… a workspace-admin account returns 0 from every filter", and "the search
+is not filter-scoped, which is why it is the default". Also pruned: the claim that any
+non-uri value returns `invalid params`, because it came from the same probes. Kept: no API
+route returns a private `workspace_uri`.
+
+**Corrected, same session:** `key` is still required by `/v3/protocols`. Only the
+`shared_with_user` "returns 0" belief was the quoting bug.
+
+---
+
+## 2026-09-17 — 05f0276 (plan, no code changed) — the `filter` route is to be deleted
+
+**Decided:** discovery gets one route, the v4 workspace search. The `filter` strategy
+(`/v3/protocols?filter=shared_with_user`) is deleted, not kept as a fallback.
+
+**Why:** it no longer fits the build. It was kept as a degraded fallback for a search we
+believed was broken. Both work now, and one route is simpler to get running. A platform
+that needs a list-by-filter can add it as its own adapter's discovery. The measurements
+that justified the `order_field`, `key` and 0-indexing rules stay in
+`docs/protocols_io_findings.md` for whoever re-adds it.
+
+**The plan, by file:**
+
+*`sources/protocols_io/discover.py`*
+- Delete `fetch_protocol_list`, `search_by_filter` and `discover`.
+- `fetch_pages` loses `max_pull`, which only the filter used. It keeps the page-length
+  fallback, because `test_an_endpoint_that_reports_no_total_is_not_second_guessed` depends on
+  it. Without that fallback, a missing `pagination` would keep paging until an empty page.
+- The retry-once on a count mismatch goes too. The workspace route already raises on the
+  first short read.
+- The section header "ROUTE ONE" and the comment "THE TWO DISCOVERY ROUTES" are renamed.
+
+*`sources/protocols_io/__init__.py`*
+- `build_source` loses `strategy`, `list_url`, `page_size` and `max_pull`. The
+  `/v3/protocols` default goes with them.
+- **An empty `workspace_id` raises in `build_source`**, not at discover time. The check
+  moves from `discover` to construction, so a misconfigured source fails before any
+  clock read. It matters because an empty pull deprecates a whole platform.
+- `protocol_discover` calls `search_workspace(headers, workspace_url)` directly.
+
+*`sources/protocols_io/config.py`*
+- Delete `FIRST_PAGE` and its comment. The workspace search comment stays.
+
+*`sources/contract.py`*
+- `DiscoveredProtocols.strategy` either goes (every source has one discovery, so `source`
+  already names the route) or stays as a free label. **Open, for the coder.**
+
+*`chronos/chronos.py`*
+- Delete `PROTOCOL_LIST_URL` and `PULL_STRATEGY`, and the "ignored by the filter one"
+  comment.
+- `build_sources` loses `strategy`, `list_url`, `page_size` and `max_pull`.
+- The failure entry's `"strategy"`, and `strategy=` in the print and the log entry, follow
+  the contract decision.
+
+*`chronos/report.py`*
+- Delete the `shared_with_user` discovery line and the `degraded` NOTE, which points at
+  findings §4–5.
+- The `strategy` header line follows the contract decision.
+
+*Tests*
+- `test_request.py`: delete `TestServerConnection` (6), `TestPagination` (4) and
+  `TestEnvelopeDrivenPagination` (8). All 18 drive `fetch_protocol_list`. Keep
+  `TestFetchProtocol` and `TestCallApi`, pointing them at a neutral URL rather than
+  `/v3/protocols`. Rewrite the module docstring, which is about `order_field` and 0-indexing.
+- **Port two pager guarantees** to `TestWorkspaceSweep` rather than lose them: an empty page
+  stops the sweep, and a short page with a `next_page` keeps going.
+- `conftest.py`: delete the `list_items` fixture.
+- `test_sources.py`: `TestBuildSource.mount` serves a workspace-search envelope instead of a
+  `/v3/protocols` list. `source()` passes `workspace_id` instead of `strategy="filter"`. Add
+  a test that a missing `workspace_id` is refused at construction. `TestBuildSources` passes
+  `workspace_id`. Delete `LIST_URL`.
+- `test_workspace.py`: `TestDiscoverRouting` goes. The filter test and the
+  unknown-strategy test are deleted. The two workspace tests become the `build_source` test
+  above, plus the sweep tests already in section 3. Delete `LIST_URL`. Reword the module
+  docstring so it no longer justifies itself against `/v3/protocols`.
+- `test_report.py`: delete `test_the_degraded_fallback_is_called_out` and
+  `test_a_workspace_pull_does_not_claim_to_be_degraded`.
+- `test_pull_log.py` and `test_report.py` entries lose `"strategy"` if the field goes.
+
+*Docs*
+- `AGENT.md` Acquisition: delete the `/v3/protocols` `[Archived]` line, the four-ways-degraded
+  line, `order_field`, `key`, and "The list response is thinner than by-ID". Also delete the
+  Planned bullet itself, and `PULL_STRATEGY=workspace|filter` under Conventions. Keep the
+  pagination, no-ceiling and rate-limit rules, which the sweep still needs.
+- Regenerate `docs/status.md` with `make audit`. CI fails otherwise.
+- The coder's local `env/.env` still sets `PROTOCOL_LIST_URL` and `PULL_STRATEGY`. Both
+  become unread and should be removed by hand.
+
+**Expected cost:** about 22 tests deleted and 3 added. No hash, schema or stored data
+changes, because discovery yields ids only. Old `pull_log.jsonl` lines keep their
+`strategy` key, which nothing reads back.
+
+**Out of scope, noted:** `dry_run` in `report.py` is never set by anything in `hermetica/`.
+
+---
+
+## 2026-09-17 — 05f0276 (uncommitted work) — the `filter` route, `strategy` and `dry_run` are gone
+
+**Done:** the plan above, with the one open item decided by the coder. **`strategy` is
+removed**, not kept as a label, because it was dead weight in the contract, the log and the
+report. **`dry_run` is removed too**: nothing ever set it.
+
+**Deleted from code:**
+- `discover.py`: `fetch_protocol_list`, `search_by_filter`, `discover`, the retry-once,
+  and `max_pull`.
+- `config.py`: `FIRST_PAGE`.
+- `contract.py`: `DiscoveredProtocols.strategy`.
+- `chronos.py`: `PROTOCOL_LIST_URL` and `PULL_STRATEGY`. `build_sources` also loses
+  `strategy`, `list_url`, `page_size` and `max_pull`.
+- `report.py`: the `strategy` header line, the `shared_with_user` line, the degraded NOTE
+  and the `dry_run` branch.
+- `client.py`: `read_payload`.
+
+**Changed beyond the plan: `read_payload` is gone, not trimmed.** Coverage caught that its
+top-level branch, the v3 envelope, was now unreachable. It had one caller. The pager now
+reads `.json()["payload"]` directly, so a body without `payload` raises `KeyError`. Before,
+it read as a page with no items, which on the first page means an empty sweep with no
+total, and so a pull that deprecates the whole platform. The fetch-by-id path still uses
+`.get("payload", [])` and was not touched.
+
+**`build_source` now raises on an empty `workspace_id`**, as planned. The raise happens in
+`build_sources`, before `__main__`'s per-source `try`. A missing `WORKSPACE_ID` therefore
+stops the run with a traceback, not a mailed failure report. That is a configuration
+error, not a night that went badly, and nothing is written either way.
+
+**Tests:** 633 → 610.
+- **Deleted, 26:**
+  - `test_request.py`: 18, every `fetch_protocol_list` test.
+  - `test_workspace.py`: 5, the whole `TestDiscoverRouting` section plus
+    `test_it_names_its_strategy`.
+  - `test_report.py`: 3, the dry-run test and both degraded tests.
+- **Added, 3:**
+  - Two pager guarantees ported onto the sweep: an empty page ends it, and a short page
+    with a `next_page` keeps going.
+  - `test_no_workspace_id_is_refused_at_construction`.
+- **Rewritten:** `TestBuildSource` mocks the workspace search instead of `/v3/protocols`.
+  `test_warnings_reach_the_outcome_line` finds the outcome line by label, because a
+  hard-coded line index broke when the header lost a line.
+
+**Cost:** ruff clean. `make audit` regenerated `docs/status.md`: `sources` 754 → 654
+lines at 100%, total 3467 → 3335 lines, coverage 92.0%. No hash, schema or stored data
+changed.
+
+**For the coder:** `env/.env` still sets `PROTOCOL_LIST_URL` and `PULL_STRATEGY`, and
+nothing reads them now. The local `docs/protocols_io_findings.md` still holds the `/v3`
+measurements, for whoever re-adds a list route.
+
+---
+
+## 2026-09-17 — 05f0276 (uncommitted work) — a misconfigured source is a failure report, not a crash
+
+**Corrected by the coder:** the previous entry accepted that a missing `WORKSPACE_ID` would
+stop the run with a traceback. That was wrong. `SOURCES` plus each source's settings tell
+Hermetica where to look. A source whose settings are missing or wrong is that source's
+failure, and it belongs in the report with the other sources still pulled. The fix for the
+operator is the env file, and the report is where they will find that out.
+
+**Changed:**
+- `chronos.build_sources(names) -> list` is now `configure_source(name) -> ProtocolSource`.
+- The per-source `try` in `__main__` moved into `run_source`, which configures and pulls
+  inside one `try` and returns `(log entry, report text)`.
+- An unknown name in `SOURCES` also becomes a failure report now, not a crash.
+- `__main__` only loops, logs and mails. The failure path used to live there untested and
+  is now covered.
+
+**Tests:** 610 → 611. Deleted 4 `TestBuildSources` tests, since the order and empty-list
+behaviour now live in the `__main__` loop. Added 2 `TestConfigureSource` tests and 3
+`TestRunSource` tests: a missing workspace id is reported, an unknown source is reported,
+and a configured source reports its pull. Ruff clean, `docs/status.md` regenerated.

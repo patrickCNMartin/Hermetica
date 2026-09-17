@@ -88,17 +88,3 @@ def workspace_records() -> dict:
 def db_path(tmp_path) -> str:
     """A throwaway sqlite file path unique to each test."""
     return str(tmp_path / "chronos_test.db")
-
-
-@pytest.fixture
-def list_items():
-    """The list-endpoint shape: ids only, which is all `fields=id` returns.
-
-    Deliberately not the by-ID fixture — conflating the two shapes is what let the
-    old suite drift away from the contract it was meant to be testing.
-    """
-
-    def _items(count: int, start: int = 1) -> list[dict]:
-        return [{"id": start + n} for n in range(count)]
-
-    return _items

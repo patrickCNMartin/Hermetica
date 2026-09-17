@@ -4,9 +4,8 @@
 from typing import Iterable, NamedTuple
 
 from sources.contract import DiscoveredProtocols
-from sources.protocols_io.client import call_api, read_payload
+from sources.protocols_io.client import call_api
 from sources.protocols_io.config import (
-    FIRST_PAGE,
     FIRST_SEARCH_PAGE,
     PROTOCOL_CONTENT_TYPE,
     PROTOCOL_TYPE_ID,
@@ -50,17 +49,16 @@ def fetch_pages(
     params: dict,
     start_page: int,
     page_size: int,
-    max_pull: int | None = None,
 ) -> tuple[list[dict], int | None]:
     """Fetch pages until the server says stop. Returns (items, total_results)."""
     items: list[dict] = []
     total: int | None = None
     page = start_page
 
-    while max_pull is None or (page - start_page) < max_pull:
+    while True:
         print(f"Processing Page: {page}")
-        response = call_api(url, headers, {**params, "page_id": page})
-        payload = read_payload(response)
+        # v4 nests the answer under `payload`; a body without one is not a page.
+        payload = call_api(url, headers, {**params, "page_id": page}).json()["payload"]
         batch = payload.get("items") or []
         pagination = payload.get("pagination")
 
@@ -81,7 +79,7 @@ def fetch_pages(
 
 
 # -----------------------------------------------------------------------------#
-# ROUTE ONE — THE WORKSPACE SEARCH
+# THE WORKSPACE SEARCH
 # -----------------------------------------------------------------------------#
 def search_workspace_items(
     workspace_url: str,
@@ -113,44 +111,6 @@ def as_workspace_item(item: dict) -> WorkspaceItem:
         type_id=item.get("type_id"),
         in_trash=item.get("in_trash") is True,
     )
-
-
-# -----------------------------------------------------------------------------#
-# ROUTE TWO — THE PROTOCOL LIST, BY FILTER
-# -----------------------------------------------------------------------------#
-def fetch_protocol_list(
-    proto_list_url: str,
-    headers: dict,
-    page_size: int = 10,
-    max_pull: int | None = None,
-    **params,
-) -> list[dict]:
-    """This function does a first call through the API to get protocol IDs.
-    We are only interested in IDs as a first pass since the protocol list
-    does actually contain all the information we need to build verifiable
-    protocol versions.
-    """
-    start_page = int(params.pop("page_id", FIRST_PAGE))
-    params["page_size"] = page_size
-
-    for attempt in (1, 2):
-        protocols, total = fetch_pages(
-            proto_list_url, headers, params, start_page, page_size, max_pull
-        )
-        # A capped or resumed pull is expected to be partial; nothing to verify.
-        if total is None or max_pull is not None or start_page != FIRST_PAGE:
-            break
-        if len(protocols) == total:
-            break
-        if attempt == 2:
-            raise IncompleteDiscoveryError(
-                len(protocols), total, "write a partial pull"
-            )
-        print(
-            f"Incomplete pull: got {len(protocols)} of {total} reported. Retrying once."
-        )
-
-    return [i["id"] for i in protocols]
 
 
 # -----------------------------------------------------------------------------#
@@ -191,7 +151,7 @@ def select_protocols(items: Iterable[WorkspaceItem]) -> SelectedProtocols:
 
 
 # -----------------------------------------------------------------------------#
-# THE TWO DISCOVERY ROUTES
+# DISCOVERY
 # -----------------------------------------------------------------------------#
 def selection_detail(selection: SelectedProtocols) -> dict:
     return {
@@ -216,46 +176,4 @@ def search_workspace(headers: dict, workspace_url: str) -> DiscoveredProtocols:
         "workspace_protocols": len(protocols),
         **selection_detail(selection),
     }
-    return DiscoveredProtocols(
-        [item.id for item in selection.selected], "workspace", detail
-    )
-
-
-def search_by_filter(
-    list_url: str, headers: dict, page_size: int = 10, max_pull: int | None = None
-) -> DiscoveredProtocols:
-    """Use get list method to list protocol ids under
-    certain label (e.g 'shared_with_user)
-    """
-    params = {
-        "filter": "shared_with_user",
-        "key": " ",
-        "order_field": "id",
-        "fields": "id",
-    }
-    ids = fetch_protocol_list(
-        list_url, headers, page_size=page_size, max_pull=max_pull, **params
-    )
-    return DiscoveredProtocols(ids, "filter", {"selected": len(ids), "degraded": True})
-
-
-def discover(
-    strategy: str,
-    list_url: str,
-    headers: dict,
-    workspace_url: str = "",
-    page_size: int = 10,
-    max_pull: int | None = None,
-) -> DiscoveredProtocols:
-    if strategy == "workspace":
-        if not workspace_url:
-            raise ValueError(
-                "PULL_STRATEGY=workspace needs WORKSPACE_ID — the workspace uri, "
-                "the slug the browser shows for the workspace"
-            )
-        return search_workspace(headers, workspace_url)
-    if strategy == "filter":
-        return search_by_filter(list_url, headers, page_size, max_pull)
-    raise ValueError(
-        f"unknown PULL_STRATEGY {strategy!r}; expected 'workspace' or 'filter'"
-    )
+    return DiscoveredProtocols([item.id for item in selection.selected], detail)
