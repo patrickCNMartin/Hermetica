@@ -1045,7 +1045,7 @@ being false for weeks cost a session earlier today.
 
 ---
 
-## 2026-09-17 — d03dea7 (uncommitted work) — the v3 walk's fixture keys are gone; the Vaults memories are closed
+## 2026-09-17 — 05f0276 — the v3 walk's fixture keys are gone; the Vaults memories are closed
 
 **Closed — `a341fbe`'s "the fixture keeps the walk's shape".** `folder_pages` and `items` are
 deleted from `tests/fixtures/workspace_search.json`. Nothing in `hermetica/` read them. The
@@ -1069,7 +1069,7 @@ the sweep has no parent, and the gate reads only the protocol's own `in_trash`.
 
 ---
 
-## 2026-09-17 — d03dea7 (uncommitted work) — `protocol_pins` dropped from the plan
+## 2026-09-17 — 05f0276 — `protocol_pins` dropped from the plan
 
 **Decided:** the planned `protocol_pins` table won't be built. It was a policy list of
 protocols to keep active when a pull couldn't see them, subtracted from `absent`
@@ -1092,7 +1092,7 @@ the open item.
 
 ---
 
-## 2026-09-17 — 05f0276 (uncommitted work) — second stale sweep of `AGENT.md`
+## 2026-09-17 — 38fd5c2 — second stale sweep of `AGENT.md`
 
 **Method:** every identifier, env var, file and count named in `AGENT.md` was checked
 against `hermetica/`, `tests/`, `.gitignore`, `pyproject.toml` and the CI workflow.
@@ -1135,7 +1135,7 @@ route returns a private `workspace_uri`.
 
 ---
 
-## 2026-09-17 — 05f0276 (plan, no code changed) — the `filter` route is to be deleted
+## 2026-09-17 — 38fd5c2 (the plan) — the `filter` route is to be deleted
 
 **Decided:** discovery gets one route, the v4 workspace search. The `filter` strategy
 (`/v3/protocols?filter=shared_with_user`) is deleted, not kept as a fallback.
@@ -1221,7 +1221,7 @@ changes, because discovery yields ids only. Old `pull_log.jsonl` lines keep thei
 
 ---
 
-## 2026-09-17 — 05f0276 (uncommitted work) — the `filter` route, `strategy` and `dry_run` are gone
+## 2026-09-17 — 38fd5c2 — the `filter` route, `strategy` and `dry_run` are gone
 
 **Done:** the plan above, with the one open item decided by the coder. **`strategy` is
 removed**, not kept as a label, because it was dead weight in the contract, the log and the
@@ -1274,7 +1274,7 @@ measurements, for whoever re-adds a list route.
 
 ---
 
-## 2026-09-17 — 05f0276 (uncommitted work) — a misconfigured source is a failure report, not a crash
+## 2026-09-17 — 38fd5c2 — a misconfigured source is a failure report, not a crash
 
 **Corrected by the coder:** the previous entry accepted that a missing `WORKSPACE_ID` would
 stop the run with a traceback. That was wrong. `SOURCES` plus each source's settings tell
