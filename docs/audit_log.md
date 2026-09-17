@@ -1297,7 +1297,7 @@ and a configured source reports its pull. Ruff clean, `docs/status.md` regenerat
 
 ---
 
-## 2026-09-17 — 38fd5c2 (plan, one AGENT.md fix) — an API over both stores, and the pipeline-absence bug it exposed
+## 2026-09-17 — f07ee56 (plan, one AGENT.md fix) — an API over both stores, and the pipeline-absence bug it exposed
 
 **Corrected in `AGENT.md`:** the planned API was described as "the only process that opens
 either `.db` file". That was never true, because `chronos` writes `chronos.db` directly
@@ -1425,7 +1425,7 @@ that. A bind mount onto a network filesystem such as NFS or SMB does not.
 
 ---
 
-## 2026-09-17 — 38fd5c2 (uncommitted work) — API Phase 0: pipelines stop deprecating by absence, WAL, CI coverage
+## 2026-09-17 — f07ee56 — API Phase 0: pipelines stop deprecating by absence, WAL, CI coverage
 
 **Confirmed by the coder:**
 - The transport is `http.server`, with a hand-written `openapi.json` and a test that
@@ -1473,3 +1473,252 @@ Ruff clean. `make audit`: compose 98.3%, utils 98.9%, total 92.6%.
 `initialize_db` runs against them. The schema itself is unchanged.
 
 **Next:** Phase 1, the ports as plain functions in `api/`.
+
+---
+
+## 2026-09-17 — f07ee56 (uncommitted work) — API Phase 1: both ports as plain functions, and a creator that never read back
+
+**Built — new top-level package `api`.** No HTTP yet. Functions take database paths and
+return JSON-ready dicts with stable ids and ISO times.
+- **`api/query.py`**, the query port against `chronos.db` read-only: `list_protocols`,
+  `protocol_versions` (raises `UnknownProtocolError`), `get_protocol` (raises
+  `MissingHash`), and `build_lock`, which returns a lock document and writes no file.
+- **`api/pipelines.py`**, the compose port:
+  - `list_pipelines`.
+  - `get_pipeline` (raises `InactivePipelineError`).
+  - `save_pipeline`: validates the body, mints a guid only when none is given, refuses a
+    guid with no history (`UnknownPipelineError`), keeps the first version's
+    `created_on`, re-hydrates, writes, and returns new/changed/unchanged.
+  - `retire`.
+  - `pipeline_lock`: the pipeline lock plus a protocol lock over its deduplicated
+    `node_hashes`.
+- **`api/contract.py`**: `InvalidRequestError(problems)`, which lists every problem at
+  once.
+
+**Supporting changes:**
+- `utils.intervals`: `active_rows` and `intervals_of`, generic reads.
+- `seal.store`: `active_protocols` and `protocol_intervals`.
+- `compose.store`: `active_pipelines` and `pipeline_intervals`. `api` never names a table.
+- `compose.templates.build_pipeline` is split out of `pipelines_from_template`, so
+  templates and the API build a pipeline through one function.
+- `InactivePipelineError`'s message is now generic ("has no active version"), because
+  reading and locking raise it as well as retiring.
+- `pyproject.toml` `known-first-party` and the CI `--cov` list now include `api`.
+
+**Discovered and fixed — `encode_entry` and `decode_entry` did not round-trip a
+string.** `encode_entry` stored a `str` raw, and `decode_entry` always runs `json.loads`.
+A plain-string creator therefore failed to decode on read. That includes the template's
+own `creator: "Homunculus Pat"`, so `generate_pipeline_lock` would have crashed on any
+template pipeline. No test locked a template pipeline, which is why it went unnoticed. A
+raw string like `"123"` would also have decoded as the wrong type. **Fixed at the pair,
+not in the API:** `encode_entry` now JSON-encodes everything except numbers and `None`.
+Only metadata columns are affected (`creator`, `authors`, `keywords`), none of them
+hashed, so **no hash changed**. `test_natives_pass_through_untouched` asserted the old
+behaviour for `"text"`, so it was **rewritten** as a round-trip test covering `"Ada"`,
+`""`, `"123"`, `"null"`, a dict, a list and `True`. `test_bool_is_not_treated_as_an_int`
+now expects `"true"`.
+
+**Local stores:** rows written before this keep a raw-string `keywords`. Nothing reads that
+column today. A `compose.db` holding a string creator will not decode. Delete and rebuild
+both per the 2026-09-16 recipe.
+
+**Checked, not assumed.** All 40 new tests passed on the first run, so three were checked
+against broken code:
+- The `chmod 0444` guard does refuse a write, with `attempt to write a readonly database`.
+- `test_saving_one_leaves_the_others_active` fails once `absence=False` is removed from
+  `write_pipeline`.
+- A plain-string creator crashed on read, which is how the encoding bug was found.
+
+**Not built (deferred):**
+- `pipeline_versions`, which would mirror `protocol_versions`.
+- A `manifest_hash` on save.
+- Resolving uids to hashes for `build_lock`.
+
+Add each when the portal needs it.
+
+**Tests:** 620 → 669, 19 files.
+- `test_api.py` adds 43 test items: 40 for the ports, plus 3 for the creator round-trip.
+- `test_utils.py` gains 6 items net. The old pass-through test lost its `"text"` case, and
+  the new round-trip test has 7 cases.
+
+Ruff clean. `make audit`: `api` 100%, total 94.0%.
+
+**Next:** Phase 2, the `http.server` transport, `openapi.json`, and the route-and-document
+parity test.
+
+---
+
+## 2026-09-17 — f07ee56 (uncommitted work) — "entries, not rows"; `pipeline_versions`; what a template is
+
+**Rule from the coder: a stored thing is an entry, not a row.**
+- **Renamed:** `active_rows` → `active_entries`, and `rows_for` → `entries_for` in
+  `test_store.py`. Every `row`/`rows` variable naming an entry is now `entry`/`entries`,
+  across `utils`, `seal`, `compose`, `scribe`, `api` and their tests.
+- **Also changed:** docstrings, including the trigger comments, and four `AGENT.md` lines.
+- **Left alone on purpose:**
+  - `sqlite3.Row` and `row_factory`, which are SQLite's names.
+  - The markdown fact table in `render_facts`, now `facts`.
+  - Markdown table rows in `test_scribe_markdown.py`.
+  - The module table in `scripts/audit.py`.
+- **One collision found and fixed.** In `collect_display` the rename would have assigned
+  `entries = get_protocols(db, [entries[pid]...])`, shadowing the lock's `entries`
+  argument. It worked only because the right-hand side runs first, so the local is now
+  `stored`.
+
+**Built — `pipeline_versions(db, guid)`.** Every version a pipeline has held, retired
+versions included. It raises `UnknownPipelineError` for a guid with no history. Version
+formatting moved to `api.contract.describe_intervals`, shared with `protocol_versions`.
+Adds 3 tests.
+
+**Tests:** 669 → 672. Ruff clean.
+
+**The design the coder stated when asked what a pipeline's `manifest_hash` should do.**
+This changes Phase 1's compose port, so it is recorded here before anything is rebuilt:
+- **By default the user sees active protocols and active pipelines.**
+- **A pipeline template records the DAG and each node's `protocol_guid`, never a hash.**
+  In the UI each node shows the protocol's currently active version. A node whose protocol
+  is no longer active is still sent and still drawn in the DAG, marked *inactive*. Until
+  a lock exists, the latest protocols are placeholders.
+- **Hashes are added only when a pipeline is validated, to create a lock file.**
+  `node_hashes` and a `manifest_hash` belong to that moment, not to saving a template.
+- **A lock file the user brings in is displayed at its pinned versions**, not the active
+  ones.
+
+**Where Phase 1 disagrees with this:**
+- `save_pipeline` hydrates on every save and stores `node_hashes`.
+- It refuses a node whose protocol is not active, through `UnresolvedProtocolError`.
+- `nodes` accepts a uid, guid or bare id, not a guid only.
+- There is no way to read a lock the user brings.
+
+**Awaiting the coder's answers before rebuilding.**
+
+**Answered by the coder, same session. This supersedes Phase 1's compose design:**
+- **A template is the shape of a pipeline: its DAG and the `protocol_guid` of each node,
+  never a hash.** The UI flow:
+  1. The user opens a template ("use this template").
+  2. They may add or remove steps.
+  3. They either **save template**, which records the DAG only, or **export lock**, which
+     takes that DAG, pulls the active protocol hashes, hashes the pipeline, and writes a
+     full lock.
+- **A pipeline is its DAG.** A change to the shape or to the guids used is a different
+  pipeline. Which protocol *version* runs is the protocol store's concern, pinned only in
+  the lock. The pinned form (`node_hashes`, `manifest_hash`) lives in the lock, not in
+  `compose.db`.
+- **Export refuses a node whose protocol is inactive.** A lock is a guarantee. This only
+  happens when a protocol was retired while a pipeline still uses it. The UI renders the
+  node inactive, the user swaps in an active protocol, then validates and saves.
+  **Retiring a template** removes it from the template list.
+- **Saving a template refuses a guid matching no protocol in the store; an inactive
+  protocol is allowed.** A guid can match nothing when it is mistyped, stale, or from
+  another workspace, even though everything the pull wrote was hashed.
+- **Backend transactions are guid-only. Titles and ids are display only.**
+- **The config template is a separate path.** It is hand-written to bootstrap `compose.db`
+  with pipelines the team built in the old tool, and it keeps its minting.
+- **Reading a lock the user brings is accounted for, not built.** It is a separate
+  concern, handled later.
+
+**Decided by the coder — option A: export requires a saved template.** An unchanged
+DAG exports under its template's guid. An edited, unsaved DAG is refused until it is
+saved, so every lock points at a pipeline that exists in `compose.db` and both halves
+stay version-controlled. The UI can offer save-then-export as one action. Rejected:
+minting a lock-only guid at export, which would leave two identities for one DAG once it
+was saved.
+
+---
+
+## 2026-09-17 — f07ee56 (uncommitted work) — templates are DAGs of guids; pinning happens only at export
+
+**Built, as decided above.** The compose side of Phase 1 is rebuilt to match.
+
+- **A template stores its DAG and node guids, never hashes.**
+  - `save_pipeline` no longer hydrates. It calls `check_nodes_sealed`, which refuses a guid
+    the store never held with `UnsealedProtocolError`, by node, and lets an inactive
+    protocol through.
+  - The body's `nodes` must map to non-empty strings. A bare id is refused, because it is
+    not a guid.
+  - `build_pipeline` ignores any `manifest_hash`/`node_hashes` in the written form.
+- **Reads return node state.** `list_pipelines` and `get_pipeline` now take
+  `protocol_db`. Each node carries `protocol_guid`, `status` (active or inactive),
+  `protocol_uid`, `title` and `hash`, from one lookup for all nodes. A template shows no
+  `node_hashes` or `manifest_hash`.
+- **`export_lock(db, protocol_db, guid)` replaces `pipeline_lock`.**
+  1. It takes a saved template's guid, so an edited template must be saved first
+     (option A).
+  2. It pins through `hydrate_pipeline`.
+  3. It builds the protocol lock.
+  4. It sets the pinned copy's `manifest_hash` to that lock's.
+  5. It builds the pipeline lock from the pinned **artefact**, with
+     `provenance.template_hash`.
+
+  Nothing pinned is written to `compose.db`.
+- **`hydrate_pipeline` is guid-only.** It reads `seal.store.latest_protocols` and raises
+  `UnresolvedProtocolError(nodes)`, keyed by node, for any guid that is inactive or
+  unknown. **Deleted:** `active_protocol_aliases` and `AmbiguousProtocolError`. Guid-only
+  lookup removes the bare-id collision they existed for.
+- **`generate_pipeline_lock` takes artefacts, not stored hashes**, because a pinned
+  pipeline exists only in the lock. Its display now carries `root`, `nodes`,
+  `node_hashes` and `manifest_hash`, which it lacked before, so a lock could not have
+  reproduced a pipeline from its own contents. **`seal` no longer imports from
+  `compose`.**
+- **New reads:**
+  - `utils.intervals.latest_entries`: each key's latest version, active or not.
+  - `seal.store.latest_protocols(db, keys, by=guid|uid)`.
+  - `compose.store.pipeline_from_entry`.
+  - The constant `PROTOCOL_GUID`.
+- **Bootstrap:** `compose.templates.load_template(path, db, protocol_db)`.
+  - Names may be a `protocol_uid` or a guid. `guids_for_nodes` converts uids to guids and
+    refuses a bare id or an unknown name.
+  - Every pipeline is resolved before anything is written, so one bad name loads
+    nothing.
+  - Nothing calls it yet, and `PIPE_TEMPLATE` is still unread.
+- **Config:** `config/pg_core_templates.yaml` loses its 14 `manifest_hash: null` and
+  `node_hashes: null` lines, now ignored, and "will not hydrate" becomes "will not load".
+  The coder's own header lines are untouched. `tests/fixtures/pipeline_template.yaml`
+  names protocols by `protocol_uid`.
+
+**Tests superseded and rewritten, per the pre-stable rule:**
+- **Deleted:**
+  - `test_an_id_live_on_two_sources_raises` and
+    `test_the_uid_still_resolves_when_the_bare_id_is_ambiguous`, since aliases are gone.
+  - `test_a_uid_resolves` and `test_a_guid_resolves`, since only guids resolve now.
+  - `test_a_branch_survives_hydration`, covered by the one-protocol-at-two-nodes test and
+    `TestGraphShape`.
+  - `test_a_hydrated_template_writes_and_versions`, since templates no longer hydrate.
+  - `test_an_unhydrated_template_carries_no_node_hashes`, superseded by
+    `test_a_loaded_template_carries_no_hashes`.
+  - `test_the_shipped_config_template_is_still_unhydratable`, rewritten as
+    `test_the_shipped_config_template_does_not_load_yet`.
+- **Rewritten:**
+  - `test_a_new_protocol_version_rehydrates_to_a_new_pipeline_hash` became
+    `test_a_new_protocol_version_pins_the_new_hash`, which now also asserts the template
+    hash does **not** change.
+  - The unknown-protocol and deprecated-protocol tests became by-node guid tests.
+- **Added:**
+  - `TestSealedCheck` (4).
+  - `TestLoadTemplate` (7).
+  - In `test_api.py`: template stored without hashes; a protocol moving on does not
+    version the template; a swapped guid is a new version; inactive protocols may be
+    saved; bare ids refused; node status on read, including inactive; `TestExportLock`
+    (8).
+
+Counts: `test_api.py` 46 → 59, and `test_compose.py` gains 3 net. **Suite: 672 → 688.**
+
+**Checked against broken code:**
+- With the `deprecated_at` check removed from `hydrate_pipeline`, both
+  inactive-refused-by-node tests failed.
+- With `check_nodes_sealed` removed from `save_pipeline`, both unsealed-guid tests
+  failed.
+
+The code was restored, and 688 pass.
+
+**Process slip, recorded:**
+- While counting tests, a `git stash && git stash apply` round trip was run with no need
+  for it. The working tree came back identical: `git diff stash@{0}` is empty and 688
+  pass.
+- A duplicate `stash@{0}` is left for the coder to drop.
+- A one-line `README.md` change in the tree was not made in this session.
+
+**Cost:** ruff clean. `make audit`: `api` 100%, `compose` 98.4%, total 94.2%.
+
+**Next:** Phase 2, the transport. Reading a lock the user brings stays a separate planned
+concern.

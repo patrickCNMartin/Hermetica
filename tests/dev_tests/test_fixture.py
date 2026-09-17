@@ -51,7 +51,7 @@ LEXICON = frozenset(
 
 # The fixture is scanned by detect-secrets and its findings are baselined: the
 # signing material is meaningless by construction. These shapes are the tripwire
-# for a *real* credential arriving by hand-edit. The AWS row is why the fixture's
+# for a *real* credential arriving by hand-edit. The AWS pattern is why the fixture's
 # own key id is prefixed EXAMPLEKEYID rather than AKIA.
 CREDENTIAL_SHAPES = (
     ("aws access key id", r"(?:AKIA|ASIA|AIDA|AROA|AGPA|ANPA)[0-9A-Z]{16}"),

@@ -48,11 +48,12 @@ names it in a warning, then is discarded.
 | `chronos` | the nightly loop — pull, write, log, report, mail | works |
 | `sources` | adapters; one platform's bytes → a `ProtocolArtefact` | protocols.io only |
 | `seal` | hashing, version intervals, lock files, lifecycle | works |
-| `compose` | pipeline templates, pinned instances, DAG versioning | storage and DAG checks; nothing calls `hydrate_pipeline` yet |
+| `compose` | pipeline templates, DAG versioning, pinning at lock time | works; `load_template` has no command yet |
 | `scribe` | a lock back into something a human reads | works, fidelity partial |
 | `utils` | mechanics — canonical form, hashing, dates, sqlite, intervals | works |
 | *(planned)* | prose generation from a lock | **a sixth module, not part of `scribe`** |
-| *(planned)* | HTTP/JSON API over the query and compose ports — the transport for outside tools | **thin; no raw SQL, stable ids only, the only way outside tools reach either `.db` file** |
+| `api` | the query port (`query.py`) and compose port (`pipelines.py`) outside tools use | ports built as plain functions; **no HTTP transport yet** |
+| *(planned)* | HTTP/JSON transport over `api` — `http.server`, hand-written `openapi.json` | **thin; no raw SQL, stable ids only, the only way outside tools reach either `.db` file** |
 
 **`chronos` decides *when* to look; an adapter knows *what a platform's bytes are*; `seal`
 decides *what they mean*.** A rule about identity is seal's even if cron calls it. A rule
@@ -88,7 +89,7 @@ underneath, append-only.
   drift independently. `check_source_name` keeps the name free of the separator.
 - **Absence is computed inside one source's partition**, never over the whole table:
   `active_hashes` takes a `(column, value)` scope, and unscoped, everything another
-  platform holds looks absent. **An empty pull cannot read its own source off its rows and
+  platform holds looks absent. **An empty pull cannot read its own source off its entries and
   must be told** — that is the case that would deprecate a whole platform.
 
 ### Hashing
@@ -227,51 +228,64 @@ Two flavours: protocols-only, and pipeline (adds the pinned graph).
 
 ### Pipelines
 
-- **`pipeline_guid` is identity; the hash is the version.** Minted once in the template,
-  survives every edit. **Reading never mints** — a silent re-mint orphans everything
-  stored under the old guid.
+- **A template is the shape of a pipeline: its DAG and the `protocol_guid` each node runs —
+  never a hash.** Which protocol version runs is decided once, when a lock is exported.
+  A protocol moving on never versions a template; changing the shape or swapping a guid
+  does. The UI flow: use a template → edit → **save template** (DAG only) or **export
+  lock** (pins versions, hashes the pinned pipeline, writes a full lock).
+- **`pipeline_guid` is identity; the hash is the version.** Minted once — by
+  `save_pipeline` without a guid, or by `mint_template` for the bootstrap file — and
+  survives every edit. **Reading never mints**; a save naming a guid with no history
+  raises `UnknownPipelineError`.
 - **A node is not a protocol.** `DAG` is keyed on the pipeline's own node ids, and `nodes`
-  maps each node id to the protocol it runs. That separation is what lets one protocol run
-  at several points in one graph — `{wash_1: 568614, wash_2: 568614}` is two steps, one
-  protocol. Keyed on protocols directly, a repeat is inexpressible and an attempt at one
-  silently becomes a cycle.
-- **Three fields, all hashed: `DAG`, `nodes`, `node_hashes`.** The first two are what a
-  person writes and edits; `node_hashes` is node id -> the protocol hash active when
-  `hydrate_pipeline` ran. The graph is stored **once**, in node space — `node_hashes` is a
-  flat map, not a second graph, so the two cannot disagree about topology.
-- **`hydrate_pipeline` resolves against *active* versions only**, so a deprecated protocol
-  has no hash to give and **raises** (`UnresolvedProtocolError`) rather than pinning
-  something stale. Re-hydrating after a protocol moves on is therefore a new pipeline
-  version, not a silent edit — which is the whole reason `node_hashes` is hashed.
-- **A bare `protocol_id` that answers for two active protocols raises**
-  (`AmbiguousProtocolError`), naming the candidates. This is the cross-source collision
-  `protocol_uid` exists to prevent; resolving it by picking one would reintroduce it.
+  maps each node id to a protocol guid. That separation is what lets one protocol run at
+  several points in one graph — two nodes, one guid. Keyed on protocols directly, a
+  repeat is inexpressible and an attempt at one silently becomes a cycle.
+- **Backend transactions are guid-only.** Titles and ids are display. The API refuses
+  anything else; only the bootstrap loader accepts a `protocol_uid`, and
+  `guids_for_nodes` converts it before anything is stored. **A bare `protocol_id` is
+  refused everywhere** — it collides across sources.
+- **Saving checks guids exist, not that they are active** (`check_nodes_sealed` raises
+  `UnsealedProtocolError` by node). A template outlives protocol versions; reads return
+  each node with `status: active | inactive`, so the UI draws an inactive step and the
+  user swaps it.
+- **Export is the only pinning step.** `export_lock` takes a **saved** template's guid, not
+  a DAG — an edited template must be saved first, so every lock names a template the
+  store holds (`provenance.template_hash`). `hydrate_pipeline` pins each guid to its
+  active hash and **refuses inactive ones by node** (`UnresolvedProtocolError`): a lock is
+  a guarantee. The pinned copy carries `node_hashes` and `manifest_hash` (the protocol
+  lock's), is hashed as its own content address, and **lives only in the lock** —
+  `generate_pipeline_lock` takes artefacts, and nothing pinned is written to `compose.db`.
+- **`DAG`, `nodes`, `node_hashes`, `manifest_hash` are all hashed.** On a template the last
+  two are empty; on the pinned copy they are filled, so the two never share a hash.
+  `node_hashes` is a flat map, not a second graph, so it cannot disagree about topology.
 - **A fork is parallel and conditional**, so which branch was written first is not
   information. `normalize_dag` sorts every successor list and lifts a bare string into a
   one-item list, so one graph written several ways is one hash. **It is a plain function
-  called by `pipelines_from_template`, deliberately not `__post_init__`** — normalization
-  stays visible at the call site instead of happening inside construction. An artefact
-  built by hand is therefore not normalized: call `normalize_dag` yourself.
+  called by `build_pipeline`, deliberately not `__post_init__`** — normalization stays
+  visible at the call site. An artefact built by hand is not normalized: call
+  `normalize_dag` yourself.
 - **A graph that cannot run never gets a hash.** `validate_dag` checks that the node set of
   `DAG` equals the keys of `nodes` (`NodeMismatchError`, naming both sides) and that the
   graph is acyclic (`PipelineCycleError`, naming the cycle) via `graphlib.TopologicalSorter`
   — fed successors where it expects predecessors, which reverses the order it would produce
-  and leaves cycle detection exactly right. It runs at template read **and** at hydration,
-  so a hand-built artefact cannot slip past.
-- **The template's keys are `nodes` and `dag`, and both are required.** `protocol_dag` was
-  renamed rather than reused: it keyed protocols, `dag` keys nodes, so an old template left
-  to default would parse and pin a graph that means something else.
-- **Pinned to hashes**, so a pipeline reproduces even after a protocol is deprecated.
-- **A pipeline has no executor.** It once did, which said every node in the graph ran on
-  the same thing; a real pipeline hands off between a human and two robots. The executor
-  is the protocol's, and hashed there.
+  and leaves cycle detection exactly right. It runs in `build_pipeline` **and** at
+  hydration, so a hand-built artefact cannot slip past.
+- **One builder: `build_pipeline`.** Templates and the API both come through it; a
+  template's keys are `nodes` and `dag`, both required, and any hash keys in a written
+  template are ignored.
+- **A pipeline has no executor.** A real pipeline hands off between a human and two
+  robots; the executor is the protocol's, and hashed there.
 - **No graph database** — violates the local/sovereign/no-heavy-dep principles.
 - **Pipelines are never deprecated by absence.** They are saved one at a time, so a
   pipeline left out of a write is not gone — `write_pipeline` passes `absence=False`, or
   every save would retire every other pipeline. **Retiring is explicit:**
   `retire_pipeline` closes one interval and raises `InactivePipelineError` if there is
-  nothing open. Saving it again opens a new interval.
-- **Not built:** validation against the read-only VC, fork-on-edit, parent links.
+  nothing open. A retired template leaves the template list; saving it again opens a new
+  interval.
+- **Planned, separate concern — reading a lock the user brings.** Verify it and show its
+  pinned protocols and pipeline, marking what is no longer active. Not built.
+- **Not built:** fork-on-edit, parent links, wiring `load_template` to a command.
 
 ### Storage
 
@@ -285,15 +299,22 @@ Two flavours: protocols-only, and pipeline (adds the pinned graph).
   one error `utils` owns, because the absence is its own lookup failing.
 - **`active_hashes` takes a connection, not a path** (`write_version_control` needs it
   inside its own transaction) and sets `row_factory` on a **cursor it opens itself** —
-  connection-wide would change the row type every other read gets.
+  connection-wide would change the type every other read gets.
+- **`api` never learns a table name either.** Its reads go through store wrappers
+  (`active_protocols`, `protocol_intervals`, `active_pipelines`, `pipeline_intervals`)
+  over generic `utils.intervals` reads.
+- **`encode_entry` keeps numbers and `None` native and JSON-encodes everything else,
+  strings included.** A raw string cannot be told apart from JSON on the way back, so a
+  plain-string `creator` would never decode.
 - **Both stores name their own tables** and pass them into utils, so `scribe` and `chronos`
   never learn a table name.
 - **The store takes artefacts, not dicts.**
 - **Columns are derived from `METADATA_FIELDS`, never restated**, so drift is loud: a
   missing entry field is a `TypeError`, a missing column a `ProgrammingError`, and a
   reorder is harmless because binding is by name.
-- **`compose` reads `chronos.db`, never the reverse.** `hydrate_pipeline` takes the
-  protocol store as an argument and reads `protocol_content` joined to the live rows of
+- **`compose` reads `chronos.db`, never the reverse.** `hydrate_pipeline` and
+  `check_nodes_sealed` take the protocol store as an argument and read it through
+  `seal.store.latest_protocols` — `protocol_content` joined to the entries of
   `protocol_history`. The two files stay separate; only this direction crosses.
 - **Six hashed fields are also columns** (`source`, `title`, `doi`, `reserved_doi`,
   `uri`, `executor`) — a denormalized copy for display and for scoping, never
@@ -306,7 +327,7 @@ Two flavours: protocols-only, and pipeline (adds the pinned graph).
   open interval — `deprecated_at` NULL → a timestamp, every other column frozen. Reopening,
   re-stamping and repointing all `RAISE(ABORT)`.
 - **`immutable_triggers` makes both content tables insert-only** — no `UPDATE`, no `DELETE`.
-  A row addressed by the hash of its own bytes cannot be edited into still being itself.
+  An entry addressed by the hash of its own bytes cannot be edited into still being itself.
 - **Why triggers and not the FK.** `connect` sets `PRAGMA foreign_keys = ON`, but a PRAGMA is
   *per connection* and defaults to off, so `sqlite3 chronos.db` has none of our protection. A
   trigger is in the schema and binds whoever opens the file. Verified against the bare CLI.
@@ -325,6 +346,10 @@ Two flavours: protocols-only, and pipeline (adds the pinned graph).
   Compose it listens on `0.0.0.0` (so the portal container can reach it) and **its port
   is never published** — no `ports:` on the Hermetica service; the portal reaches it by
   service name. Check this every deploy until auth exists.
+- **The query port never writes** — a test runs every query-port function against a
+  `chmod 0444` file.
+- **The compose port sends and takes guids, never hashes.** `created_on` is kept from a
+  template's first version, so an edit does not re-date authorship. See Pipelines.
 - **A lock file is an export, not the integration bus.** Outside systems work live
   through the ports; a lock is the reproducible receipt they archive or hand on.
 
@@ -502,7 +527,7 @@ the problem wins. Say so and why.
   package must join `known-first-party` in `pyproject.toml` and `--cov=` in the CI workflow
   or it is silently uncovered.
 - **Tests:** `pytest` + `pytest-cov`; mock HTTP with `responses`, **never hit the live
-  API**. 18 files, one per concern.
+  API**. 19 files, one per concern.
 - **A test never writes into the repo.** `mint_template` drops a file beside its source, so
   template tests copy `config/` into `tmp_path` first.
 - **PDF toolchain is in the flake** — `pandoc`, `texliveSmall` + `dejavu` +
@@ -524,7 +549,7 @@ that must find zero matches).
   real term is ever named to catch it. Slugs, guids and hex are excluded — prose is where
   an identifying term hides.
 - **Every dataset joins `DATASETS`.** An unscanned fixture can leak.
-- **The AWS row is why the fixture key id is `EXAMPLEKEYID`, not `AKIA`** — an `AKIA` value
+- **The AWS pattern is why the fixture key id is `EXAMPLEKEYID`, not `AKIA`** — an `AKIA` value
   trips GitHub push protection, which no local baseline can waive.
 - **Records are named for their structure**, never by protocol id — `dotted_steps` reaches
   step `"10"`, without which the chain-ordering bug cannot be caught.

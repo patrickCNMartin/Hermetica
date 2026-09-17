@@ -71,8 +71,8 @@ def _abort_trigger(table: str, event: str, reason: str, when: str = "") -> str:
 def immutable_triggers(table: str) -> tuple[str, str]:
     """Nothing in `table` is ever updated or deleted.
 
-    For a content table the row is addressed by the hash of its own bytes, so
-    an edit is a lie — the row would no longer be what its key says it is.
+    For a content table the entry is addressed by the hash of its own bytes, so
+    an edit is a lie — the entry would no longer be what its key says it is.
     """
     return (
         _abort_trigger(table, "DELETE", "content is never deleted"),
@@ -98,7 +98,7 @@ def append_only_triggers(table: str, immutable: tuple[str, ...]) -> tuple[str, s
             when=(
                 "OLD.deprecated_at IS NOT NULL "  # already closed
                 "OR NEW.deprecated_at IS NULL "  # reopening
-                f"OR {frozen}"  # rewriting the row's identity
+                f"OR {frozen}"  # rewriting the entry's identity
             ),
         ),
     )
@@ -113,7 +113,7 @@ def format_entries(build: Callable, artefacts: Iterable, pulled_at: int | None) 
 
 
 def insert_statement(table: str, columns: tuple[str, ...]) -> str:
-    """INSERT OR IGNORE bound by name, so a reordered row cannot misalign."""
+    """INSERT OR IGNORE bound by name, so a reordered entry cannot misalign."""
     return (
         f"INSERT OR IGNORE INTO {table} ({', '.join(columns)}) "
         f"VALUES ({', '.join(':' + column for column in columns)})"
@@ -133,8 +133,8 @@ def fetch_entries(
         return []
     with connect(db, read_only=True) as conn:
         found = {
-            key: entry_type(*row)
-            for key, row in fetch_entry(
+            key: entry_type(*entry)
+            for key, entry in fetch_entry(
                 conn, table, columns, key_column, wanted
             ).items()
         }
@@ -156,8 +156,8 @@ def fetch_entry(
         return {}
     slots = ",".join("?" * len(keys))
     return {
-        row[at]: row
-        for row in conn.execute(
+        entry[at]: entry
+        for entry in conn.execute(
             f"SELECT {', '.join(columns)} FROM {table} WHERE {key_column} IN ({slots})",
             keys,
         )

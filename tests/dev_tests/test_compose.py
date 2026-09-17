@@ -6,17 +6,19 @@ a new hash closes the old interval and opens a new one. The guid is minted once
 in the template and is the identity that survives every edit."""
 
 import copy
+import json
 import sqlite3
 from pathlib import Path
 
 import pytest
 
 from compose.compose import (
-    AmbiguousProtocolError,
     NodeMismatchError,
     PipelineArtefact,
     PipelineCycleError,
     UnresolvedProtocolError,
+    UnsealedProtocolError,
+    check_nodes_sealed,
     dag_nodes,
     hydrate_pipeline,
     normalize_dag,
@@ -34,6 +36,8 @@ from compose.store import (
     write_pipeline,
 )
 from compose.templates import (
+    guids_for_nodes,
+    load_template,
     mint_template,
     pipelines_from_template,
     read_template,
@@ -56,8 +60,8 @@ from utils.intervals import active_hashes
 from utils.store import MissingHash, connect, initialize_db, verify_blobs
 
 TEMPLATE = Path(__file__).parents[2] / "config" / "pg_core_templates.yaml"
-# Its graph is written over the by-ID fixture's real protocol ids, so it can be
-# hydrated against a store built from that fixture.
+# Its nodes name the by-ID fixture's protocols by protocol_uid, so it loads
+# against a store built from that fixture.
 FIXTURE_TEMPLATE = Path(__file__).parents[1] / "fixtures" / "pipeline_template.yaml"
 
 CREATED_ON = to_epoch("2026-08-21")
@@ -156,7 +160,7 @@ class TestDatabaseBuild:
     HISTORY_COLUMNS = ["pipeline_guid", "hash", "valid_from", "deprecated_at"]
 
     def columns_of(self, db, table):
-        return [row[1] for row in query(db, f"PRAGMA table_info({table})")]
+        return [entry[1] for entry in query(db, f"PRAGMA table_info({table})")]
 
     def test_tables_are_created(self, db):
         tables = {
@@ -291,12 +295,12 @@ class TestWritePipeline:
         diff = write_pipeline(db, format_pipeline_entry([edited], LATER), LATER)
 
         assert diff["changed"] == ["abc123"]
-        rows = query(
+        entries = query(
             db,
             "SELECT valid_from, deprecated_at FROM pipeline_history "
             "ORDER BY valid_from",
         )
-        assert rows == [(CREATED_ON, LATER), (LATER, None)]
+        assert entries == [(CREATED_ON, LATER), (LATER, None)]
 
     def test_only_one_version_is_ever_active(self, db, pipeline):
         write_pipeline(db, format_pipeline_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
@@ -355,8 +359,8 @@ class TestWritePipeline:
             db, format_pipeline_entry([pipeline(DAG={"A": ["B"]})], LATER), LATER
         )
         opens = [
-            row[0]
-            for row in query(
+            entry[0]
+            for entry in query(
                 db, "SELECT valid_from FROM pipeline_history ORDER BY valid_from"
             )
         ]
@@ -436,12 +440,12 @@ class TestGetPipelines:
             ),
         )
         hashes = [
-            row[0]
-            for row in query(
+            entry[0]
+            for entry in query(
                 db, "SELECT hash FROM pipeline_content ORDER BY pipeline_guid DESC"
             )
         ]
-        assert [row.hash for row in get_pipelines(db, hashes)] == hashes
+        assert [entry.hash for entry in get_pipelines(db, hashes)] == hashes
 
     def test_an_unknown_hash_raises_rather_than_dropping_out(self, db, pipeline):
         write_pipeline(db, format_pipeline_entry([pipeline()], WRITTEN_AT), WRITTEN_AT)
@@ -574,9 +578,6 @@ class TestTemplates:
         assert len(live(db)) == 7
 
 
-# -----------------------------------------------------------------------------#
-# 8. HYDRATION — the DAG's protocol names become protocol hashes
-# -----------------------------------------------------------------------------#
 # ---------------------------------------------------------------------------#
 # 8. THE GRAPH ITSELF
 # ---------------------------------------------------------------------------#
@@ -638,42 +639,83 @@ class TestGraphShape:
 
 
 # -----------------------------------------------------------------------------#
-# 9. HYDRATION — each node's protocol becomes a protocol hash
+# 9. PROTOCOLS BY GUID — sealed on save, pinned on lock
 # -----------------------------------------------------------------------------#
+@pytest.fixture
+def protocols(tmp_path, by_id_records):
+    """A protocol store holding the whole by-ID fixture, every version live."""
+    path = str(tmp_path / "chronos_test.db")
+    initialize_db(path, PROTOCOL_SCHEMA)
+    artefacts = [
+        build_protocol_artefact(copy.deepcopy(r)) for r in by_id_records.values()
+    ]
+    write_protocols(path, format_protocol_entry(artefacts, WRITTEN_AT), WRITTEN_AT)
+    return path
+
+
+@pytest.fixture
+def active(protocols):
+    """protocol_uid -> the hash active in that store."""
+    with connect(protocols, read_only=True) as conn:
+        return active_hashes(conn, PROTOCOL_HISTORY, PROTOCOL_UID)
+
+
+@pytest.fixture
+def guid(by_id_records):
+    """protocol_id -> its protocol_guid, so tests read by the id a person knows."""
+    by_id = {str(r["id"]): r["guid"] for r in by_id_records.values()}
+    return by_id.__getitem__
+
+
+@pytest.fixture
+def two_step(pipeline, guid):
+    """lyse -> elute, each node naming its protocol by guid."""
+
+    def _two_step(**nodes) -> PipelineArtefact:
+        return pipeline(
+            DAG={"lyse": ["elute"], "elute": []},
+            nodes={"lyse": guid("568614"), "elute": guid("400843")} | nodes,
+        )
+
+    return _two_step
+
+
+def retire_protocol(protocols, uid):
+    """Close a protocol's interval — the only legal update the triggers allow."""
+    with connect(protocols) as conn:
+        conn.execute(
+            "UPDATE protocol_history SET deprecated_at = ? "
+            "WHERE protocol_uid = ? AND deprecated_at IS NULL",
+            (LATER, uid),
+        )
+
+
+class TestSealedCheck:
+    """Saving a template: every guid must name a protocol the store has held.
+    Whether that protocol is still active is the lock's question, not the save's."""
+
+    def test_known_guids_pass(self, two_step, protocols):
+        check_nodes_sealed(two_step(), protocols)
+
+    def test_an_inactive_protocol_passes(self, two_step, protocols):
+        """A template outlives the protocol versions it was drawn with."""
+        retire_protocol(protocols, "protocols_io:400843")
+        check_nodes_sealed(two_step(), protocols)
+
+    def test_a_guid_the_store_never_held_is_refused_by_node(self, two_step, protocols):
+        with pytest.raises(UnsealedProtocolError) as raised:
+            check_nodes_sealed(two_step(elute="NOPE"), protocols)
+        assert raised.value.nodes == {"elute": "NOPE"}
+
+    def test_a_bare_protocol_id_is_not_a_guid(self, two_step, protocols):
+        with pytest.raises(UnsealedProtocolError):
+            check_nodes_sealed(two_step(lyse="568614"), protocols)
+
+
 class TestHydration:
-    """`node_hashes` is what makes a pipeline reproduce: `nodes` names protocols
-    the way a human writes them, `node_hashes` pins the versions that were active
-    when it was hydrated. It is hashed, so re-hydrating onto moved protocols is a
-    new pipeline version rather than a silent edit."""
-
-    @pytest.fixture
-    def protocols(self, tmp_path, by_id_records):
-        """A protocol store holding the whole by-ID fixture, every version live."""
-        path = str(tmp_path / "chronos_test.db")
-        initialize_db(path, PROTOCOL_SCHEMA)
-        artefacts = [
-            build_protocol_artefact(copy.deepcopy(r)) for r in by_id_records.values()
-        ]
-        write_protocols(path, format_protocol_entry(artefacts, WRITTEN_AT), WRITTEN_AT)
-        return path
-
-    @pytest.fixture
-    def active(self, protocols):
-        """protocol_uid -> the hash active in that store."""
-        with connect(protocols, read_only=True) as conn:
-            return active_hashes(conn, PROTOCOL_HISTORY, PROTOCOL_UID)
-
-    @pytest.fixture
-    def two_step(self, pipeline):
-        """lyse -> elute, named by bare protocol_id."""
-
-        def _two_step(**nodes) -> PipelineArtefact:
-            return pipeline(
-                DAG={"lyse": ["elute"], "elute": []},
-                nodes={"lyse": "568614", "elute": "400843"} | nodes,
-            )
-
-        return _two_step
+    """Hydration is the lock step: each node's guid is pinned to the hash active
+    right now. `node_hashes` is hashed, so the pinned copy is its own content
+    address — which is why it lives in a lock and never in the template store."""
 
     def test_each_node_gets_its_protocols_active_hash(
         self, two_step, protocols, active
@@ -683,51 +725,21 @@ class TestHydration:
             "elute": active["protocols_io:400843"],
         }
 
-    def test_a_uid_resolves(self, two_step, protocols, active):
-        built = hydrate_pipeline(two_step(lyse="protocols_io:568614"), protocols)
-        assert built.node_hashes["lyse"] == active["protocols_io:568614"]
-
-    def test_a_guid_resolves(self, two_step, protocols, by_id_records, active):
-        guid = by_id_records["baseline"]["guid"]
-        built = hydrate_pipeline(two_step(lyse=guid), protocols)
-        assert built.node_hashes["lyse"] == active["protocols_io:568614"]
-
-    def test_one_protocol_may_run_at_two_nodes(self, pipeline, protocols, active):
+    def test_one_protocol_may_run_at_two_nodes(self, pipeline, protocols, guid):
         """The whole reason node ids exist: a repeat is two nodes, one hash."""
         built = hydrate_pipeline(
             pipeline(
                 DAG={"wash_1": ["digest"], "digest": ["wash_2"], "wash_2": []},
-                nodes={"wash_1": "568614", "digest": "319531", "wash_2": "568614"},
+                nodes={
+                    "wash_1": guid("568614"),
+                    "digest": guid("319531"),
+                    "wash_2": guid("568614"),
+                },
             ),
             protocols,
         )
         assert built.node_hashes["wash_1"] == built.node_hashes["wash_2"]
         assert built.node_hashes["digest"] != built.node_hashes["wash_1"]
-
-    def test_a_branch_survives_hydration(self, pipeline, protocols):
-        """A fork and its join must still be readable off the two graphs."""
-        built = hydrate_pipeline(
-            pipeline(
-                DAG={
-                    "lyse": ["digest_biomek", "digest_human"],
-                    "digest_human": ["elute"],
-                    "digest_biomek": ["elute"],
-                    "elute": [],
-                },
-                nodes={
-                    "lyse": "568614",
-                    "digest_human": "319531",
-                    "digest_biomek": "201297",
-                    "elute": "400843",
-                },
-            ),
-            protocols,
-        )
-        assert built.DAG["lyse"] == ["digest_biomek", "digest_human"]
-        assert len({built.node_hashes[n] for n in built.DAG["lyse"]}) == 2
-        assert built.node_hashes["elute"] not in {
-            built.node_hashes[n] for n in built.DAG["lyse"]
-        }
 
     def test_an_empty_pipeline_hydrates_to_nothing(self, pipeline, protocols):
         built = hydrate_pipeline(pipeline(DAG={}, nodes={}), protocols)
@@ -746,54 +758,23 @@ class TestHydration:
                 "no-such.db",
             )
 
-    def test_an_unknown_protocol_raises_and_names_it(self, two_step, protocols):
+    def test_an_inactive_protocol_is_refused_by_node(self, two_step, protocols, guid):
+        """A lock is a guarantee: nothing retired is pinned, and the error says
+        which step to swap out."""
+        retire_protocol(protocols, "protocols_io:400843")
         with pytest.raises(UnresolvedProtocolError) as raised:
-            hydrate_pipeline(two_step(elute="999999"), protocols)
-        assert raised.value.unresolved == ["999999"]
-
-    def test_a_deprecated_protocol_is_not_resolvable(self, two_step, protocols):
-        """Hydration pins what is active, so a retired protocol has no hash to give."""
-        with connect(protocols) as conn:
-            conn.execute(
-                "UPDATE protocol_history SET deprecated_at = ? WHERE protocol_uid = ?",
-                (LATER, "protocols_io:400843"),
-            )
-        with pytest.raises(UnresolvedProtocolError, match="400843"):
             hydrate_pipeline(two_step(), protocols)
+        assert raised.value.nodes == {"elute": guid("400843")}
 
-    def test_an_id_live_on_two_sources_raises(self, two_step, protocols, by_id_records):
-        """The collision protocol_uid exists to prevent — never resolved silently."""
-        twin = build_protocol_artefact(
-            copy.deepcopy(by_id_records["baseline"]), source="zenodo"
-        )
-        write_protocols(
-            protocols, format_protocol_entry([twin], WRITTEN_AT), WRITTEN_AT, "zenodo"
-        )
-        with pytest.raises(AmbiguousProtocolError) as raised:
-            hydrate_pipeline(two_step(), protocols)
-        assert len(raised.value.ambiguous["568614"]) == 2
+    def test_an_unknown_guid_is_refused_by_node(self, two_step, protocols):
+        with pytest.raises(UnresolvedProtocolError) as raised:
+            hydrate_pipeline(two_step(elute="NOPE"), protocols)
+        assert raised.value.nodes == {"elute": "NOPE"}
 
-    def test_the_uid_still_resolves_when_the_bare_id_is_ambiguous(
-        self, two_step, protocols, by_id_records, active
-    ):
-        twin = build_protocol_artefact(
-            copy.deepcopy(by_id_records["baseline"]), source="zenodo"
-        )
-        write_protocols(
-            protocols, format_protocol_entry([twin], WRITTEN_AT), WRITTEN_AT, "zenodo"
-        )
-        built = hydrate_pipeline(two_step(lyse="protocols_io:568614"), protocols)
-        assert built.node_hashes["lyse"] == active["protocols_io:568614"]
-
-    def test_node_hashes_are_hashed(self, two_step, protocols):
-        """The whole point — a pipeline pinning different versions is a new version."""
-        dry = build_pipeline_entry(two_step(), WRITTEN_AT)
-        wet = build_pipeline_entry(hydrate_pipeline(two_step(), protocols), WRITTEN_AT)
-        assert dry.hash != wet.hash
-
-    def test_a_new_protocol_version_rehydrates_to_a_new_pipeline_hash(
+    def test_a_new_protocol_version_pins_the_new_hash(
         self, two_step, protocols, by_id_records
     ):
+        """The template does not change when a protocol moves on; the pin does."""
         first = hydrate_pipeline(two_step(), protocols)
 
         records = copy.deepcopy(by_id_records)
@@ -808,42 +789,84 @@ class TestHydration:
         )
         second = hydrate_pipeline(two_step(), protocols)
 
-        assert first.node_hashes != second.node_hashes
+        assert first.node_hashes["lyse"] != second.node_hashes["lyse"]
         assert (
-            build_pipeline_entry(first, WRITTEN_AT).hash
-            != build_pipeline_entry(second, WRITTEN_AT).hash
+            build_pipeline_entry(two_step(), WRITTEN_AT).hash
+            == build_pipeline_entry(two_step(), LATER).hash
         )
 
-    def test_a_hydrated_template_writes_and_versions(self, db, protocols, tmp_path):
-        """End to end: the template's graph, hydrated, stored as a pipeline."""
-        source = tmp_path / "pipeline_template.yaml"
-        source.write_text(
-            FIXTURE_TEMPLATE.read_text(encoding="utf-8"), encoding="utf-8"
+    def test_node_hashes_are_hashed(self, two_step, protocols):
+        """So a pinned copy never collides with the template it came from."""
+        template = build_pipeline_entry(two_step(), WRITTEN_AT)
+        pinned = build_pipeline_entry(
+            hydrate_pipeline(two_step(), protocols), WRITTEN_AT
         )
-        built = [
-            hydrate_pipeline(p, protocols)
-            for p in pipelines_from_template(str(source), mint=True)
-        ]
+        assert template.hash != pinned.hash
 
-        assert all(p.node_hashes for p in built)
-        diff = write_pipeline(db, format_pipeline_entry(built, WRITTEN_AT), WRITTEN_AT)
+
+# -----------------------------------------------------------------------------#
+# 10. BOOTSTRAP — a hand-written template into the store
+# -----------------------------------------------------------------------------#
+class TestLoadTemplate:
+    """The config template bootstraps pipelines the team built in the old tool.
+    People write protocol_uids; the store holds guids only."""
+
+    @pytest.fixture
+    def source(self, tmp_path):
+        path = tmp_path / "pipeline_template.yaml"
+        path.write_text(FIXTURE_TEMPLATE.read_text(encoding="utf-8"), encoding="utf-8")
+        return str(path)
+
+    def test_uids_are_stored_as_guids(self, db, protocols, source, guid):
+        diff = load_template(source, db, protocols, WRITTEN_AT, mint=True)
+
         assert len(diff["new"]) == 2
+        stored = [
+            json.loads(nodes)
+            for (nodes,) in query(db, "SELECT nodes FROM pipeline_content")
+        ]
+        assert {"lyse": guid("568614"), "elute": guid("400843")} in stored
 
-    def test_an_unhydrated_template_carries_no_node_hashes(self, tmp_path):
-        source = tmp_path / "pipeline_template.yaml"
-        source.write_text(
-            FIXTURE_TEMPLATE.read_text(encoding="utf-8"), encoding="utf-8"
+    def test_a_guid_is_kept_as_written(self, pipeline, protocols, guid):
+        built = guids_for_nodes(
+            pipeline(nodes={"A": guid("568614")}, DAG={"A": []}), protocols
         )
-        assert all(
-            p.node_hashes == {} for p in pipelines_from_template(str(source), mint=True)
+        assert built.nodes == {"A": guid("568614")}
+
+    def test_an_inactive_protocol_still_loads(self, db, protocols, source):
+        retire_protocol(protocols, "protocols_io:400843")
+        assert (
+            len(load_template(source, db, protocols, WRITTEN_AT, mint=True)["new"]) == 2
         )
 
-    def test_the_shipped_config_template_is_still_unhydratable(
-        self, protocols, tmp_path
+    def test_a_bare_id_is_refused_not_guessed(self, pipeline, protocols):
+        """A bare id collides across sources — the uid exists to prevent that."""
+        with pytest.raises(UnsealedProtocolError) as raised:
+            guids_for_nodes(pipeline(nodes={"A": "568614"}, DAG={"A": []}), protocols)
+        assert raised.value.nodes == {"A": "568614"}
+
+    def test_one_bad_name_loads_nothing(self, db, protocols, source):
+        text = Path(source).read_text(encoding="utf-8")
+        Path(source).write_text(
+            text.replace("protocols_io:400843", "protocols_io:999999", 1),
+            encoding="utf-8",
+        )
+        with pytest.raises(UnsealedProtocolError):
+            load_template(source, db, protocols, WRITTEN_AT, mint=True)
+        assert live(db) == {}
+
+    def test_a_loaded_template_carries_no_hashes(self, db, protocols, source):
+        load_template(source, db, protocols, WRITTEN_AT, mint=True)
+        assert query(
+            db, "SELECT DISTINCT manifest_hash, node_hashes FROM pipeline_content"
+        ) == [(None, "{}")]
+
+    def test_the_shipped_config_template_does_not_load_yet(
+        self, db, protocols, tmp_path
     ):
-        """Its graph is placeholders — reading it works, hydrating it must not."""
+        """Its graphs are placeholders — reading it works, loading it must not."""
         source = tmp_path / "pg_core_templates.yaml"
         source.write_text(TEMPLATE.read_text(encoding="utf-8"), encoding="utf-8")
-        built = pipelines_from_template(str(source), mint=True)
-        with pytest.raises(UnresolvedProtocolError):
-            hydrate_pipeline(next(p for p in built if p.DAG), protocols)
+        with pytest.raises(UnsealedProtocolError):
+            load_template(str(source), db, protocols, WRITTEN_AT, mint=True)
+        assert live(db) == {}

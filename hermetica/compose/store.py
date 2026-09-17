@@ -12,10 +12,12 @@ from utils.constants import (
     PIPELINE_HISTORY,
 )
 from utils.dates import get_timestamp, to_epoch
-from utils.hashing import canonical_json, encode_entry, hash_bytes
+from utils.hashing import canonical_json, decode_entry, encode_entry, hash_bytes
 from utils.intervals import (
+    active_entries,
     active_hashes,
     close_intervals,
+    intervals_of,
     version_control_diff,
     write_version_control,
 )
@@ -33,11 +35,11 @@ from utils.store import (
 
 
 class InactivePipelineError(ValueError):
-    """Retiring a pipeline that has no active version."""
+    """A pipeline asked for by guid has no active version."""
 
     def __init__(self, guid: str):
         self.guid = guid
-        super().__init__(f"pipeline {guid} has no active version to retire")
+        super().__init__(f"pipeline {guid} has no active version")
 
 
 SCHEMA: tuple[str, ...] = (
@@ -174,6 +176,38 @@ def get_pipelines(
     return fetch_entries(
         db, content_table, columns, "hash", hashes, PipelineContentEntry
     )
+
+
+def active_pipelines(db: str, guid: str | None = None) -> list[dict]:
+    """Every pipeline's active version, or one pipeline's, without the blob."""
+    return active_entries(
+        db,
+        PIPELINE_HISTORY,
+        PIPELINE_CONTENT,
+        PIPELINE_GUID,
+        read_pipeline_content(),
+        guid,
+    )
+
+
+def pipeline_from_entry(entry: dict) -> PipelineArtefact:
+    """A stored pipeline back into the artefact it was built from."""
+    return PipelineArtefact(
+        guid=entry["pipeline_guid"],
+        title=entry["title"],
+        manifest_hash=entry["manifest_hash"],
+        root=entry["root"],
+        DAG=decode_entry(entry["DAG"]),
+        nodes=decode_entry(entry["nodes"]),
+        node_hashes=decode_entry(entry["node_hashes"]),
+        created_on=entry["created_on"],
+        creator=decode_entry(entry["creator"]),
+    )
+
+
+def pipeline_intervals(db: str, guid: str) -> list[dict]:
+    """Every version one pipeline has held, oldest first."""
+    return intervals_of(db, PIPELINE_HISTORY, PIPELINE_GUID, guid)
 
 
 def diff_pipelines(

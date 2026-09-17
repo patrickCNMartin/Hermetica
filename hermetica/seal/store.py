@@ -8,13 +8,20 @@ from seal.contract import ProtocolArtefact
 from utils.constants import (
     PROTOCOL_CONTENT,
     PROTOCOL_CONTENT_FIELDS,
+    PROTOCOL_GUID,
     PROTOCOL_HISTORY,
     PROTOCOL_SOURCE,
     PROTOCOL_UID,
 )
 from utils.dates import get_timestamp, to_epoch
 from utils.hashing import canonical_json, encode_entry, hash_bytes
-from utils.intervals import version_control_diff, write_version_control
+from utils.intervals import (
+    active_entries,
+    intervals_of,
+    latest_entries,
+    version_control_diff,
+    write_version_control,
+)
 from utils.store import (
     append_only_triggers,
     fetch_entries,
@@ -183,16 +190,41 @@ def get_protocols(
     )
 
 
+def active_protocols(db: str) -> list[dict]:
+    """Every protocol's active version, without its body."""
+    return active_entries(
+        db, PROTOCOL_HISTORY, PROTOCOL_CONTENT, PROTOCOL_UID, read_protocol_content()
+    )
+
+
+def latest_protocols(
+    db: str, keys: Iterable[str], by: str = PROTOCOL_GUID
+) -> dict[str, dict]:
+    """Each protocol's latest version, keyed by `protocol_guid` or `protocol_uid`.
+
+    Inactive ones are included — `deprecated_at` says which. A key no pull ever
+    sealed is absent.
+    """
+    return latest_entries(
+        db, PROTOCOL_HISTORY, PROTOCOL_CONTENT, by, keys, read_protocol_content()
+    )
+
+
+def protocol_intervals(db: str, protocol_uid: str) -> list[dict]:
+    """Every version one protocol has held, oldest first."""
+    return intervals_of(db, PROTOCOL_HISTORY, PROTOCOL_UID, protocol_uid)
+
+
 def scope_of(
     entries: Iterable[ProtocolEntry], source: str | None = None
 ) -> tuple[str, str]:
     """The (column, value) partition one pull writes into.
 
-    Read off the rows, which carry it, so a declared source cannot disagree
-    with what is being written. An empty pull has no rows to read and **must**
+    Read off the entries, which carry it, so a declared source cannot disagree
+    with what is being written. An empty pull has no entries to read and **must**
     be told: unscoped, it would deprecate every other platform by absence.
     """
-    found = sorted({row.source for row in entries})
+    found = sorted({entry.source for entry in entries})
     if source is None:
         if len(found) != 1:
             raise ValueError(

@@ -83,6 +83,7 @@ PROTOCOL_HISTORY = "protocol_history"
 # Identity is the qualified uid; the bare id alone collides across platforms.
 PROTOCOL_UID = "protocol_uid"
 PROTOCOL_ID = "protocol_id"
+PROTOCOL_GUID = "protocol_guid"
 PROTOCOL_SOURCE = "source"
 
 # -----------------------------------------------------------------------------#

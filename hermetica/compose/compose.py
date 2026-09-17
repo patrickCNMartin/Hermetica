@@ -4,24 +4,33 @@
 from dataclasses import asdict, dataclass, replace
 from graphlib import CycleError, TopologicalSorter
 
-from utils.constants import (
-    PIPELINE_HASH_FIELDS,
-    PIPELINE_METADATA_FIELDS,
-    PROTOCOL_CONTENT,
-    PROTOCOL_HISTORY,
-)
-from utils.store import connect
+from seal.store import latest_protocols
+from utils.constants import PIPELINE_HASH_FIELDS, PIPELINE_METADATA_FIELDS
 
 
 # -----------------------------------------------------------------------------#
 # Error handling
 # -----------------------------------------------------------------------------#
 class UnresolvedProtocolError(ValueError):
-    """The DAG names protocols the store holds no active version for."""
+    """Nodes whose protocol has no active version, so nothing can be pinned."""
 
-    def __init__(self, unresolved: list[str]):
-        self.unresolved = unresolved
-        super().__init__(f"no active protocol for: {', '.join(unresolved)}")
+    def __init__(self, nodes: dict[str, str]):
+        self.nodes = nodes
+        super().__init__(
+            "these nodes run a protocol with no active version — swap them for "
+            f"an active protocol before locking: {nodes}"
+        )
+
+
+class UnsealedProtocolError(ValueError):
+    """Nodes naming a protocol no pull ever sealed."""
+
+    def __init__(self, nodes: dict[str, str]):
+        self.nodes = nodes
+        super().__init__(
+            "these nodes name a protocol the store has never held — name "
+            f"protocols by protocol_guid: {nodes}"
+        )
 
 
 class NodeMismatchError(ValueError):
@@ -43,17 +52,6 @@ class PipelineCycleError(ValueError):
         super().__init__(f"the graph is not acyclic: {' -> '.join(cycle)}")
 
 
-class AmbiguousProtocolError(ValueError):
-    """One name answers for more than one active protocol."""
-
-    def __init__(self, ambiguous: dict[str, list[str]]):
-        self.ambiguous = ambiguous
-        super().__init__(
-            "these names each resolve to several active protocols, "
-            f"name them by protocol_uid instead: {ambiguous}"
-        )
-
-
 # -----------------------------------------------------------------------------#
 # CREATE COMPOSITION TEMPLATE
 # -----------------------------------------------------------------------------#
@@ -64,15 +62,16 @@ class PipelineArtefact:
     # --- hashed (HASH_FIELDS) ---------------------------------------------- #
     guid: str
     title: str
-    # None until the pipeline is pinned to a manifest; a base template is not.
+    # None on a template; set only on the pinned copy a lock carries.
     manifest_hash: str | None
     root: str | None  # starting material/ sample type
     # node id -> its successors. Node ids are the pipeline's own, not protocols',
     # so one protocol may run at several points in one graph.
     DAG: dict
-    # node id -> the protocol it runs, named however the template author wrote it
+    # node id -> the protocol_guid it runs. Never a hash: which version runs is
+    # decided when a lock is built, not when a template is saved.
     nodes: dict
-    # node id -> that protocol's hash — empty until hydrate_pipeline runs
+    # node id -> that protocol's hash — empty on a template, set by hydrate_pipeline
     node_hashes: dict
     # --- retained, never hashed (METADATA_FIELDS) -------------------------- #
     created_on: int
@@ -132,54 +131,34 @@ def validate_dag(dag: dict, nodes: dict) -> None:
         raise PipelineCycleError(list(cycle.args[1])) from cycle
 
 
-def active_protocol_aliases(
-    db: str,
-    protocol_content: str = PROTOCOL_CONTENT,
-    protocol_history: str = PROTOCOL_HISTORY,
-) -> dict[str, set[str]]:
-    """Every name an active protocol answers to -> the hashes that name reaches.
-
-    A DAG may name a protocol by `protocol_uid`, `protocol_guid` or the bare
-    `protocol_id`. The bare id is the one that collides across sources, so this
-    returns a set per name and leaves the decision to the caller.
-    """
-    aliases: dict[str, set[str]] = {}
-    with connect(db, read_only=True) as conn:
-        rows = conn.execute(
-            "SELECT content.protocol_uid, content.protocol_id, "
-            "content.protocol_guid, content.hash "
-            f"FROM {protocol_history} history "
-            f"JOIN {protocol_content} content ON content.hash = history.hash "
-            "WHERE history.deprecated_at IS NULL"
-        )
-        for *names, digest in rows:
-            for name in names:
-                aliases.setdefault(str(name), set()).add(digest)
-    return aliases
+def check_nodes_sealed(pipeline: PipelineArtefact, db: str) -> None:
+    """Refuse a node naming a guid the protocol store never held. An inactive
+    protocol passes — a template outlives the versions it was drawn with."""
+    known = latest_protocols(db, pipeline.nodes.values())
+    if unsealed := {
+        node: guid for node, guid in pipeline.nodes.items() if guid not in known
+    }:
+        raise UnsealedProtocolError(unsealed)
 
 
 def hydrate_pipeline(pipeline: PipelineArtefact, db: str) -> PipelineArtefact:
-    """Resolve each node's protocol to the hash active right now.
+    """Pin each node's protocol_guid to the hash active right now.
 
-    Returns a new artefact carrying `node_hashes`, which is hashed — so hydrating
-    against a store where one protocol has moved on is a new pipeline version,
-    which is the point. Two nodes running one protocol simply share a hash.
+    This is the lock step, never the save step: the result carries
+    `node_hashes`, which belong in a lock and not in the template store. A node
+    whose protocol is not active has nothing to pin and is refused by name.
     """
     validate_dag(pipeline.DAG, pipeline.nodes)
-    aliases = active_protocol_aliases(db)
-    wanted = sorted({str(name) for name in pipeline.nodes.values()})
-
-    if unresolved := [name for name in wanted if not aliases.get(name)]:
-        raise UnresolvedProtocolError(unresolved)
-    if ambiguous := {
-        name: sorted(aliases[name]) for name in wanted if len(aliases[name]) > 1
+    latest = latest_protocols(db, pipeline.nodes.values())
+    if unresolved := {
+        node: guid
+        for node, guid in pipeline.nodes.items()
+        if guid not in latest or latest[guid]["deprecated_at"] is not None
     }:
-        raise AmbiguousProtocolError(ambiguous)
-
-    resolved = {name: next(iter(aliases[name])) for name in wanted}
+        raise UnresolvedProtocolError(unresolved)
     return replace(
         pipeline,
         node_hashes={
-            str(node): resolved[str(name)] for node, name in pipeline.nodes.items()
+            node: latest[guid]["hash"] for node, guid in pipeline.nodes.items()
         },
     )

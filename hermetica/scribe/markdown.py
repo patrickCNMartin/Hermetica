@@ -95,8 +95,8 @@ def collect_bodies(
         return bodies
     if not db:
         raise UnrenderableProtocolError("bodies", missing)
-    for row in get_protocols(db, missing):
-        bodies[row.hash] = json.loads(row.protocol)
+    for entry in get_protocols(db, missing):
+        bodies[entry.hash] = json.loads(entry.protocol)
     return bodies
 
 
@@ -120,21 +120,21 @@ def collect_display(
     if unresolved:
         if not db:
             raise UnrenderableProtocolError("titles", unresolved)
-        rows = get_protocols(
+        stored = get_protocols(
             db, [entries[pid]["hash"] for pid in unresolved], with_blob=False
         )
-        for pid, row in zip(unresolved, rows):
+        for pid, entry in zip(unresolved, stored):
             display[pid] = {
-                "source": row.source,
-                "protocol_id": row.protocol_id,
-                "title": row.title,
-                "executor": row.executor,
-                "doi": row.doi,
-                "reserved_doi": row.reserved_doi,
-                "uri": row.uri,
-                "created_on": as_iso(row.created_on) if row.created_on else None,
-                "creator": json.loads(row.creator) if row.creator else None,
-                "authors": json.loads(row.authors) if row.authors else None,
+                "source": entry.source,
+                "protocol_id": entry.protocol_id,
+                "title": entry.title,
+                "executor": entry.executor,
+                "doi": entry.doi,
+                "reserved_doi": entry.reserved_doi,
+                "uri": entry.uri,
+                "created_on": as_iso(entry.created_on) if entry.created_on else None,
+                "creator": json.loads(entry.creator) if entry.creator else None,
+                "authors": json.loads(entry.authors) if entry.authors else None,
             }
     return display
 
@@ -159,7 +159,7 @@ def format_people(value) -> str:
 
 def render_facts(pid: str, entry: dict, fields: dict, body: dict | None) -> list[str]:
     """The verification block under a protocol heading."""
-    rows = [
+    facts = [
         ("protocol_uid", pid),
         ("source", fields.get("source")),
         ("protocol_id", fields.get("protocol_id")),
@@ -167,9 +167,9 @@ def render_facts(pid: str, entry: dict, fields: dict, body: dict | None) -> list
         ("hash", entry.get("hash")),
     ]
     if body:
-        rows += [("version_class", body.get("version_class"))]
+        facts += [("version_class", body.get("version_class"))]
     creator = fields.get("creator") or {}
-    rows += [
+    facts += [
         ("executor", fields.get("executor")),
         ("doi", fields.get("doi")),
         ("reserved_doi", fields.get("reserved_doi")),
@@ -178,7 +178,7 @@ def render_facts(pid: str, entry: dict, fields: dict, body: dict | None) -> list
         ("affiliation", creator.get("affiliation")),
         ("authors", format_people(fields.get("authors"))),
     ]
-    return [f"| {key} | {value} |" for key, value in rows if value not in (None, "")]
+    return [f"| {key} | {value} |" for key, value in facts if value not in (None, "")]
 
 
 def render_steps(body: dict) -> list[str]:

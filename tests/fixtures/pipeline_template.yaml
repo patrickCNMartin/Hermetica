@@ -1,37 +1,32 @@
 # yaml file for protocol templates
-# By id - maybe should have a protcol title situation here?
-# Otherwise kind of annoying to work with if you want to add new
-# templates
+# Nodes name a protocol by protocol_uid ("<source>:<id>") or by protocol_guid —
+# never by bare id, which collides across sources. load_template stores guids.
 #
 # `nodes` says which protocol each step runs; `dag` wires the steps together.
 # Node ids are the pipeline's own, so the same protocol may run at more than one
-# step. `node_hashes` is filled by hydrate_pipeline, never by hand.
+# step. A template never carries hashes: versions are pinned when a lock is built.
 creator: "Homunculus Pat"
 created_on: "2026-08-21"
 pipelines:
     Some_cool_protocol:
         pipeline_guid: null
-        manifest_hash: null
         root: "Filtrate vortex resuspend protocol"
         nodes:
-            lyse: "568614"
-            digest_human: "319531"
-            digest_biomek: "201297"
-            elute: "400843"
+            lyse: "protocols_io:568614"
+            digest_human: "protocols_io:319531"
+            digest_biomek: "protocols_io:201297"
+            elute: "protocols_io:400843"
         dag:
             lyse: ["digest_biomek", "digest_human"]
             digest_human: ["elute"]
             digest_biomek: ["elute"]
             elute: []
-        node_hashes: null
     Some_other_protocol:
         pipeline_guid: null
-        manifest_hash: null
         root: "Filtrate vortex resuspend protocol"
         nodes:
-            lyse: "568614"
-            elute: "400843"
+            lyse: "protocols_io:568614"
+            elute: "protocols_io:400843"
         dag:
             lyse: ["elute"]
             elute: []
-        node_hashes: null

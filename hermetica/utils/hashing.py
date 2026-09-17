@@ -54,7 +54,14 @@ def hash_of(payload: Any) -> str:
 # COLUMN COERCION
 # -----------------------------------------------------------------------------#
 def encode_entry(value: Any) -> Any:
-    if value is None or isinstance(value, (int, float, str)):
+    """Numbers stay numbers for INTEGER columns; everything else is JSON text.
+
+    A string is encoded too, or `decode_entry` could not tell `"Ada"` from a
+    JSON document and a plain-string creator would never read back.
+    """
+    if value is None or (
+        isinstance(value, (int, float)) and not isinstance(value, bool)
+    ):
         return value
     return canonical_json(value).decode("ascii")
 

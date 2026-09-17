@@ -8,7 +8,13 @@ from typing import NamedTuple
 
 import pytest
 
-from utils.hashing import canonical_json, encode_entry, hash_bytes, hash_of
+from utils.hashing import (
+    canonical_json,
+    decode_entry,
+    encode_entry,
+    hash_bytes,
+    hash_of,
+)
 from utils.intervals import diff_entries, incoming_hashes
 from utils.store import connect, fetch_entry, initialize_db, insert_statement
 
@@ -43,9 +49,18 @@ class TestHashOf:
 
 
 class TestAsColumn:
-    @pytest.mark.parametrize("value", [None, 1, 1.5, "text"])
-    def test_natives_pass_through_untouched(self, value):
+    @pytest.mark.parametrize("value", [None, 1, 1.5])
+    def test_numbers_and_none_pass_through_untouched(self, value):
         assert encode_entry(value) is value
+
+    @pytest.mark.parametrize(
+        "value", ["Ada", "", "123", "null", {"name": "Ada"}, ["a", 1], True]
+    )
+    def test_everything_else_round_trips(self, value):
+        """A plain string used to be stored raw and fail to decode — and one that
+        looked like JSON (`"123"`) would have decoded as the wrong type."""
+        assert decode_entry(encode_entry(value)) == value
+        assert type(decode_entry(encode_entry(value))) is type(value)
 
     def test_a_dict_becomes_canonical_json_text(self):
         assert encode_entry({"b": 2, "a": 1}) == '{"a":1,"b":2}'
@@ -58,20 +73,20 @@ class TestAsColumn:
 
     def test_bool_is_not_treated_as_an_int(self):
         """True is an int subclass, so this pins which branch it takes."""
-        assert encode_entry(True) is True
+        assert encode_entry(True) == "true"
 
 
 # -----------------------------------------------------------------------------#
 # DIFF
 # -----------------------------------------------------------------------------#
 class TestIncomingHashes:
-    class Row(NamedTuple):
+    class Entry(NamedTuple):
         thing_id: str
         hash: str
 
     def test_entries_become_an_id_to_hash_map(self):
-        rows = [self.Row("1", "sha256:aaa"), self.Row("2", "sha256:bbb")]
-        assert incoming_hashes(rows, "thing_id") == {
+        entries = [self.Entry("1", "sha256:aaa"), self.Entry("2", "sha256:bbb")]
+        assert incoming_hashes(entries, "thing_id") == {
             "1": "sha256:aaa",
             "2": "sha256:bbb",
         }
@@ -131,7 +146,7 @@ class TestDiffEntries:
 # -----------------------------------------------------------------------------#
 class TestInsertStatement:
     def test_it_binds_by_name(self):
-        """Named binding is what stops a reordered row writing to wrong columns."""
+        """Named binding is what stops a reordered entry writing to wrong columns."""
         assert insert_statement("thing", ("hash", "name")) == (
             "INSERT OR IGNORE INTO thing (hash, name) VALUES (:hash, :name)"
         )
@@ -139,10 +154,10 @@ class TestInsertStatement:
     def test_it_ignores_a_row_already_stored(self, db_path):
         initialize_db(db_path, SCHEMA)
         statement = insert_statement("thing", ("hash", "name", "blob"))
-        row = {"hash": "sha256:a", "name": "first", "blob": "{}"}
+        entry = {"hash": "sha256:a", "name": "first", "blob": "{}"}
         with connect(db_path) as conn:
-            conn.execute(statement, row)
-            conn.execute(statement, {**row, "name": "second"})
+            conn.execute(statement, entry)
+            conn.execute(statement, {**entry, "name": "second"})
         with connect(db_path, read_only=True) as conn:
             assert conn.execute("SELECT name FROM thing").fetchall() == [("first",)]
 

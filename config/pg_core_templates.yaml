@@ -6,7 +6,7 @@
 #
 # `nodes` says which protocol each step runs; `dag` wires the steps together.
 # Node ids are the pipeline's own, so the same protocol may run at more than one
-# step. The graphs below are still placeholders and will not hydrate.
+# step. The graphs below are still placeholders and will not load.
 
 
 creator: "Homunculus Pat"
@@ -14,56 +14,42 @@ created_on: "2026-08-21"
 pipelines:
     CryPrep_biomek_base:
         pipeline_guid: null
-        manifest_hash: null
         root: null
         nodes: {A: "A", B: "B", C: "C", D: "D"}
         dag: {A: ["B", "C"], B: ["D"], C: ["D"], D: []}
-        node_hashes: null
 
     FFPE_digestion_base:
         pipeline_guid: null
-        manifest_hash: null
         root: null
         nodes: {}
         dag: {}
-        node_hashes: null
 
     In_gel_digestion_base:
         pipeline_guid: null
-        manifest_hash: null
         root: null
         nodes: {}
         dag: {}
-        node_hashes: null
 
     IP_base:
         pipeline_guid: null
-        manifest_hash: null
         root: null
         nodes: {}
         dag: {}
-        node_hashes: null
 
     IPMS_base:
         pipeline_guid: null
-        manifest_hash: null
         root: null
         nodes: {}
         dag: {}
-        node_hashes: null
 
     FF_SDS_base:
         pipeline_guid: null
-        manifest_hash: null
         root: null
         nodes: {}
         dag: {}
-        node_hashes: null
 
     Frozen_tissue_base:
         pipeline_guid: null
-        manifest_hash: null
         root: null
         nodes: {}
         dag: {}
-        node_hashes: null

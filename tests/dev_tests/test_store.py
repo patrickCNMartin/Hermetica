@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------#
-# TESTS — artefacts -> rows -> sqlite, and the temporal model on top
+# TESTS — artefacts -> entries -> sqlite, and the temporal model on top
 # -----------------------------------------------------------------------------#
 """The invariant everything here defends: at any instant each protocol_id has at
 most one active version. That is what makes "the protocols as of date D" a single
@@ -65,7 +65,7 @@ def protocol(record):
     return _protocol
 
 
-def rows_for(protocols, pulled_at=None):
+def entries_for(protocols, pulled_at=None):
     return format_protocol_entry(
         [build_protocol_artefact(p) for p in protocols], pulled_at
     )
@@ -87,7 +87,7 @@ def query(db: str, sql: str, *params):
 
 def columns_of(db: str, table: str) -> list[str]:
     with connect(db, read_only=True) as conn:
-        return [row[1] for row in conn.execute(f"PRAGMA table_info({table})")]
+        return [entry[1] for entry in conn.execute(f"PRAGMA table_info({table})")]
 
 
 def live_hashes(db: str) -> dict[str, str]:
@@ -107,7 +107,7 @@ def active_count(db: str) -> list[tuple]:
 def overlaps(db: str) -> list[tuple]:
     """protocol_ids whose validity intervals overlap at ANY instant.
 
-    Stronger than active_count, which only sees rows open right now: a reopened
+    Stronger than active_count, which only sees entries open right now: a reopened
     interval can sit inside a closed one and still make two versions resolve as
     active for a past date T.
     """
@@ -251,9 +251,9 @@ class TestConnectionLifetime:
         opened = self.spy_on_connections(monkeypatch)
 
         initialize_db(db_path, SCHEMA)
-        rows = rows_for([protocol(1)])
-        write_protocols(db_path, rows)
-        diff_protocols(db_path, rows)
+        entries = entries_for([protocol(1)])
+        write_protocols(db_path, entries)
+        diff_protocols(db_path, entries)
         verify_blobs(db_path, "protocol_content", "hash", "protocol")
 
         assert len(opened) == 4
@@ -317,7 +317,7 @@ class TestHistoryIsAppendOnly:
     @pytest.fixture
     def written(self, db_path, protocol):
         initialize_db(db_path, SCHEMA)
-        write_protocols(db_path, rows_for([protocol(1)]))
+        write_protocols(db_path, entries_for([protocol(1)]))
         return db_path
 
     def refuses(self, db: str, sql: str) -> None:
@@ -382,7 +382,7 @@ class TestHistoryIsAppendOnly:
 class TestDataInsertion:
     def test_rows_are_inserted(self, db_path, protocol):
         initialize_db(db_path, SCHEMA)
-        diff = write_protocols(db_path, rows_for([protocol(1), protocol(2)]))
+        diff = write_protocols(db_path, entries_for([protocol(1), protocol(2)]))
 
         assert diff["new"] == uids(1, 2)
         assert query(db_path, "SELECT COUNT(*) FROM protocol_content") == [(2,)]
@@ -392,7 +392,7 @@ class TestDataInsertion:
         raw = protocol(1, title="My Protocol")
         built = build_protocol_artefact(raw)
         initialize_db(db_path, SCHEMA)
-        write_protocols(db_path, rows_for([raw]))
+        write_protocols(db_path, entries_for([raw]))
 
         stored = query(
             db_path,
@@ -414,7 +414,7 @@ class TestDataInsertion:
         raw = protocol(1, archetype="reserved_doi")
         built = build_protocol_artefact(raw)
         initialize_db(db_path, SCHEMA)
-        write_protocols(db_path, rows_for([raw]))
+        write_protocols(db_path, entries_for([raw]))
 
         doi, reserved, uri = query(
             db_path, "SELECT doi, reserved_doi, uri FROM protocol_content"
@@ -425,7 +425,7 @@ class TestDataInsertion:
 
     def test_history_points_at_stored_content(self, db_path, protocol):
         initialize_db(db_path, SCHEMA)
-        write_protocols(db_path, rows_for([protocol(1)]))
+        write_protocols(db_path, entries_for([protocol(1)]))
 
         assert query(
             db_path,
@@ -436,7 +436,7 @@ class TestDataInsertion:
 class TestMetadataColumns:
     def test_authors_and_creator_are_stored_as_json(self, db_path, protocol):
         initialize_db(db_path, SCHEMA)
-        write_protocols(db_path, rows_for([protocol(1)]))
+        write_protocols(db_path, entries_for([protocol(1)]))
 
         authors, creator = query(
             db_path, "SELECT authors, creator FROM protocol_content"
@@ -447,17 +447,19 @@ class TestMetadataColumns:
     def test_attribution_change_is_not_a_version_change(self, db_path, protocol):
         """Re-attribution is metadata, not content — no new hash."""
         initialize_db(db_path, SCHEMA)
-        write_protocols(db_path, rows_for([protocol(1)]))
+        write_protocols(db_path, entries_for([protocol(1)]))
 
         reattributed = protocol(1, creator={"name": "B. Other", "username": "b.other"})
-        assert diff_protocols(db_path, rows_for([reattributed]))["unchanged"] == uids(1)
+        assert diff_protocols(db_path, entries_for([reattributed]))[
+            "unchanged"
+        ] == uids(1)
 
     def test_missing_metadata_is_null_not_an_error(self, db_path, protocol):
         raw = protocol(1)
         raw["authors"] = None
         raw["creator"] = None
         initialize_db(db_path, SCHEMA)
-        write_protocols(db_path, rows_for([raw]))
+        write_protocols(db_path, entries_for([raw]))
 
         assert query(db_path, "SELECT authors, creator FROM protocol_content") == [
             (None, None)
@@ -465,11 +467,11 @@ class TestMetadataColumns:
 
     def test_write_is_idempotent(self, db_path, protocol):
         """Re-pulling identical content is a no-op (content-hash primary key)."""
-        rows = rows_for([protocol(1), protocol(2)])
+        entries = entries_for([protocol(1), protocol(2)])
         initialize_db(db_path, SCHEMA)
-        assert write_protocols(db_path, rows)["new"] == uids(1, 2)
+        assert write_protocols(db_path, entries)["new"] == uids(1, 2)
 
-        diff = write_protocols(db_path, rows)
+        diff = write_protocols(db_path, entries)
         assert diff["unchanged"] == uids(1, 2)
         assert diff["new"] == []
         assert query(db_path, "SELECT COUNT(*) FROM protocol_history") == [(2,)]
@@ -481,48 +483,48 @@ class TestMetadataColumns:
 class TestValidFrom:
     def test_backdates_to_created_on(self, protocol):
         """A protocol authored before this store existed opens at creation."""
-        row = build_protocol_entry(
+        entry = build_protocol_entry(
             build_protocol_artefact(protocol(1)), pulled_at=PULLED_AT
         )
-        assert row.valid_from == CREATED_ON
-        assert as_date(row.valid_from) == "2025-04-29"
+        assert entry.valid_from == CREATED_ON
+        assert as_date(entry.valid_from) == "2025-04-29"
 
     def test_falls_back_to_pull_time(self, protocol):
         """No created_on -> the interval opens when we first saw it."""
-        row = build_protocol_entry(
+        entry = build_protocol_entry(
             build_protocol_artefact(protocol(1, created_on=None)),
             pulled_at=PULLED_AT,
         )
-        assert row.created_on is None
-        assert row.valid_from == PULLED_AT
+        assert entry.created_on is None
+        assert entry.valid_from == PULLED_AT
 
     def test_falsy_created_on_falls_back(self, protocol):
         """created_on of 0 is not a real epoch — treat it as absent."""
-        row = build_protocol_entry(
+        entry = build_protocol_entry(
             build_protocol_artefact(protocol(1, created_on=0)), pulled_at=PULLED_AT
         )
-        assert row.valid_from == PULLED_AT
+        assert entry.valid_from == PULLED_AT
 
     def test_one_pull_shares_one_timestamp(self, protocol):
-        """Every row in a batch gets the same fallback time, not per-row clocks."""
-        rows = rows_for(
+        """Every entry in a batch gets the same fallback time, not per-entry clocks."""
+        entries = entries_for(
             [protocol(1, created_on=None), protocol(2, created_on=None)], PULLED_AT
         )
-        assert {r.valid_from for r in rows} == {PULLED_AT}
+        assert {r.valid_from for r in entries} == {PULLED_AT}
 
     def test_dates_are_stored_as_integers(self, protocol):
         """The store holds epoch seconds only — no date strings."""
-        row = build_protocol_entry(
+        entry = build_protocol_entry(
             build_protocol_artefact(protocol(1)), pulled_at=PULLED_AT
         )
-        assert isinstance(row.created_on, int)
-        assert isinstance(row.valid_from, int)
+        assert isinstance(entry.created_on, int)
+        assert isinstance(entry.valid_from, int)
 
     def test_created_on_does_not_affect_the_stored_blob(self, protocol):
         """The blob holds identity only, so it still rehashes to its key."""
-        row = build_protocol_entry(build_protocol_artefact(protocol(1)))
-        assert "created_on" not in json.loads(row.protocol)
-        assert hash_bytes(canonical_json(json.loads(row.protocol))) == row.hash
+        entry = build_protocol_entry(build_protocol_artefact(protocol(1)))
+        assert "created_on" not in json.loads(entry.protocol)
+        assert hash_bytes(canonical_json(json.loads(entry.protocol))) == entry.hash
 
     def test_only_the_first_version_backdates(self, db_path, protocol):
         """A later version opens at the pull, not at the protocol's birthday.
@@ -533,9 +535,11 @@ class TestValidFrom:
         """
         initialize_db(db_path, SCHEMA)
         write_protocols(
-            db_path, rows_for([protocol(1, title="Original")], PULLED_AT), PULLED_AT
+            db_path, entries_for([protocol(1, title="Original")], PULLED_AT), PULLED_AT
         )
-        write_protocols(db_path, rows_for([protocol(1, title="Edited")], LATER), LATER)
+        write_protocols(
+            db_path, entries_for([protocol(1, title="Edited")], LATER), LATER
+        )
 
         assert query(
             db_path,
@@ -549,8 +553,8 @@ class TestValidFrom:
 # -----------------------------------------------------------------------------#
 class TestStoredHashIntegrity:
     def test_row_hash_is_the_hash_of_its_own_blob(self, protocol):
-        row = build_protocol_entry(build_protocol_artefact(protocol(1)))
-        assert hash_bytes(row.protocol.encode("ascii")) == row.hash
+        entry = build_protocol_entry(build_protocol_artefact(protocol(1)))
+        assert hash_bytes(entry.protocol.encode("ascii")) == entry.hash
 
     def test_row_hash_matches_the_contract_hash(self, protocol):
         """store.py and contract.py must not drift into two hash schemes."""
@@ -560,12 +564,12 @@ class TestStoredHashIntegrity:
     def test_the_blob_is_serialized_once(self, protocol):
         """The entry hashes the exact bytes it stores — no re-serialization."""
         built = build_protocol_artefact(protocol(1))
-        row = build_protocol_entry(built)
-        assert row.protocol.encode("ascii") == canonical_json(built.hashable())
+        entry = build_protocol_entry(built)
+        assert entry.protocol.encode("ascii") == canonical_json(built.hashable())
 
     def test_stored_blob_rehashes_to_its_key(self, db_path, protocol):
         initialize_db(db_path, SCHEMA)
-        write_protocols(db_path, rows_for([protocol(1), protocol(2)]))
+        write_protocols(db_path, entries_for([protocol(1), protocol(2)]))
 
         for stored_hash, blob in query(
             db_path, "SELECT hash, protocol FROM protocol_content"
@@ -574,13 +578,13 @@ class TestStoredHashIntegrity:
 
     def test_verify_passes_on_untampered_db(self, db_path, protocol):
         initialize_db(db_path, SCHEMA)
-        write_protocols(db_path, rows_for([protocol(1)]))
+        write_protocols(db_path, entries_for([protocol(1)]))
         assert verify_blobs(db_path, "protocol_content", "hash", "protocol") == []
 
     def test_verify_catches_a_blob_that_does_not_match_its_key(self, db_path):
-        """A row whose blob does not hash to its own key must be named.
+        """A entry whose blob does not hash to its own key must be named.
 
-        Built by INSERT, not by editing a good row — content is immutable in the
+        Built by INSERT, not by editing a good entry — content is immutable in the
         schema. The corruption this guards against never arrives through SQL
         anyway: bit-rot, a partial write, a restore from a bad backup.
         """
@@ -600,7 +604,7 @@ class TestStoredHashIntegrity:
         """NFD input is normalized once, so the stored blob still verifies."""
         nfd = unicodedata.normalize("NFD", "Protocole café")
         initialize_db(db_path, SCHEMA)
-        write_protocols(db_path, rows_for([protocol(1, title=nfd)]))
+        write_protocols(db_path, entries_for([protocol(1, title=nfd)]))
         assert verify_blobs(db_path, "protocol_content", "hash", "protocol") == []
 
 
@@ -611,15 +615,15 @@ class TestGetContent:
     @pytest.fixture
     def stocked(self, db_path, protocol):
         initialize_db(db_path, SCHEMA)
-        rows = rows_for([protocol(1), protocol(2), protocol(3)])
-        write_protocols(db_path, rows)
-        return db_path, [r.hash for r in rows]
+        entries = entries_for([protocol(1), protocol(2), protocol(3)])
+        write_protocols(db_path, entries)
+        return db_path, [r.hash for r in entries]
 
     def test_returns_rows_in_the_order_asked_for(self, stocked):
         """Not the order sqlite happens to return — a lock pins an ordered set."""
         db, hashes = stocked
         wanted = [hashes[2], hashes[0], hashes[1]]
-        assert [row.hash for row in get_protocols(db, wanted)] == wanted
+        assert [entry.hash for entry in get_protocols(db, wanted)] == wanted
 
     def test_an_unknown_hash_raises(self, stocked):
         """A bad pin silently shrinking a lock is the failure this guards."""
@@ -641,14 +645,14 @@ class TestGetContent:
     def test_blob_is_omitted_when_not_asked_for(self, stocked):
         """The blob dwarfs every other column; a pin set does not need it."""
         db, hashes = stocked
-        rows = get_protocols(db, hashes, with_blob=False)
-        assert all(row.protocol is None for row in rows)
-        assert all(row.protocol_id for row in rows)
+        entries = get_protocols(db, hashes, with_blob=False)
+        assert all(entry.protocol is None for entry in entries)
+        assert all(entry.protocol_id for entry in entries)
 
     def test_blob_is_the_stored_bytes(self, stocked):
         db, hashes = stocked
-        for row in get_protocols(db, hashes):
-            assert hash_bytes(row.protocol.encode("ascii")) == row.hash
+        for entry in get_protocols(db, hashes):
+            assert hash_bytes(entry.protocol.encode("ascii")) == entry.hash
 
     def test_a_repeated_hash_is_returned_twice(self, stocked):
         db, hashes = stocked
@@ -661,7 +665,7 @@ class TestGetContent:
 class TestChangeDetection:
     def test_empty_db_sees_everything_as_new(self, db_path, protocol):
         initialize_db(db_path, SCHEMA)
-        diff = diff_protocols(db_path, rows_for([protocol(1), protocol(2)]))
+        diff = diff_protocols(db_path, entries_for([protocol(1), protocol(2)]))
 
         assert diff["new"] == uids(1, 2)
         assert diff["changed"] == []
@@ -670,10 +674,10 @@ class TestChangeDetection:
 
     def test_identical_pull_is_all_unchanged(self, db_path, protocol):
         initialize_db(db_path, SCHEMA)
-        rows = rows_for([protocol(1), protocol(2)])
-        write_protocols(db_path, rows)
+        entries = entries_for([protocol(1), protocol(2)])
+        write_protocols(db_path, entries)
 
-        diff = diff_protocols(db_path, rows)
+        diff = diff_protocols(db_path, entries)
         assert diff["unchanged"] == uids(1, 2)
         assert diff["new"] == []
         assert diff["changed"] == []
@@ -681,37 +685,37 @@ class TestChangeDetection:
     def test_edited_protocol_is_changed_not_new(self, db_path, protocol):
         """Same protocol_id, different content hash -> changed."""
         initialize_db(db_path, SCHEMA)
-        write_protocols(db_path, rows_for([protocol(1, title="Original")]))
+        write_protocols(db_path, entries_for([protocol(1, title="Original")]))
 
-        diff = diff_protocols(db_path, rows_for([protocol(1, title="Edited")]))
+        diff = diff_protocols(db_path, entries_for([protocol(1, title="Edited")]))
         assert diff["changed"] == uids(1)
         assert diff["new"] == []
 
     def test_request_time_noise_is_not_a_change(self, db_path, protocol):
         """The point of the allowlist: noise must not read as an edit."""
         initialize_db(db_path, SCHEMA)
-        write_protocols(db_path, rows_for([protocol(1)]))
+        write_protocols(db_path, entries_for([protocol(1)]))
 
         noisy = protocol(1)
         noisy["stats"] = {"number_of_views": 999_999}
         noisy["image"] = {"source": "https://x.example.org/y.jpg?Policy=NEW-TOKEN"}
 
-        diff = diff_protocols(db_path, rows_for([noisy]))
+        diff = diff_protocols(db_path, entries_for([noisy]))
         assert diff["unchanged"] == uids(1)
         assert diff["changed"] == []
 
     def test_dropped_protocol_is_absent(self, db_path, protocol):
         """Content-addressing cannot see absence — the id-set diff has to."""
         initialize_db(db_path, SCHEMA)
-        write_protocols(db_path, rows_for([protocol(1), protocol(2)]))
+        write_protocols(db_path, entries_for([protocol(1), protocol(2)]))
 
-        diff = diff_protocols(db_path, rows_for([protocol(1)]))
+        diff = diff_protocols(db_path, entries_for([protocol(1)]))
         assert diff["absent"] == uids(2)
         assert diff["unchanged"] == uids(1)
 
     def test_active_hashes_ignores_deprecated(self, db_path, protocol):
         initialize_db(db_path, SCHEMA)
-        write_protocols(db_path, rows_for([protocol(1)]))
+        write_protocols(db_path, entries_for([protocol(1)]))
         with connect(db_path) as conn:
             conn.execute("UPDATE protocol_history SET deprecated_at = 1")
 
@@ -726,9 +730,11 @@ class TestWritePath:
         """A new hash closes the prior interval and opens a new one."""
         initialize_db(db_path, SCHEMA)
         write_protocols(
-            db_path, rows_for([protocol(1, title="Original")], PULLED_AT), PULLED_AT
+            db_path, entries_for([protocol(1, title="Original")], PULLED_AT), PULLED_AT
         )
-        write_protocols(db_path, rows_for([protocol(1, title="Edited")], LATER), LATER)
+        write_protocols(
+            db_path, entries_for([protocol(1, title="Edited")], LATER), LATER
+        )
 
         history = query(
             db_path,
@@ -744,10 +750,10 @@ class TestWritePath:
         """A protocol that vanishes upstream is closed by the id-set diff."""
         initialize_db(db_path, SCHEMA)
         write_protocols(
-            db_path, rows_for([protocol(1), protocol(2)], PULLED_AT), PULLED_AT
+            db_path, entries_for([protocol(1), protocol(2)], PULLED_AT), PULLED_AT
         )
 
-        diff = write_protocols(db_path, rows_for([protocol(1)], LATER), LATER)
+        diff = write_protocols(db_path, entries_for([protocol(1)], LATER), LATER)
 
         assert diff["absent"] == uids(2)
         assert set(live_hashes(db_path)) == set(uids(1))
@@ -761,9 +767,11 @@ class TestWritePath:
         """Old content stays resolvable by hash forever, so pins reproduce."""
         initialize_db(db_path, SCHEMA)
         write_protocols(
-            db_path, rows_for([protocol(1), protocol(2)], PULLED_AT), PULLED_AT
+            db_path, entries_for([protocol(1), protocol(2)], PULLED_AT), PULLED_AT
         )
-        write_protocols(db_path, rows_for([protocol(1, title="Edited")], LATER), LATER)
+        write_protocols(
+            db_path, entries_for([protocol(1, title="Edited")], LATER), LATER
+        )
 
         # id-2 deprecated by absence, id-1's first version by change:
         # three distinct blobs, none deleted.
@@ -773,9 +781,11 @@ class TestWritePath:
     def test_deprecated_content_is_still_readable(self, db_path, protocol):
         """The claim that makes a pinned manifest reproduce years later."""
         initialize_db(db_path, SCHEMA)
-        first = rows_for([protocol(1, title="Original")], PULLED_AT)
+        first = entries_for([protocol(1, title="Original")], PULLED_AT)
         write_protocols(db_path, first, PULLED_AT)
-        write_protocols(db_path, rows_for([protocol(1, title="Edited")], LATER), LATER)
+        write_protocols(
+            db_path, entries_for([protocol(1, title="Edited")], LATER), LATER
+        )
 
         assert get_protocols(db_path, [first[0].hash])[0].title == "Original"
 
@@ -785,7 +795,7 @@ class TestWritePath:
         for title, stamp in [("v1", PULLED_AT), ("v2", LATER), ("v3", LATER + 1)]:
             write_protocols(
                 db_path,
-                rows_for([protocol(1, title=title), protocol(2)], stamp),
+                entries_for([protocol(1, title=title), protocol(2)], stamp),
                 stamp,
             )
 
@@ -797,7 +807,9 @@ class TestWritePath:
         """Each interval starts exactly where the previous one closed."""
         initialize_db(db_path, SCHEMA)
         for title, stamp in [("v1", PULLED_AT), ("v2", LATER), ("v3", LATER + 1)]:
-            write_protocols(db_path, rows_for([protocol(1, title=title)], stamp), stamp)
+            write_protocols(
+                db_path, entries_for([protocol(1, title=title)], stamp), stamp
+            )
 
         assert query(
             db_path,
@@ -808,8 +820,8 @@ class TestWritePath:
     def test_unchanged_protocol_keeps_its_original_interval(self, db_path, protocol):
         """A no-op pull must not churn history."""
         initialize_db(db_path, SCHEMA)
-        write_protocols(db_path, rows_for([protocol(1)], PULLED_AT), PULLED_AT)
-        write_protocols(db_path, rows_for([protocol(1)], LATER), LATER)
+        write_protocols(db_path, entries_for([protocol(1)], PULLED_AT), PULLED_AT)
+        write_protocols(db_path, entries_for([protocol(1)], LATER), LATER)
 
         assert query(
             db_path, "SELECT valid_from, deprecated_at FROM protocol_history"
@@ -818,11 +830,11 @@ class TestWritePath:
     def test_revert_to_previous_content_reopens_an_interval(self, db_path, protocol):
         """Undoing an edit reuses the stored blob but is a new interval."""
         initialize_db(db_path, SCHEMA)
-        original = rows_for([protocol(1, title="A")], PULLED_AT)
+        original = entries_for([protocol(1, title="A")], PULLED_AT)
         write_protocols(db_path, original, PULLED_AT)
-        write_protocols(db_path, rows_for([protocol(1, title="B")], LATER), LATER)
+        write_protocols(db_path, entries_for([protocol(1, title="B")], LATER), LATER)
         diff = write_protocols(
-            db_path, rows_for([protocol(1, title="A")], LATER + 1), LATER + 1
+            db_path, entries_for([protocol(1, title="A")], LATER + 1), LATER + 1
         )
 
         assert diff["changed"] == uids(1)
@@ -840,11 +852,11 @@ class TestWritePath:
         """
         initialize_db(db_path, SCHEMA)
         write_protocols(
-            db_path, rows_for([protocol(1), protocol(2)], PULLED_AT), PULLED_AT
+            db_path, entries_for([protocol(1), protocol(2)], PULLED_AT), PULLED_AT
         )
-        write_protocols(db_path, rows_for([protocol(1)], LATER), LATER)
+        write_protocols(db_path, entries_for([protocol(1)], LATER), LATER)
         diff = write_protocols(
-            db_path, rows_for([protocol(1), protocol(2)], LATER + 1), LATER + 1
+            db_path, entries_for([protocol(1), protocol(2)], LATER + 1), LATER + 1
         )
 
         assert diff["new"] == uids(2)
@@ -867,7 +879,7 @@ class TestWritePath:
             ([protocol(1, title="A"), protocol(2, title="C")], LATER + 3),
         ]
         for protocols, stamp in pulls:
-            write_protocols(db_path, rows_for(protocols, stamp), stamp)
+            write_protocols(db_path, entries_for(protocols, stamp), stamp)
 
         assert overlaps(db_path) == []
         assert active_count(db_path) == []
@@ -876,12 +888,12 @@ class TestWritePath:
     def test_write_returns_the_diff_it_applied(self, db_path, protocol):
         initialize_db(db_path, SCHEMA)
         write_protocols(
-            db_path, rows_for([protocol(1), protocol(2)], PULLED_AT), PULLED_AT
+            db_path, entries_for([protocol(1), protocol(2)], PULLED_AT), PULLED_AT
         )
 
         diff = write_protocols(
             db_path,
-            rows_for([protocol(1), protocol(3), protocol(2, title="Edited")], LATER),
+            entries_for([protocol(1), protocol(3), protocol(2, title="Edited")], LATER),
             LATER,
         )
 
@@ -902,7 +914,7 @@ class TestTitleIsNotIdentity:
         initialize_db(db_path, SCHEMA)
         diff = write_protocols(
             db_path,
-            rows_for(
+            entries_for(
                 [
                     protocol(1, title="untitled protocol"),
                     protocol(2, title="untitled protocol"),
@@ -918,7 +930,7 @@ class TestTitleIsNotIdentity:
     ):
         """Identical content, different id: two histories, two hashes."""
         initialize_db(db_path, SCHEMA)
-        write_protocols(db_path, rows_for([protocol(1), protocol(2)]))
+        write_protocols(db_path, entries_for([protocol(1), protocol(2)]))
 
         hashes = live_hashes(db_path)
         assert hashes[uid(1)] != hashes[uid(2)]  # id is inside the hash
@@ -928,10 +940,10 @@ class TestTitleIsNotIdentity:
         """title is display-only for resolving, but it IS hashed content."""
         initialize_db(db_path, SCHEMA)
         write_protocols(
-            db_path, rows_for([protocol(1, title="Before")], PULLED_AT), PULLED_AT
+            db_path, entries_for([protocol(1, title="Before")], PULLED_AT), PULLED_AT
         )
         diff = write_protocols(
-            db_path, rows_for([protocol(1, title="After")], LATER), LATER
+            db_path, entries_for([protocol(1, title="After")], LATER), LATER
         )
         assert diff["changed"] == uids(1)
 
@@ -943,9 +955,9 @@ class TestEveryArchetype:
     def test_all_archetypes_write_and_verify(self, db_path, by_id_records):
         """steps:null and empty versions included — the shapes that break code."""
         initialize_db(db_path, SCHEMA)
-        rows = rows_for([copy.deepcopy(r) for r in by_id_records.values()])
+        entries = entries_for([copy.deepcopy(r) for r in by_id_records.values()])
 
-        diff = write_protocols(db_path, rows, PULLED_AT)
+        diff = write_protocols(db_path, entries, PULLED_AT)
 
         assert len(diff["new"]) == len(by_id_records)
         assert verify_blobs(db_path, "protocol_content", "hash", "protocol") == []
@@ -955,10 +967,10 @@ class TestEveryArchetype:
     def test_a_second_identical_pull_changes_nothing(self, db_path, by_id_records):
         initialize_db(db_path, SCHEMA)
         records = [copy.deepcopy(r) for r in by_id_records.values()]
-        write_protocols(db_path, rows_for(records, PULLED_AT), PULLED_AT)
+        write_protocols(db_path, entries_for(records, PULLED_AT), PULLED_AT)
 
         before = query(db_path, "SELECT COUNT(*) FROM protocol_history")
-        diff = write_protocols(db_path, rows_for(records, LATER), LATER)
+        diff = write_protocols(db_path, entries_for(records, LATER), LATER)
 
         assert len(diff["unchanged"]) == len(by_id_records)
         assert diff["changed"] == [] and diff["new"] == []

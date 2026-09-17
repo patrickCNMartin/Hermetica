@@ -39,4 +39,4 @@ This directory contains pre-commit hooks that will trigger on a push to main. It
 
 # AI Use
 
-This project used AI models (Claude Opus 4.8, Claude Opus 5, Qwen3.8-27B) to write code, unit tests and documentation. Sections of well defined behavior where written by AI and manually reviewed, modified, and vetted by a human. All other code was written by a human than reviewed by AI. Reviewed where then reviewed by a human. Endless iterations.
+Claude Opus 4.8/5 and Qwen3.8-27B.  

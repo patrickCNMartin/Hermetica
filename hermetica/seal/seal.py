@@ -4,7 +4,6 @@
 import json
 from collections.abc import Iterable
 
-from compose.store import get_pipelines
 from seal.store import get_protocols
 from utils.constants import DRIFT, LOCK_KEYS, PINS_KEYS, PIPELINE_KEYS, PROTOCOL_KEYS
 from utils.dates import as_iso, get_timestamp
@@ -86,30 +85,38 @@ def generate_protocol_lock(
 
 
 def generate_pipeline_lock(
-    hashes: Iterable[str],
-    db: str,
+    pipelines: Iterable,
     as_of: int | None = None,
     provenance: dict | None = None,
 ) -> dict:
-    """Build the lock document for an already-resolved set of pipeline hashes."""
+    """Build the lock document for pipelines already pinned by hydrate_pipeline.
+
+    Takes artefacts, not stored hashes: a pinned pipeline carries `node_hashes`
+    and lives only in the lock, never in the template store. Its hash is the
+    same content address `build_pipeline_entry` would give it.
+    """
     as_of = as_of if as_of is not None else get_timestamp()
 
     entries, display = {}, {}
-    for pipeline in get_pipelines(db, hashes):
-        if pipeline.pipeline_guid in entries:
-            raise DuplicatedIdError("pipeline", pipeline.pipeline_guid)
-        entries[pipeline.pipeline_guid] = {
-            "guid": pipeline.pipeline_guid,
-            "hash": pipeline.hash,
+    for pipeline in pipelines:
+        if pipeline.guid in entries:
+            raise DuplicatedIdError("pipeline", pipeline.guid)
+        entries[pipeline.guid] = {
+            "guid": pipeline.guid,
+            "hash": hash_of(pipeline.hashable()),
         }
-        display[pipeline.pipeline_guid] = {
+        display[pipeline.guid] = {
             "title": pipeline.title,
+            "root": pipeline.root,
             "dag": pipeline.DAG,
+            "nodes": pipeline.nodes,
+            "node_hashes": pipeline.node_hashes,
+            "manifest_hash": pipeline.manifest_hash,
             "created_on": as_iso(pipeline.created_on) if pipeline.created_on else None,
-            "creator": decode_entry(pipeline.creator),
+            "creator": pipeline.creator,
         }
 
-    document = {
+    return {
         "manifest_hash": hash_of(entries),
         "as_of": as_iso(as_of),
         "created_at": as_iso(get_timestamp()),
@@ -117,7 +124,6 @@ def generate_pipeline_lock(
         "entries": entries,
         "pipelines": display,
     }
-    return document
 
 
 def generate_lock(protocol_lock: dict | None, pipeline_lock: dict | None) -> dict:
