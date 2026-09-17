@@ -52,8 +52,7 @@ names it in a warning, then is discarded.
 | `scribe` | a lock back into something a human reads | works, fidelity partial |
 | `utils` | mechanics — canonical form, hashing, dates, sqlite, intervals | works |
 | *(planned)* | prose generation from a lock | **a sixth module, not part of `scribe`** |
-| `api` | the query port (`query.py`) and compose port (`pipelines.py`) outside tools use | ports built as plain functions; **no HTTP transport yet** |
-| *(planned)* | HTTP/JSON transport over `api` — `http.server`, hand-written `openapi.json` | **thin; no raw SQL, stable ids only, the only way outside tools reach either `.db` file** |
+| `api` | query port (`query.py`), compose port (`pipelines.py`), HTTP/JSON transport (`server.py`) — the only way outside tools reach either `.db` file | works; **no auth** |
 
 **`chronos` decides *when* to look; an adapter knows *what a platform's bytes are*; `seal`
 decides *what they mean*.** A rule about identity is seal's even if cron calls it. A rule
@@ -331,21 +330,40 @@ Two flavours: protocols-only, and pipeline (adds the pinned graph).
 - **Why triggers and not the FK.** `connect` sets `PRAGMA foreign_keys = ON`, but a PRAGMA is
   *per connection* and defaults to off, so `sqlite3 chronos.db` has none of our protection. A
   trigger is in the schema and binds whoever opens the file. Verified against the bare CLI.
-- **Access model:** read-only on the VC, read-write on graphs, never raw SQL — a **query
-  port** and a **compose port**. Transport swappable; the planned transport is a thin
-  HTTP/JSON API (see the module table). **`chronos` stays the one writer of `chronos.db`
-  and opens it directly; the API opens `chronos.db` read-only and `compose.db` read-write.**
-  Outside tools talk to the API, never to either file or a shared mount.
-- **`compose.db` gains a second writer** — the pipeline portal writes user-composed
-  pipelines back through the compose port. One API instance, serialised writes. This is
-  why the history-protection triggers stop being optional before deploy.
+- **Access model:** read-only on the VC, read-write on templates, never raw SQL — a **query
+  port** and a **compose port**, served by `server.py`. **`chronos` stays the one writer of
+  `chronos.db` and opens it directly; the API opens `chronos.db` read-only and
+  `compose.db` read-write.** Outside tools talk to the API, never to either file or a
+  shared mount.
+- **⚠ Open — first thing next session: review the routes with the coder.** Parts of
+  `api/server.py`'s `ROUTES` (paths, methods, what each returns) are not yet what the coder
+  wants, or not yet understood. Walk through them before building anything on the API;
+  treat the route table and `openapi.json` as provisional until then.
+- **The transport holds no rules.** A route table, one error mapping, a body cap
+  (`MAX_BODY`, 1 MiB), nothing else. **No `Content-Length` means no body** — per HTTP/1.1,
+  and what `curl -X POST …/lock` sends; a chunked body is refused (411), never read
+  unbounded. Errors map by class:
+  not-found errors → 404, refusals (`InvalidRequestError`, `UnsealedProtocolError`,
+  `UnresolvedProtocolError`, graph errors, `DuplicatedIdError`) → 422 with the error's
+  attributes as the body; **anything else → 500 with the class name only** — the
+  traceback goes to the server log, never the response. A new error a caller should see
+  must join `NOT_FOUND` or `UNPROCESSABLE`, or it surfaces as a 500.
+- **`openapi.json` is hand-written, and a test holds it to `ROUTES`** — same paths, same
+  methods, every path parameter declared. Adding a route fails the suite until it is
+  documented. FastAPI is the upgrade if validating bodies by hand stops being small.
+- **`compose.db` has a second writer** — the portal, through the compose port. One API
+  instance; writes serialised by one `threading.Lock` (`WRITES`). This is why the
+  history-protection triggers are not optional.
+- **The API refuses to start without `chronos.db`** — only a pull creates it. It creates
+  `compose.db` if missing.
 - **Both files are WAL, set by `initialize_db`** — it is stored in the file, so a commit
   never waits on a reader mid-query. **Every process must be on one host:** a shared
   Docker volume works, NFS/SMB does not. Lock waits use sqlite3's default 5 s timeout.
-- **⚠ Before any deploy — the API has no auth.** The network is the only guard. In Docker
-  Compose it listens on `0.0.0.0` (so the portal container can reach it) and **its port
-  is never published** — no `ports:` on the Hermetica service; the portal reaches it by
-  service name. Check this every deploy until auth exists.
+- **⚠ Before any deploy — the API has no auth.** The network is the only guard. It binds
+  `127.0.0.1` unless `API_HOST` says otherwise; in Docker Compose set `API_HOST=0.0.0.0`
+  (so the portal container can reach it) and **never publish its port** — no `ports:` on
+  the Hermetica service; the portal reaches it by service name. Check this every deploy
+  until auth exists.
 - **The query port never writes** — a test runs every query-port function against a
   `chmod 0444` file.
 - **The compose port sends and takes guids, never hashes.** `created_on` is kept from a
@@ -501,7 +519,8 @@ the problem wins. Say so and why.
 > ```
 > "command not found" from a bare command is expected. Never install onto the host.
 
-- **Entry point:** `python -m chronos.chronos`, never by file path — by path Python puts
+- **Entry points:** `python -m chronos.chronos` (the pull) and `python -m api.server` (the
+  API; `DB`, `API_HOST`, `API_PORT` from `env/.env`), never by file path — by path Python puts
   the file's directory on `sys.path` and `chronos` resolves to the module, not the package.
 - **Nothing about this project is written outside this repo.** The record is `AGENT.md` and
   `docs/audit_log.md`; scratch goes to a temp directory. No agent memory, history or state in
@@ -527,7 +546,7 @@ the problem wins. Say so and why.
   package must join `known-first-party` in `pyproject.toml` and `--cov=` in the CI workflow
   or it is silently uncovered.
 - **Tests:** `pytest` + `pytest-cov`; mock HTTP with `responses`, **never hit the live
-  API**. 19 files, one per concern.
+  API**. 20 files, one per concern.
 - **A test never writes into the repo.** `mint_template` drops a file beside its source, so
   template tests copy `config/` into `tmp_path` first.
 - **PDF toolchain is in the flake** — `pandoc`, `texliveSmall` + `dejavu` +

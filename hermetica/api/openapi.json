@@ -1,0 +1,874 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Hermetica API",
+    "version": "0.1.0",
+    "description": "Read-only access to the protocol version store, and read-write access to pipeline templates. Every identifier is stable: protocols by protocol_uid (`<source>:<id>`) or protocol_guid, versions by hash, templates by pipeline_guid. A template records a DAG and the protocol_guid each node runs, never a hash; protocol versions are pinned only when a lock is exported.\n\nNo authentication. Do not expose this service outside a private network."
+  },
+  "paths": {
+    "/protocols": {
+      "get": {
+        "operationId": "listProtocols",
+        "tags": [
+          "protocols"
+        ],
+        "summary": "Every protocol's active version, without its body.",
+        "responses": {
+          "200": {
+            "description": "Active protocols, ordered by protocol_uid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProtocolSummary"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/protocols/{protocol_uid}/versions": {
+      "get": {
+        "operationId": "protocolVersions",
+        "tags": [
+          "protocols"
+        ],
+        "summary": "Every version one protocol has held, oldest first.",
+        "parameters": [
+          {
+            "name": "protocol_uid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "`<source>:<id>`, e.g. `protocols_io:568614`. The colon may be sent as %3A."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The protocol's version history.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "protocol_uid",
+                    "versions"
+                  ],
+                  "properties": {
+                    "protocol_uid": {
+                      "type": "string"
+                    },
+                    "versions": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Interval"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "UnknownProtocolError: no protocol with this uid was ever sealed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/protocol-versions/{hash}": {
+      "get": {
+        "operationId": "getProtocolVersion",
+        "tags": [
+          "protocols"
+        ],
+        "summary": "One protocol version by hash, body included.",
+        "parameters": [
+          {
+            "name": "hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "`sha256:<hex>`. The colon may be sent as %3A."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The version and its body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ProtocolSummary"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "protocol": {
+                          "type": "object",
+                          "description": "The hashed protocol body."
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MissingHash: no version with this hash.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/locks": {
+      "post": {
+        "operationId": "buildLock",
+        "tags": [
+          "locks"
+        ],
+        "summary": "A protocols-only lock for a set of versions. Nothing is written.",
+        "requestBody": {
+          "required": true,
+          "description": "The protocol version hashes to lock.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "hashes"
+                ],
+                "properties": {
+                  "hashes": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "with_bodies": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "False gives a pins-only document."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The lock document.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Lock"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MissingHash: a hash is not in the store.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "InvalidRequestError, or DuplicatedIdError when two versions of one protocol are asked for.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pipelines": {
+      "get": {
+        "operationId": "listTemplates",
+        "tags": [
+          "pipelines"
+        ],
+        "summary": "Every active template, each node carrying its protocol's current state.",
+        "responses": {
+          "200": {
+            "description": "Active templates.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Template"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createTemplate",
+        "tags": [
+          "pipelines"
+        ],
+        "summary": "Save a new template. The pipeline_guid is minted here.",
+        "requestBody": {
+          "required": true,
+          "description": "The template's DAG and node guids.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "InvalidRequestError, UnsealedProtocolError (a node names a guid the store never held), NodeMismatchError or PipelineCycleError.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pipelines/{guid}": {
+      "get": {
+        "operationId": "getTemplate",
+        "tags": [
+          "pipelines"
+        ],
+        "summary": "One active template.",
+        "parameters": [
+          {
+            "name": "guid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The template's pipeline_guid, as minted by POST /pipelines."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The template.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Template"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "InactivePipelineError: no active version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "saveTemplate",
+        "tags": [
+          "pipelines"
+        ],
+        "summary": "Save a new version of an existing template. Unchanged content opens no new version.",
+        "parameters": [
+          {
+            "name": "guid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The template's pipeline_guid, as minted by POST /pipelines."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The template's DAG and node guids.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved as changed or unchanged.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveResult"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "A retired template saved again: a new interval opens.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "UnknownPipelineError: this guid was never minted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "InvalidRequestError, UnsealedProtocolError, NodeMismatchError or PipelineCycleError.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "retireTemplate",
+        "tags": [
+          "pipelines"
+        ],
+        "summary": "Retire a template. It leaves the list; its history stays.",
+        "parameters": [
+          {
+            "name": "guid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The template's pipeline_guid, as minted by POST /pipelines."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Retired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "pipeline_guid",
+                    "hash"
+                  ],
+                  "properties": {
+                    "pipeline_guid": {
+                      "type": "string"
+                    },
+                    "hash": {
+                      "type": "string",
+                      "description": "The version that was retired."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "InactivePipelineError: nothing active to retire.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pipelines/{guid}/versions": {
+      "get": {
+        "operationId": "templateVersions",
+        "tags": [
+          "pipelines"
+        ],
+        "summary": "Every version one template has held, oldest first, retired ones included.",
+        "parameters": [
+          {
+            "name": "guid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The template's pipeline_guid, as minted by POST /pipelines."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The template's version history.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "pipeline_guid",
+                    "versions"
+                  ],
+                  "properties": {
+                    "pipeline_guid": {
+                      "type": "string"
+                    },
+                    "versions": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Interval"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "UnknownPipelineError.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pipelines/{guid}/lock": {
+      "post": {
+        "operationId": "exportLock",
+        "tags": [
+          "pipelines",
+          "locks"
+        ],
+        "summary": "Export the full lock for a saved template, pinned to the protocols active now.",
+        "description": "An edited template must be saved first. Nothing is written to the template store.",
+        "parameters": [
+          {
+            "name": "guid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The template's pipeline_guid, as minted by POST /pipelines."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The lock: protocol entries and bodies, plus the pinned pipeline under `pipeline`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Lock"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "InactivePipelineError: the template is not active.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "UnresolvedProtocolError: `nodes` names each step whose protocol is no longer active — swap it and save before exporting.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "operationId": "openapi",
+        "tags": [
+          "meta"
+        ],
+        "summary": "This document.",
+        "responses": {
+          "200": {
+            "description": "The OpenAPI description.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": [
+          "error",
+          "message"
+        ],
+        "description": "Every refusal. Extra fields carry the data the error was raised with: `problems`, `nodes`, `missing`, `cycle`, `unnamed`/`orphaned`, `guid`, `protocol_uid`.",
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "The error's name."
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "Interval": {
+        "type": "object",
+        "required": [
+          "hash",
+          "valid_from",
+          "deprecated_at"
+        ],
+        "properties": {
+          "hash": {
+            "type": "string"
+          },
+          "valid_from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deprecated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Null while active."
+          }
+        }
+      },
+      "ProtocolSummary": {
+        "type": "object",
+        "properties": {
+          "protocol_uid": {
+            "type": "string"
+          },
+          "protocol_guid": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "protocol_id": {
+            "type": "string"
+          },
+          "hash": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "executor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "doi": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reserved_doi": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_on": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "creator": {},
+          "authors": {},
+          "valid_from": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Present on /protocols only."
+          }
+        }
+      },
+      "TemplateBody": {
+        "type": "object",
+        "required": [
+          "title",
+          "dag",
+          "nodes"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "dag": {
+            "type": "object",
+            "description": "node id -> its successors: a node id or a list of them.",
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            }
+          },
+          "nodes": {
+            "type": "object",
+            "description": "node id -> the protocol_guid it runs.",
+            "additionalProperties": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "root": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "creator": {
+            "type": [
+              "string",
+              "object",
+              "null"
+            ]
+          }
+        }
+      },
+      "SaveResult": {
+        "type": "object",
+        "required": [
+          "pipeline_guid",
+          "hash",
+          "status"
+        ],
+        "properties": {
+          "pipeline_guid": {
+            "type": "string"
+          },
+          "hash": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "new",
+              "changed",
+              "unchanged"
+            ]
+          }
+        }
+      },
+      "Template": {
+        "type": "object",
+        "properties": {
+          "pipeline_guid": {
+            "type": "string"
+          },
+          "hash": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "root": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dag": {
+            "type": "object"
+          },
+          "nodes": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "required": [
+                "protocol_guid",
+                "status"
+              ],
+              "properties": {
+                "protocol_guid": {
+                  "type": "string"
+                },
+                "status": {
+                  "enum": [
+                    "active",
+                    "inactive"
+                  ],
+                  "description": "Inactive steps are sent so the UI can draw and swap them; a lock refuses them."
+                },
+                "protocol_uid": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "hash": {
+                  "type": "string",
+                  "description": "The latest version's hash, active or not."
+                }
+              }
+            }
+          },
+          "created_on": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "creator": {},
+          "valid_from": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Lock": {
+        "type": "object",
+        "required": [
+          "manifest_hash",
+          "entries"
+        ],
+        "description": "`manifest_hash` covers `entries` alone. `pipeline` is present on an exported template lock and carries the pinned pipeline with its `node_hashes`, `manifest_hash` and `provenance.template_hash`.",
+        "properties": {
+          "manifest_hash": {
+            "type": "string"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "provenance": {
+            "type": "object"
+          },
+          "entries": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "guid": {
+                  "type": "string"
+                },
+                "hash": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "protocols": {
+            "type": "object"
+          },
+          "bodies": {
+            "type": "object"
+          },
+          "pipeline": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  }
+}

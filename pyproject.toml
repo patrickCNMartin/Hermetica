@@ -31,6 +31,7 @@ build-backend = "setuptools.build_meta"
 package-dir = {"" = "hermetica"}
 
 [tool.setuptools.package-data]
+api = ["*.json"]
 scribe = ["*.yaml"]
 
 [tool.ruff]

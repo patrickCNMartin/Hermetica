@@ -1476,7 +1476,7 @@ Ruff clean. `make audit`: compose 98.3%, utils 98.9%, total 92.6%.
 
 ---
 
-## 2026-09-17 — f07ee56 (uncommitted work) — API Phase 1: both ports as plain functions, and a creator that never read back
+## 2026-09-17 — 45a26b8, tests c7c6858 — API Phase 1: both ports as plain functions, and a creator that never read back
 
 **Built — new top-level package `api`.** No HTTP yet. Functions take database paths and
 return JSON-ready dicts with stable ids and ISO times.
@@ -1548,7 +1548,7 @@ parity test.
 
 ---
 
-## 2026-09-17 — f07ee56 (uncommitted work) — "entries, not rows"; `pipeline_versions`; what a template is
+## 2026-09-17 — 45a26b8, tests c7c6858 — "entries, not rows"; `pipeline_versions`; what a template is
 
 **Rule from the coder: a stored thing is an entry, not a row.**
 - **Renamed:** `active_rows` → `active_entries`, and `rows_for` → `entries_for` in
@@ -1626,7 +1626,7 @@ was saved.
 
 ---
 
-## 2026-09-17 — f07ee56 (uncommitted work) — templates are DAGs of guids; pinning happens only at export
+## 2026-09-17 — 45a26b8, tests c7c6858, baseline c37b883 — templates are DAGs of guids; pinning happens only at export
 
 **Built, as decided above.** The compose side of Phase 1 is rebuilt to match.
 
@@ -1737,3 +1737,93 @@ baselined, so they are fixture values and not credentials.
 - **Final diff:** the 2 new entries and `generated_at`.
 - **Result:** the hook reports no secrets. It still exits 123 until the baseline is
   staged, which is expected, and staging is left to the coder.
+
+---
+
+## 2026-09-17 — c37b883 (uncommitted work) — API Phase 2: the HTTP transport and its documentation
+
+**Built — `api/server.py`,** on the standard library with no new dependency.
+- **`ROUTES`:** a dict of `(method, path template)` to a named handler. 12 routes:
+  - Protocols: `GET /protocols`, `GET /protocols/{protocol_uid}/versions`, and
+    `GET /protocol-versions/{hash}`. The hash has its own top-level path because a hash is
+    not a child of a uid.
+  - Locks: `POST /locks`.
+  - Templates: `GET`/`POST /pipelines`, `GET`/`PUT`/`DELETE /pipelines/{guid}`,
+    `GET /pipelines/{guid}/versions`, and `POST /pipelines/{guid}/lock`.
+  - Docs: `GET /openapi.json`.
+- **`dispatch(method, target, body, protocol_db, compose_db)`** does everything except the
+  socket, so nearly all tests run without one.
+  - An unknown path is 404. A known path with the wrong method is 405, naming the allowed
+    methods.
+  - Bad JSON or non-UTF-8 is 400.
+  - Path segments are percent-decoded, so `protocols_io%3A568614` works.
+- **Errors map by class:**
+  - `NOT_FOUND` → 404: `MissingHash`, `UnknownProtocolError`, `UnknownPipelineError`,
+    `InactivePipelineError`.
+  - `UNPROCESSABLE` → 422: `InvalidRequestError`, `UnsealedProtocolError`,
+    `UnresolvedProtocolError`, `NodeMismatchError`, `PipelineCycleError`,
+    `DuplicatedIdError`.
+  - The 404 and 422 bodies are `{error, message, **vars(error)}`. This relies on the rule
+    that an exception takes data, so `nodes`, `problems`, `missing` and `cycle` reach the
+    caller with no per-error code.
+  - Anything else → 500 carrying only the class name. The traceback goes to stderr.
+- **POST creates (201); PUT versions (200, or 201 when a retired template reopens).**
+- **Writes are serialized by one `threading.Lock`,** marked `ponytail:`, on a
+  `ThreadingHTTPServer`.
+- **`serve()` refuses to start without `chronos.db`,** which only a pull creates, and
+  creates `compose.db` if it is missing.
+- **Entry point:** `python -m api.server`. `DB`, `API_HOST` (default `127.0.0.1`) and
+  `API_PORT` (default `8080`) are read in `__main__`.
+
+**Built — `api/openapi.json`**, OpenAPI 3.1, shipped as package data (`pyproject.toml`
+`[tool.setuptools.package-data] api = ["*.json"]`). It was generated once by a throwaway
+script and is maintained by hand from here. It covers operations, path parameters, request
+bodies, every 2xx/404/422 response naming the errors behind it, and schemas for `Error`,
+`Interval`, `ProtocolSummary`, `TemplateBody`, `SaveResult`, `Template` and `Lock`.
+**`test_every_route_is_documented_and_nothing_else_is`** holds the document's
+`(method, path)` set equal to `ROUTES`. Checked by deleting one route: it failed, and
+passed again once restored. Further tests require every path parameter to be declared,
+every operation to document a 2xx, and every `$ref` to resolve.
+
+**Found by running it, not by the tests — a bodyless POST was refused.** The first version
+answered 411 to any POST or PUT with no `Content-Length`. The socket tests always sent one,
+so they passed. The live smoke test, `python -m api.server` against fresh stores in the
+scratchpad driven with `curl`, got a 411 from `curl -X POST /pipelines/{guid}/lock`, which
+sends no length because there is no body. A browser `fetch` with no body does the same, so
+the portal would have hit it.
+- **Fixed per HTTP/1.1:** no `Content-Length` and no `Transfer-Encoding` means no body.
+- A chunked body is refused with 411, because it has no length to cap.
+- A non-numeric length is 400.
+- `test_a_bodyless_post_needs_no_length` reproduces the exact request.
+
+The smoke run then passed end to end:
+- `GET /protocols` → 7.
+- `POST /pipelines` → 201.
+- The bodyless lock export → a full lock with pinned `node_hashes`.
+- A 422 named its nodes.
+- `DELETE` then `GET` → 200, then 404.
+- The scratch stores were deleted, and `db/` was never touched.
+
+**Secrets:** `test_server.py` repeats the two fixture guids with an inline
+`# pragma: allowlist secret`, so the baseline was not changed. The hook is clean.
+
+**Tests:** 688 → 730. `test_server.py` adds 42, covering the OpenAPI document, routing,
+bodies, both ports over HTTP, the 500 path, and the socket: round trip, save, the body cap,
+bodyless POST, chunked, a bad length, refusing to start, and creating `compose.db`. Ruff
+clean. `make audit`: `api` 97.3%. The only uncovered lines are `__main__`, left untested
+just as `chronos`'s entry point is.
+
+**Not built:**
+- Authentication, deliberately deferred.
+- Reading a lock the user brings.
+- A Makefile target and a Docker Compose service, whose `API_HOST=0.0.0.0` and unpublished
+  port are the ⚠ rule in `AGENT.md`.
+- CORS headers. The portal reaches the API server-side over the Compose network, so none
+  are needed unless a browser calls it directly.
+
+**Open, from the coder at the end of the session: review the routes first next session.**
+Some sections of the route table are not exactly what the coder wants, and some are not
+yet clear to them. Before anything is built on the API, walk through `ROUTES` in
+`api/server.py` and `openapi.json` together: the paths, the methods, the status codes, and
+what each returns. Until then both are provisional. The item is flagged ⚠ in `AGENT.md`
+under Storage, which is read first every session.
