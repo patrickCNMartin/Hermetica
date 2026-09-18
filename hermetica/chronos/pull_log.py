@@ -31,12 +31,3 @@ def record_pull(log_dir: str, pulled_at: int, entry: dict[str, Any]) -> Path:
     with path.open("a", encoding="utf-8") as handle:
         handle.write(line + "\n")
     return path
-
-
-def read_pulls(db_dir: str) -> list[dict]:
-    """Every logged pull, oldest first. Empty when nothing has run yet."""
-    path = log_path(db_dir)
-    if not path.exists():
-        return []
-    lines = path.read_text(encoding="utf-8").splitlines()
-    return [json.loads(line) for line in lines if line.strip()]

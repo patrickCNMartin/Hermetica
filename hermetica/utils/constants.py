@@ -119,12 +119,9 @@ PINS_KEYS: tuple[str, ...] = (
     "entries",
     "pipeline",
 )
-PROTOCOL_KEYS: tuple[str, ...] = ("protocols", "bodies")
-
-# Need to check this
-PIPELINE_KEYS: tuple[str, ...] = ("pipelines",)
-
-LOCK_KEYS: tuple[str, ...] = PINS_KEYS + PROTOCOL_KEYS + PIPELINE_KEYS
+# A full lock is the pin set plus the display block and the bodies. `pipeline`
+# rides in PINS_KEYS: the graph is part of what is pinned, not a display extra.
+LOCK_KEYS: tuple[str, ...] = PINS_KEYS + ("protocols", "bodies")
 
 
 # -----------------------------------------------------------------------------#

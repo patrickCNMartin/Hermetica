@@ -6,7 +6,6 @@ from datetime import date, datetime, timezone
 import pytest
 
 from utils.dates import (
-    as_date,
     as_iso,
     from_epoch,
     get_timestamp,
@@ -60,9 +59,6 @@ class TestFromEpoch:
 
     def test_result_is_utc_aware(self):
         assert from_epoch(EPOCH).tzinfo is not None
-
-    def test_as_date(self):
-        assert as_date(EPOCH) == "2025-04-29"
 
     def test_as_iso(self):
         assert as_iso(EPOCH) == "2025-04-29T13:44:14+00:00"

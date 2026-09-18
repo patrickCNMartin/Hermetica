@@ -7,8 +7,16 @@ on. Without the log those decisions are unauditable after the fact."""
 
 import json
 
-from chronos.pull_log import PULL_LOG_NAME, log_path, read_pulls, record_pull
+from chronos.pull_log import PULL_LOG_NAME, log_path, record_pull
 from utils.dates import as_iso
+
+
+def read_pulls(db_dir: str) -> list[dict]:
+    """Every logged pull, oldest first — the log is append-only JSONL."""
+    path = log_path(db_dir)
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
 class TestRecordPull:

@@ -70,6 +70,8 @@ def parse_rich_text(value: Any) -> dict | None:
 # -----------------------------------------------------------------------------#
 # HASHING
 # -----------------------------------------------------------------------------#
+
+
 def protocol_hash(artefact: ProtocolArtefact) -> str:
     """Content hash of a selected protocol, metadata excluded."""
     return hash_of(artefact.hashable())

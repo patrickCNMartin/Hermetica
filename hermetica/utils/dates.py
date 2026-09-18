@@ -44,11 +44,6 @@ def from_epoch(epoch: int) -> datetime:
     return datetime.fromtimestamp(int(epoch), tz=timezone.utc)
 
 
-def as_date(epoch: int) -> str:
-    """Epoch seconds -> 'YYYY-MM-DD' (UTC)."""
-    return from_epoch(epoch).date().isoformat()
-
-
 def as_iso(epoch: int) -> str:
     """Epoch seconds -> full ISO-8601 UTC string."""
     return from_epoch(epoch).isoformat()

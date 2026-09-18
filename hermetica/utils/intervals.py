@@ -205,23 +205,6 @@ def open_intervals(
 # -----------------------------------------------------------------------------#
 
 
-def version_control_diff(
-    db: str,
-    history_table: str,
-    id_column: str,
-    entries: Iterable,
-    scope: tuple[str, str] | None = None,
-    absence: bool = True,
-) -> dict[str, list[str]]:
-    """Compare a set of entries against the active state, without writing."""
-    with connect(db, read_only=True) as conn:
-        return diff_entries(
-            active_hashes(conn, history_table, id_column, scope),
-            incoming_hashes(entries, id_column),
-            absence,
-        )
-
-
 def write_version_control(
     db: str,
     history_table: str,

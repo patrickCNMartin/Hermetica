@@ -19,7 +19,6 @@ from utils.intervals import (
     active_entries,
     intervals_of,
     latest_entries,
-    version_control_diff,
     write_version_control,
 )
 from utils.store import (
@@ -238,23 +237,6 @@ def scope_of(
             "a pull writes one platform's partition"
         )
     return (PROTOCOL_SOURCE, source)
-
-
-def diff_protocols(
-    db: str,
-    protocols: Iterable[ProtocolEntry],
-    source: str | None = None,
-    protocol_history: str = PROTOCOL_HISTORY,
-    protocol_uid: str = PROTOCOL_UID,
-) -> dict[str, list[str]]:
-    """Compare a pull against the active state, within one source's partition.
-
-    Returns protocol_uids grouped as new / changed / unchanged / absent.
-    """
-    protocols = list(protocols)
-    return version_control_diff(
-        db, protocol_history, protocol_uid, protocols, scope_of(protocols, source)
-    )
 
 
 # -----------------------------------------------------------------------------#

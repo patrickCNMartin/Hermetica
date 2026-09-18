@@ -17,7 +17,6 @@ from seal.store import (
     SCHEMA,
     ProtocolEntry,
     build_protocol_entry,
-    diff_protocols,
     format_protocol_entry,
     get_protocols,
     write_protocols,
@@ -30,7 +29,7 @@ from utils.constants import (
     PROTOCOL_METADATA_FIELDS,
     PROTOCOL_UID,
 )
-from utils.dates import as_date, to_epoch
+from utils.dates import as_iso, to_epoch
 from utils.hashing import canonical_json, hash_bytes
 from utils.intervals import active_hashes
 from utils.store import MissingHash, connect, initialize_db, verify_blobs
@@ -253,10 +252,9 @@ class TestConnectionLifetime:
         initialize_db(db_path, SCHEMA)
         entries = entries_for([protocol(1)])
         write_protocols(db_path, entries)
-        diff_protocols(db_path, entries)
         verify_blobs(db_path, "protocol_content", "hash", "protocol")
 
-        assert len(opened) == 4
+        assert len(opened) == 3
         for conn in opened:
             with pytest.raises(sqlite3.ProgrammingError):
                 conn.execute("SELECT 1")
@@ -450,7 +448,7 @@ class TestMetadataColumns:
         write_protocols(db_path, entries_for([protocol(1)]))
 
         reattributed = protocol(1, creator={"name": "B. Other", "username": "b.other"})
-        assert diff_protocols(db_path, entries_for([reattributed]))[
+        assert write_protocols(db_path, entries_for([reattributed]))[
             "unchanged"
         ] == uids(1)
 
@@ -487,7 +485,7 @@ class TestValidFrom:
             build_protocol_artefact(protocol(1)), pulled_at=PULLED_AT
         )
         assert entry.valid_from == CREATED_ON
-        assert as_date(entry.valid_from) == "2025-04-29"
+        assert as_iso(entry.valid_from)[:10] == "2025-04-29"
 
     def test_falls_back_to_pull_time(self, protocol):
         """No created_on -> the interval opens when we first saw it."""
@@ -665,7 +663,7 @@ class TestGetContent:
 class TestChangeDetection:
     def test_empty_db_sees_everything_as_new(self, db_path, protocol):
         initialize_db(db_path, SCHEMA)
-        diff = diff_protocols(db_path, entries_for([protocol(1), protocol(2)]))
+        diff = write_protocols(db_path, entries_for([protocol(1), protocol(2)]))
 
         assert diff["new"] == uids(1, 2)
         assert diff["changed"] == []
@@ -677,7 +675,7 @@ class TestChangeDetection:
         entries = entries_for([protocol(1), protocol(2)])
         write_protocols(db_path, entries)
 
-        diff = diff_protocols(db_path, entries)
+        diff = write_protocols(db_path, entries)
         assert diff["unchanged"] == uids(1, 2)
         assert diff["new"] == []
         assert diff["changed"] == []
@@ -687,7 +685,7 @@ class TestChangeDetection:
         initialize_db(db_path, SCHEMA)
         write_protocols(db_path, entries_for([protocol(1, title="Original")]))
 
-        diff = diff_protocols(db_path, entries_for([protocol(1, title="Edited")]))
+        diff = write_protocols(db_path, entries_for([protocol(1, title="Edited")]))
         assert diff["changed"] == uids(1)
         assert diff["new"] == []
 
@@ -700,7 +698,7 @@ class TestChangeDetection:
         noisy["stats"] = {"number_of_views": 999_999}
         noisy["image"] = {"source": "https://x.example.org/y.jpg?Policy=NEW-TOKEN"}
 
-        diff = diff_protocols(db_path, entries_for([noisy]))
+        diff = write_protocols(db_path, entries_for([noisy]))
         assert diff["unchanged"] == uids(1)
         assert diff["changed"] == []
 
@@ -709,7 +707,7 @@ class TestChangeDetection:
         initialize_db(db_path, SCHEMA)
         write_protocols(db_path, entries_for([protocol(1), protocol(2)]))
 
-        diff = diff_protocols(db_path, entries_for([protocol(1)]))
+        diff = write_protocols(db_path, entries_for([protocol(1)]))
         assert diff["absent"] == uids(2)
         assert diff["unchanged"] == uids(1)
 

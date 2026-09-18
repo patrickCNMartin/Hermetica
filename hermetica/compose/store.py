@@ -18,7 +18,6 @@ from utils.intervals import (
     active_hashes,
     close_intervals,
     intervals_of,
-    version_control_diff,
     write_version_control,
 )
 from utils.store import (
@@ -208,18 +207,6 @@ def pipeline_from_entry(entry: dict) -> PipelineArtefact:
 def pipeline_intervals(db: str, guid: str) -> list[dict]:
     """Every version one pipeline has held, oldest first."""
     return intervals_of(db, PIPELINE_HISTORY, PIPELINE_GUID, guid)
-
-
-def diff_pipelines(
-    db: str,
-    pipelines: Iterable[PipelineEntry],
-    pipeline_history: str = PIPELINE_HISTORY,
-    pipeline_guid: str = PIPELINE_GUID,
-) -> dict[str, list[str]]:
-    """Compare a set of pipelines against the active state. Never reports absence."""
-    return version_control_diff(
-        db, pipeline_history, pipeline_guid, pipelines, absence=False
-    )
 
 
 # -----------------------------------------------------------------------------#

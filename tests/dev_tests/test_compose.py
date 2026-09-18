@@ -29,7 +29,6 @@ from compose.store import (
     InactivePipelineError,
     PipelineEntry,
     build_pipeline_entry,
-    diff_pipelines,
     format_pipeline_entry,
     get_pipelines,
     retire_pipeline,
@@ -338,7 +337,7 @@ class TestWritePipeline:
             WRITTEN_AT,
         )
 
-        diff = diff_pipelines(db, format_pipeline_entry([pipeline("a")], LATER))
+        diff = write_pipeline(db, format_pipeline_entry([pipeline("a")], LATER), LATER)
 
         assert diff["absent"] == []
         assert diff["unchanged"] == ["a"]
@@ -365,11 +364,6 @@ class TestWritePipeline:
             )
         ]
         assert opens == [CREATED_ON, LATER]
-
-    def test_diff_pipelines_reports_without_writing(self, db, pipeline):
-        entries = format_pipeline_entry([pipeline()], WRITTEN_AT)
-        assert diff_pipelines(db, entries)["new"] == ["abc123"]
-        assert query(db, "SELECT COUNT(*) FROM pipeline_history") == [(0,)]
 
 
 class TestRetirePipeline:

@@ -5,7 +5,7 @@ import json
 from collections.abc import Iterable
 
 from seal.store import get_protocols
-from utils.constants import DRIFT, LOCK_KEYS, PINS_KEYS, PIPELINE_KEYS, PROTOCOL_KEYS
+from utils.constants import DRIFT, LOCK_KEYS, PINS_KEYS
 from utils.dates import as_iso, get_timestamp
 from utils.hashing import decode_entry, hash_of
 
@@ -153,16 +153,6 @@ def write_lock_file(lock: dict, keys: Iterable[str], path: str) -> dict:
 def export_pins(lock: dict, path: str) -> dict:
     """Export the pin set alone — no display fields, no bodies."""
     return write_lock_file(lock, PINS_KEYS, path)
-
-
-def export_protocols(lock: dict, path: str) -> dict:
-    """Export the protocol display and bodies."""
-    return write_lock_file(lock, PROTOCOL_KEYS, path)
-
-
-def export_pipeline(lock: dict, path: str) -> dict:
-    """Export the pinned graph."""
-    return write_lock_file(lock, PIPELINE_KEYS, path)
 
 
 def export_lock(lock: dict, path: str) -> dict:

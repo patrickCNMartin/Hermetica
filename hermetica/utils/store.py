@@ -2,10 +2,9 @@
 # IMPORT LIBS
 # -----------------------------------------------------------------------------#
 import sqlite3
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 
-from utils.dates import get_timestamp
 from utils.hashing import hash_bytes
 
 
@@ -107,11 +106,6 @@ def append_only_triggers(table: str, immutable: tuple[str, ...]) -> tuple[str, s
 # -----------------------------------------------------------------------------#
 # READ
 # -----------------------------------------------------------------------------#
-def format_entries(build: Callable, artefacts: Iterable, pulled_at: int | None) -> list:
-    pulled_at = pulled_at if pulled_at is not None else get_timestamp()
-    return [build(artefact, pulled_at) for artefact in artefacts]
-
-
 def insert_statement(table: str, columns: tuple[str, ...]) -> str:
     """INSERT OR IGNORE bound by name, so a reordered entry cannot misalign."""
     return (
