@@ -1983,3 +1983,127 @@ door, not a delete. AGENT.md now names them, and the reachability rule, so the n
 does not relitigate them.
 
 **Tests: 723 → 721.** Ruff clean. `make audit`: TOTAL 94.3% → 94.5%, `utils` 100%.
+
+---
+
+## 2026-09-18 — f064190, e0a0f43 — revival opens a new interval; ponytail written down
+
+**Decided — `scribe` is deferred, not dead.** The previous entry's audit found 527 lines
+with no entry point. The coder's call: keep it. Rendering a lock as a PDF is wanted
+eventually, the module works, the priority is low, and it may move to a branch. AGENT.md's
+module table now says "unwired on purpose — deferred, not abandoned" and the reachability
+note says **it is not to be deleted on an audit**, which is the sentence that stops a
+future pass cutting it on a technicality.
+
+**Decided — ponytail is a written convention, not a session habit.** Two rules at the top
+of Conventions: climb the ladder and stop at the highest rung that holds; a deliberate
+shortcut carries a `ponytail:` comment naming its ceiling and upgrade path. The guardrails
+are named too — never lazy about *understanding*, and never simplified away: validation at
+trust boundaries, error handling that prevents data loss, security, or anything asked for.
+
+**Corrected, and this is the one worth reading — `PUT /pipelines/{guid}` answering 201 on
+a revival is right, and the proposal to flatten it to 200 was wrong.**
+
+The claim was that deriving the HTTP status from the content diff leaks a domain concept
+into the transport, and that POST should always be 201, PUT always 200, with
+`new`/`changed`/`unchanged` left in the body. The coder pushed back: a revived pipeline is
+genuinely new, because the closed interval has to stay closed for a by-date query to be
+honest. That was right, and it was already written down — AGENT.md's "removing a flag
+opens a NEW interval, never reopens the closed one", and the rule that `valid_from`
+backdates only for a `protocol_uid`'s *first-ever* version, where first-ever means no
+history at all rather than no live version.
+
+Checked against both stores rather than argued:
+- A protocol present → absent from a pull → present again gives **two intervals**, a gap
+  with nothing active, and **the same hash both times** — identical content, one shared
+  blob, two separate spans of activity. The second interval does not backdate.
+- A template saved → retired → saved again gives the same shape.
+
+So the 201 is the transport correctly reporting that a new interval was created.
+Flattening it would have hidden a real state change and contradicted the model the moment
+`feature/versions-by-date` lands, where a query inside the gap must find nothing. **A
+two-line change would have made the API quietly lie about history.**
+
+**Cost of the near miss:** the invariant was stated for lifecycle flags only, which is how
+the wrong recommendation got made at all. It is now a rule in **Time and intervals**,
+covering both stores and both routes in, and naming the specific wrong change so the next
+person proposing it meets the reason before the diff.
+
+**Also built:** `make api` (starting the server was an undocumented incantation), and a
+**Usage** section in `README.md` — configuration, the pull, running the API, talking to it,
+development. Every command in it was run before it was written. `CLIENT_ID`,
+`CLIENT_SECRET` and `PIPE_TEMPLATE` were left out of the documented environment: they are
+read in `chronos.py` and used nowhere, so documenting them would be documenting fiction.
+**Dead config, still present.**
+
+---
+
+## 2026-09-18 — 3f5f403 — four environments, one dependency declaration
+
+**Built — `packages.oci` in `flake.nix`.** `oci_deps` had been declared and unused since
+the flake was written; there is now a real `dockerTools.buildLayeredImage` behind it. One
+`mkOci` function takes a target system, so `.#oci` follows the host's architecture and
+`.#oci-x86_64-linux` / `.#oci-aarch64-linux` name one. Layered, so python and its
+dependencies stay one cached layer and the source is its own.
+
+**The trap it was written around: an OCI image is a Linux image.** Building from the
+host's `pkgs` on darwin would have succeeded and produced an image full of Mach-O
+binaries — useless, and silently so. `mkOci` imports Linux nixpkgs regardless of host, so
+on a Mac the build stops with `Required system: 'aarch64-linux'` instead. **An honest
+failure was chosen over a quiet wrong artefact.** There is no emulation fallback the way
+`docker buildx` has one: buildx works because the Docker VM is already Linux, and nix on
+darwin has no Linux kernel to run anything in.
+
+**Built — `Dockerfile` and `.dockerignore`.** Two stages: dependencies on their own cached
+layer, then the project with `--no-editable` so the venv is self-contained and the runtime
+stage copies only that. uv, pip's caches and the source tree never reach the shipped
+image. Non-root, writes only to `/app/db`.
+
+**Corrected — the first Dockerfile mimicked nix and should not have.** It put the source on
+`PYTHONPATH` rather than installing it, which is nix-think in a file whose whole purpose is
+to make sense to people who do not use nix. It now uses the documented uv pattern, which is
+both the conventional version and the leaner one — verified by deleting the source tree and
+importing from the venv alone.
+
+**Corrected — `/data` was the wrong mount point, and the fix was to delete a variable.**
+The images had set `DB=/data` and `LOGS=/logs`, inventing a second layout to remember. The
+code already defaults `DB` to `db` and `LOGS` to `logs` relative to the working directory,
+so with `WORKDIR /app` and **nothing set** you get `/app/db` and `/app/logs`, mirroring the
+repo. Both images now declare one environment variable where they declared four.
+
+**Decided — no image is ever tagged `latest`.** Raised by the coder, and correctly: a
+version-control tool shipping `latest` reintroduces the problem it exists to solve. The
+flake reads the tag from `pyproject.toml` with `builtins.fromTOML`; docker takes
+`--build-arg VERSION`. The version is declared in one place.
+
+**Built — `pixi.toml`**, following the flake's own rule: `[dependencies]` is system
+packages only, and the project reaches the environment through `[pypi-dependencies]` as an
+editable install, so Python packages stay declared once in `pyproject.toml`. TeX is
+deliberately absent — conda-forge's coverage is patchy on Apple silicon and nothing needs
+it until `scribe` is wired.
+
+**Found — the two lockfiles already disagree.** `uv.lock` resolves `python-dotenv` to
+**1.2.3**; nixpkgs carries **1.2.2**. Everything else matches today. This is the standing
+cost of the split: `flake.lock` pins the whole closure including C libraries and `uv.lock`
+cannot; `uv.lock` pins Python packages exactly and nixpkgs will not let you choose. Not
+resolved — the coder's leaning is nix for stable containers, uv for development.
+
+**Added and then removed in the same session — a `packages.linux-builder` wrapper.** It
+wrapped nixpkgs' `darwin.linux-builder` because upstream `create-builder` writes its disk
+image to the *working directory* and its SSH keypair to *`./keys`*: launched from the repo
+it would have dropped a qcow2 and a private key into the source tree. It was pruned once
+the coder decided to install nix-darwin, where `nix.linux-builder.enable = true` does the
+whole job — VM, key, SSH and `nix.conf` wiring, surviving reboots — and the forty lines of
+manual `~/.ssh/config` and `builders =` documentation went with it. **A builder is host
+configuration, not project configuration**, and AGENT.md now says so, so it is not re-added.
+
+**Measured, because the number looked alarming:** the builder VM's disk is a sparse qcow2
+capped at 20 GB. A fresh image is **196 KiB** on disk. The cap is a ceiling, not a cost.
+
+**Open, flagged ⚠ in `AGENT.md`:** this machine has no Linux builder, so no OCI target can
+be built on it and the `Dockerfile` is the only working path. Installing nix-darwin is
+decided but not done, and two things need checking first — whether Nix came from the
+Determinate Systems installer, which also manages `nix.conf`, and that nix-darwin
+overwrites `/etc/nix/nix.conf` on every switch, so the current file must be copied and its
+settings ported into `nix.settings`, `trusted-users` above all: without it nix accepts no
+builder at all and the failure looks like a broken builder rather than a permission.

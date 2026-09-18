@@ -628,6 +628,16 @@ the problem wins. Say so and why.
   is the whole setup on a Mac. Its VM disk is a sparse qcow2 capped at 20 GB, so the cap
   costs nothing until it is used. Do not add a builder to this flake: it is host
   configuration, not project configuration.
+- **⚠ Open — this Mac has no Linux builder, so no OCI target can be built here yet.**
+  `nix build .#oci*` stops with `Required system: '…-linux'`; the `Dockerfile` is the only
+  working path until this is done. Decided, not yet done: **install nix-darwin** and set
+  `nix.linux-builder.enable = true`. Two things to check first, in this order:
+  - **Was Nix installed by the Determinate Systems installer?** It also manages
+    `nix.conf`, and the two fight. Read their nix-darwin notes before switching.
+  - **nix-darwin owns `/etc/nix/nix.conf` and overwrites it on every
+    `darwin-rebuild switch`.** Copy the current file somewhere first and port its settings
+    into `nix.settings` — at minimum `trusted-users`, which is already set here and which
+    nix needs before it will accept any builder at all.
 - **The two images install the source differently, deliberately.** nix puts it on
   `PYTHONPATH`; docker runs `uv sync --no-editable` so the venv is self-contained and the
   runtime stage copies only that. Both end up importing `api`, `chronos`… as top-level
