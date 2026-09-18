@@ -167,6 +167,13 @@ underneath, append-only.
 - **deprecate-on-absence**: a protocol missing from its own source's pull is deprecated
   by set difference within that source. Content addressing cannot see absence. **Protocols
   only** — a pull is a snapshot, a pipeline save is an edit (`absence=False`).
+- **Revival always opens a NEW interval, never reopens the closed one.** Both stores, both
+  routes in: a protocol reappearing in a later pull, and a retired template saved again.
+  **The gap survives** — identical content re-uses the same blob and hash, so content
+  identity is not activity identity. `versions-by-date` rests on this: a query inside the
+  gap must find nothing. It is also why `PUT /pipelines/{guid}` answers **201 on a
+  revival** — a new interval was created, and flattening that to 200 would make the API
+  lie about history.
 - **A blob is never deleted.** Old content stays resolvable by hash forever.
 
 ### Lifecycle — declared, never inferred
