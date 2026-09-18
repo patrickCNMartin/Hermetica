@@ -1830,7 +1830,7 @@ under Storage, which is read first every session.
 
 ---
 
-## 2026-09-18 — (uncommitted work) — locking collapses to one route; the pipeline is the unit
+## 2026-09-18 — 1da73b1 — locking collapses to one route; the pipeline is the unit
 
 **Recovered first:** `api/server.py` was missing from the working tree at the start of the
 session — deleted from disk after `46efb6b` was committed, with its `.pyc` still in
@@ -1880,6 +1880,8 @@ yesterday's protocols. POST is uncacheable by default, which is the safe default
 be cacheable.
 
 **Cost.**
+- `export_protocols` and `export_pipeline` were deleted in the same session but landed in
+  `bdc8e74`; see the next entry.
 - `query.build_lock` is deleted; **the query port no longer builds locks at all.** Lock
   generation now reaches `chronos.db` only through the compose port.
 - `TestTheQueryPortNeverWrites` lost its lock call as a result, so the `chmod 0444` guard
@@ -1908,3 +1910,76 @@ saved from a real `protocol_guid` → 201; the bodyless export → 200 carrying 
 **Still open:** the route review is half done. The `/protocols` vs `/protocol-versions`
 split and the `POST`/`PUT /pipelines` shared handler have not been walked through with the
 coder; those remain provisional. The ⚠ in `AGENT.md` was narrowed to say so.
+
+---
+
+## 2026-09-18 — bdc8e74 — a repo-wide ponytail audit; what was cut, and two things that were not
+
+**Asked for:** a whole-repo over-engineering audit and a dead-code hunt, with one rule —
+**test usage does not justify production code.** A function exercised only by tests is dead
+unless it serves what Hermetica is for.
+
+**Method — reachability, not grep.** Hermetica has exactly two entry points:
+`python -m chronos.chronos` and `python -m api.server`. Everything live is reachable from
+one of them. A first pass by name-matching produced false positives (`diff_protocols`
+looked live because `chronos.py:151` binds a *local variable* of that name), so the real
+pass walked the import graph from both entry points and then checked call sites with `ast`
+rather than text.
+
+**Deleted — six functions, 79 lines, no behaviour change.**
+- `format_entries` (`utils/store.py`) — zero references anywhere, prod or test.
+- `as_date` (`utils/dates.py`) — `as_iso` is the live one.
+- `read_pulls` (`chronos/pull_log.py`) — the pull log is written and never read back.
+- `diff_protocols` (`seal/store.py`), `diff_pipelines` (`compose/store.py`), and
+  `version_control_diff` (`utils/intervals.py`), which existed only for those two. A
+  read-only "what would this pull change?" is a coherent feature; nothing had ever asked
+  for it.
+- **The tests kept their coverage**, because `write_protocols` and `write_pipeline` return
+  the identical diff dict — the probes now assert through the path production actually
+  takes. `test_every_connection_is_closed` drops from 4 connections to 3. Two tests went
+  out with their functions.
+- `4251 → 4172` lines, `167 → 159` public functions, `utils` coverage 99.0% → 100%.
+
+**Also deleted, earlier in the session:** `export_protocols` and `export_pipeline`
+(`seal/seal.py`). Neither had a caller, and `export_pipeline` **wrote an empty file** —
+`PIPELINE_KEYS` was `("pipelines",)` while `generate_lock` stores the graph under
+`"pipeline"`, so `write_lock_file`'s select-by-presence matched nothing. The
+`# Need to check this` comment above the constant was right. `export_lock` escaped it by
+luck: `PINS_KEYS` already carries `"pipeline"`, so the full lock was never affected.
+`LOCK_KEYS` is now `PINS_KEYS + ("protocols", "bodies")` and the dead plural is gone —
+**the bug was closed by deleting the function that used it, not by fixing the constant.**
+
+**Not deleted, deliberately — `protocol_hash` (`seal/contract.py`).** Dead by the letter:
+no production call site, three test files import it. Removing three lines meant adding a
+shared test helper plus import plumbing that this layout does not support cleanly
+(`tests/` and `tests/dev_tests/` are packages; a bare `from conftest import …` does not
+resolve). Net zero lines, more indirection, and it stops naming a real rule — *what the
+store hashes, metadata excluded*. **Reverted.** The rule that test usage does not justify
+production code is right in general and wrong for a two-line statement of a domain
+invariant.
+
+**Not done, deliberately — minting the bootstrap template in place.** The audit proposed
+dropping the `_minted.yaml` twin, the `mint` flag and both regexes, on the grounds that
+minting in place is idempotent by construction and cannot issue a second set of guids.
+**Withdrawn after testing it:** `safe_load` → `safe_dump` is not a round trip. It erased
+all nine comment lines from `config/pg_core_templates.yaml`, including the block
+explaining what `nodes` and `dag` mean. The twin exists to keep the hand-authored,
+documented source separate from the generated guid-bearing file, and that is a better
+reason than the one the code gives. AGENT.md now records why, so it is not re-proposed.
+
+**Found while checking that — ⚠ guids are not reproducible across clones.**
+`config/pg_core_templates.yaml` is tracked with `pipeline_guid: null`; no `_minted.yaml`
+is in git and `.gitignore` never mentions one. The guids therefore live only in an
+untracked file generated at bootstrap, so **two deploys from a fresh clone mint different
+guids for the same pipelines** — and the guid is identity across versions. Not fixed here:
+the fix is committing the minted twin once, which is a decision about what the repo
+carries, not a code change. Flagged ⚠ in `AGENT.md` under Pipelines.
+
+**The audit's real conclusion: this repo is not bloated, it is under-wired.** Of the 731
+lines with no production caller, only 79 were genuinely dead. The rest is finished,
+tested work with no entrance — `scribe` (527 lines, a lock back into something a human
+reads), the bootstrap loader (96), and the lock verify/export pair (50). Each needs a
+door, not a delete. AGENT.md now names them, and the reachability rule, so the next audit
+does not relitigate them.
+
+**Tests: 723 → 721.** Ruff clean. `make audit`: TOTAL 94.3% → 94.5%, `utils` 100%.

@@ -49,10 +49,21 @@ names it in a warning, then is discarded.
 | `sources` | adapters; one platform's bytes → a `ProtocolArtefact` | protocols.io only |
 | `seal` | hashing, version intervals, lock files, lifecycle | works |
 | `compose` | pipeline templates, DAG versioning, pinning at lock time | works; `load_template` has no command yet |
-| `scribe` | a lock back into something a human reads | works, fidelity partial |
+| `scribe` | a lock back into something a human reads | works, fidelity partial; **unwired on purpose — deferred, not abandoned** |
 | `utils` | mechanics — canonical form, hashing, dates, sqlite, intervals | works |
 | *(planned)* | prose generation from a lock | **a sixth module, not part of `scribe`** |
 | `api` | query port (`query.py`), compose port (`pipelines.py`), HTTP/JSON transport (`server.py`) — the only way outside tools reach either `.db` file | works; **no auth** |
+
+**Only two entry points exist** — `python -m chronos.chronos` (the pull) and
+`python -m api.server`. Reachability from those two is the test for dead code; test usage
+is not. **Kept on purpose despite no production caller**, so an audit does not re-flag
+them: `verify_lock`, `export_pins` and `seal.export_lock` (verifying a lock you were
+handed is the point of shipping one), `protocol_hash` (a two-line statement of what the
+store hashes, used across three test files), and `load_template` (the bootstrap — the
+store has to start somewhere). **`scribe` is kept deliberately** — rendering a lock as a
+PDF is wanted eventually, the module works, and the priority is low; it may move to a
+branch, but it is not dead and is not to be deleted on an audit. Anything
+else with no caller is dead; **`docs/audit_log.md` 2026-09-18 lists what was already cut.**
 
 **`chronos` decides *when* to look; an adapter knows *what a platform's bytes are*; `seal`
 decides *what they mean*.** A rule about identity is seal's even if cron calls it. A rule
@@ -230,6 +241,8 @@ Two flavours: protocols-only, and pipeline (adds the pinned graph).
   so verify by grepping the LaTeX log for `Missing character`, never by the PDF appearing.
   A YAML block in the markdown would *override* this file, not merge with it, so the
   rendered `.md` carries none and does not render correctly alone.
+- **Nothing invokes pandoc.** No code and no Makefile target references `pandoc.yaml`; the
+  PDF step is run by hand, which is the intended state for now — see the module table.
 
 ### Pipelines
 
@@ -242,6 +255,19 @@ Two flavours: protocols-only, and pipeline (adds the pinned graph).
   `save_pipeline` without a guid, or by `mint_template` for the bootstrap file — and
   survives every edit. **Reading never mints**; a save naming a guid with no history
   raises `UnknownPipelineError`.
+- **`mint_template` writes a twin, and must keep doing so.** The obvious simplification is
+  minting in place and dropping the `mint` flag, the regex and the second file. It was
+  tried and withdrawn: `safe_load` → `safe_dump` is not a round trip, and it erases all
+  nine comment lines from `config/pg_core_templates.yaml`. The twin separates the
+  hand-authored, documented source from the generated guid-bearing file. The
+  `_minted\.ya?ml$` guard is what stops a second mint issuing fresh guids and orphaning
+  everything stored under the old ones.
+- **⚠ The minted twin is not tracked, so guids are not reproducible.**
+  `config/pg_core_templates.yaml` is committed with `pipeline_guid: null`, no
+  `_minted.yaml` is in git and `.gitignore` never mentions one — so two deploys from a
+  fresh clone mint **different guids for the same pipelines**, and the guid is supposed to
+  be identity across versions. Commit the minted twin once, before the bootstrap gets a
+  command and this bakes in.
 - **A node is not a protocol.** `DAG` is keyed on the pipeline's own node ids, and `nodes`
   maps each node id to a protocol guid. That separation is what lets one protocol run at
   several points in one graph — two nodes, one guid. Keyed on protocols directly, a
@@ -534,6 +560,17 @@ the problem wins. Say so and why.
 > ```
 > "command not found" from a bare command is expected. Never install onto the host.
 
+- **Write code with ponytail.** Every change climbs the ladder first — does this need to
+  exist at all, is it already in this repo, does the stdlib or the platform do it, can it
+  be one line — and stops at the highest rung that holds. Shortest working diff, no
+  abstraction with one implementation, no scaffolding for later, deletion over addition.
+  **Never lazy about understanding**: read the whole path a change touches before picking
+  a rung, and a bug is fixed at its root, not at the caller that reported it. Never
+  simplified away: validation at trust boundaries, error handling that prevents data loss,
+  security, or anything explicitly asked for.
+- **A deliberate shortcut carries a `ponytail:` comment** naming the ceiling and the
+  upgrade path, so it is a known cost rather than a mystery — see `WRITES` in
+  `api/server.py`. `/ponytail-debt` collects them.
 - **Entry points:** `python -m chronos.chronos` (the pull) and `python -m api.server` (the
   API; `DB`, `API_HOST`, `API_PORT` from `env/.env`), never by file path — by path Python puts
   the file's directory on `sys.path` and `chronos` resolves to the module, not the package.
