@@ -1,0 +1,22 @@
+# Keep the build context to source and lock files. `env/` and `db/` are the
+# important ones: secrets and data must never reach an image layer.
+.git
+.github
+.claude
+.venv
+env
+db
+logs
+result
+tests
+docs
+scripts
+security
+config
+protocol_io_bundle*
+**/__pycache__
+**/*.pyc
+*.md
+Makefile
+flake.*
+pixi.*

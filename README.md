@@ -20,17 +20,17 @@ Will add some agent rules and context for agentic development in the future. I a
 
 ## Environments
 
-The project works on a multi-tier level for development purposes. Currently, only option 1 and 3 are provided. 
+The project works on a multi-tier level for development purposes. All four are now provided. 
 
 1. `uv` only. All python dependencies are stated in the `pyproject.toml` and can be run using the `uv` / `venv` virtual environments. Certain system dependencies are required but that's on you to add them (`pandoc` for example). 
 
-2. `docker` + `uv`. We will provide a `docker` container for this project which will contain all the python dependencies stated in the `pyproject.toml`. 
+2. `docker` + `uv`. The `Dockerfile` builds a lean image with the runtime dependencies resolved from `uv.lock`. See **Building a container image**. 
 
 3. `nix` + `uv`. All code can be run in a `nix develop` shell which handles system dependencies and will install python dependencies with `uv`
 
-4. `nix` + `OCI` + `uv`. The `nix flake` contains development shell instruction but also OCI image build instruction. Image can be built directly from a version pinned nix flake.
+4. `nix` + `OCI` + `uv`. The `nix flake` contains development shell instructions and an OCI image build (`nix build .#oci`), pinned by `flake.lock`. See **Building a container image**.
 
-NOTE: We will also provide a `PIXI` approach in the future for those who prefer a conda like environment.
+NOTE: A `PIXI` approach is also provided for those who prefer a conda like environment — see **The pixi environment**.
 
 ## Pre-commit hooks
 
@@ -161,6 +161,140 @@ either — anything that writes a file copies into `tmp_path` first.
 `make audit` rewrites `docs/status.md`, which is tracked. CI runs `make audit-check` and
 fails if the committed numbers no longer match the code, so quote that file rather than
 counting by hand.
+
+
+## Building a container image
+
+Two paths to the same thing. **nix pins the whole closure** — C libraries included — and
+is what should build a release. **The Dockerfile pins the Python packages** from
+`uv.lock` and needs no nix knowledge, which makes it the one to reach for day to day and
+the only one that builds on a Mac.
+
+Both contain the API, its five runtime dependencies and the source, and nothing else.
+Neither ships pandoc or TeX: `scribe` has no entry point yet and they cost about 500 MB.
+Both serve the API by default and take a pull as a command override.
+
+**Neither is ever tagged `latest`.** This project exists to make versions explicit; an
+image named `latest` reintroduces exactly the problem it solves. The version comes from
+`pyproject.toml` and nowhere else.
+
+### With nix
+
+```sh
+nix build .#oci                  # this machine's architecture, Linux
+nix build .#oci-x86_64-linux     # a typical server
+nix build .#oci-aarch64-linux    # an arm server
+
+docker load < result             # loads hermetica:0.1.0
+```
+
+Say nothing and you get your own architecture; name a target and you get that one. The
+tag is read from `pyproject.toml`, so bumping the version there is the only edit.
+
+**Every target is Linux**, whatever you build on. The flake builds from Linux nixpkgs even
+when evaluated on darwin, so on a Mac without a Linux builder nix stops with:
+
+```
+error: Cannot build '/nix/store/...-hermetica.tar.gz.drv'.
+       Required system: 'aarch64-linux'
+```
+
+That is correct, not broken — an image full of Mach-O binaries would be useless. Unlike
+`docker buildx --platform`, there is no emulation to fall back on: buildx works because
+the Docker VM is already Linux, and nix on darwin has no Linux kernel to run anything in.
+Give it one, with **nix-darwin**:
+
+```nix
+nix.linux-builder.enable = true;
+```
+
+That is the whole setup. It runs a small NixOS VM as a launchd service, installs its key,
+writes the SSH and `nix.conf` wiring for you, and survives reboots. Then:
+
+```sh
+nix build .#oci-x86_64-linux     # works on a Mac
+```
+
+The VM's disk is a sparse qcow2 capped at 20 GB — it starts around 200 KB and grows only
+with what it actually builds, so the cap is a ceiling, not a cost.
+
+A remote Linux machine works too, and is faster than a VM if you have one. In
+`nix.settings.builders`, or `~/.config/nix/nix.conf` if you are not on nix-darwin:
+
+```
+builders = ssh-ng://you@buildhost x86_64-linux - 8 - big-parallel
+```
+
+The image is layered, so Python and its dependencies stay in one cached layer and the
+source is its own — a code change re-pushes kilobytes.
+
+### With docker
+
+```sh
+VERSION=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+docker build --build-arg VERSION=$VERSION -t hermetica:$VERSION .
+```
+
+Ordinary two-stage build, nothing nix-flavoured about it. The first stage installs
+dependencies on their own cached layer, then installs the project with `--no-editable` so
+the virtualenv is self-contained. The second stage copies that virtualenv and nothing
+else — uv, pip's caches and the source tree never reach the shipped image. It runs as a
+non-root user and writes only to `/app/db`.
+
+For a Linux image from a Mac, this is where `buildx` earns its keep:
+
+```sh
+docker buildx build --platform linux/amd64 -t hermetica:$VERSION .
+```
+
+### Running the image
+
+The layout inside the container mirrors the repo: **`/app/db` and `/app/logs`**, because
+the code already defaults `DB` to `db` and `LOGS` to `logs` relative to its working
+directory. Neither variable is set in either image — the defaults do the work.
+
+The API **refuses to start without `chronos.db`**, which only a pull creates, so mount a
+directory that has one:
+
+```sh
+# serve the API
+docker run --rm -v "$PWD/db:/app/db" -p 127.0.0.1:8080:8080 hermetica:0.1.0
+
+# run a pull instead
+docker run --rm -v "$PWD/db:/app/db" -v "$PWD/logs:/app/logs" \
+  --env-file env/.env hermetica:0.1.0 python -m chronos.chronos
+```
+
+**The image carries no data, no `env/.env` and no config** — only code. Configuration
+comes from the environment at run time: `--env-file`, `-e`, or Compose `environment:`.
+The `ENV` lines in the image are defaults, not constants, and a value already in the
+environment always wins over one from a file. Nothing is hardcoded.
+
+The one variable both images do set is `API_HOST=0.0.0.0`, because the code defaults to
+`127.0.0.1` and no sibling container could reach that. **It is safe only while the port
+stays unpublished** — there is no authentication. Under Compose, give the Hermetica
+service no `ports:` at all and let the portal reach it over the internal network. The
+`-p 127.0.0.1:8080:8080` above binds to loopback for local poking; never publish it on
+`0.0.0.0`.
+
+## The pixi environment
+
+`pixi.toml` provides a conda-flavoured environment for people who would rather not use
+nix.
+
+```sh
+pixi run test        # or: api, pull, lint, audit
+pixi shell -e dev    # a shell with the dev tooling
+```
+
+It follows the same rule as the flake: **`[dependencies]` is system packages only**.
+Every Python package is declared once, in `pyproject.toml`, and reaches the environment
+through `[pypi-dependencies]` as an editable install. Three files declaring the same
+Python versions would drift; one declaration cannot.
+
+TeX is deliberately absent — conda-forge's coverage is patchy on Apple silicon, and
+nothing needs it until `scribe` is wired up. The nix dev shell is the reference for that
+toolchain.
 
 
 # AI Use

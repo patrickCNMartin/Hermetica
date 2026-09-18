@@ -609,7 +609,34 @@ the problem wins. Say so and why.
 - **A test never writes into the repo.** `mint_template` drops a file beside its source, so
   template tests copy `config/` into `tmp_path` first.
 - **PDF toolchain is in the flake** — `pandoc`, `texliveSmall` + `dejavu` +
-  `lualatex-math`. `oci_deps` is declared but **nothing builds an image yet**.
+  `lualatex-math`. **Dev shell only: the images carry neither**, because `scribe` has no
+  entry point and they cost ~500 MB.
+- **Four environments, one dependency declaration.** `uv`, `docker`, `nix`, `pixi` — and
+  `pyproject.toml` is the only place a Python package is named. `flake.nix` `system_deps`,
+  `pixi.toml` `[dependencies]` and the `Dockerfile` carry system packages only. The one
+  restatement is the `py` list inside `mkOci` in `flake.nix`, which must track
+  `[project.dependencies]` by hand because the image has no `uv` and never syncs.
+- **No image is ever tagged `latest`.** The tag is read from `pyproject.toml`
+  (`builtins.fromTOML` in the flake, `--build-arg VERSION` for docker), so the version is
+  declared once. A version-control tool shipping `latest` is the problem it exists to fix.
+- **`mkOci` takes the target system.** `.#oci` follows the host's architecture,
+  `.#oci-x86_64-linux` and `.#oci-aarch64-linux` name one. **Every target is Linux**, so on
+  darwin they stop with `Required system: '…-linux'` unless nix has a Linux builder — that
+  is correct, not broken, and there is no emulation fallback the way `docker buildx` has
+  one. The `Dockerfile` is the path on a Mac.
+- **The Linux builder is nix-darwin's, not the repo's** — `nix.linux-builder.enable = true`
+  is the whole setup on a Mac. Its VM disk is a sparse qcow2 capped at 20 GB, so the cap
+  costs nothing until it is used. Do not add a builder to this flake: it is host
+  configuration, not project configuration.
+- **The two images install the source differently, deliberately.** nix puts it on
+  `PYTHONPATH`; docker runs `uv sync --no-editable` so the venv is self-contained and the
+  runtime stage copies only that. Both end up importing `api`, `chronos`… as top-level
+  names, which is what `package-dir = {"" = "hermetica"}` describes.
+- **Containers hold code only** — no `db/`, no `env/`, no `config/`; `.dockerignore` keeps
+  them out of the build context. `DB` and `LOGS` are left unset so the code's own defaults
+  put them at `/app/db` and `/app/logs`, mirroring the repo. `load_dotenv` finds no file
+  and does not complain, and an environment value always beats a file one, so runtime
+  configuration is `--env-file`/`environment:` and nothing is baked in.
 - **CI:** `test`, `lint` (including `detect-secrets-hook` over **tracked files only**), and
   `nix` (the suite through `nix develop`). The `uv` jobs are the contract; `nix` is a
   health check.

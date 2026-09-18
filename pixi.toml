@@ -1,0 +1,31 @@
+[project]
+name = "hermetica"
+version = "0.1.0"
+description = "Protocol Version Control and Composition with Hermetica"
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "osx-64", "linux-64", "linux-aarch64"]
+
+[dependencies]
+python = "3.13.*"
+git = "*"
+uv = "*"
+pandoc = ">=3"
+
+
+[pypi-dependencies]
+hermetica = { path = ".", editable = true }
+
+[feature.dev.pypi-dependencies]
+
+hermetica = { path = ".", editable = true, extras = ["dev"] }
+
+[environments]
+default = { features = [], solve-group = "main" }
+dev = { features = ["dev"], solve-group = "main" }
+
+[tasks]
+api = "python -m api.server"
+pull = "python -m chronos.chronos"
+test = "pytest"
+lint = "ruff check . && ruff format --check ."
+audit = "python scripts/audit.py --write"
