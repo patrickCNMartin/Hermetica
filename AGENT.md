@@ -190,6 +190,9 @@ Neither is stored as a reason.
 A **self-contained, verifiable contract on disk** — recomputing the hashes verifies it.
 Two flavours: protocols-only, and pipeline (adds the pinned graph).
 
+- **The pipeline is the unit of locking.** A single protocol is a pipeline with one step,
+  so the API only ever emits the pipeline flavour; the protocols-only flavour is a
+  `seal` primitive, not something a caller can ask for. See Storage.
 - **`manifest_hash` covers `entries` alone** — not `created_at`, `provenance` or display
   fields. Two locks pinning the same protocols are the same manifest a year apart.
 - **`as_of` is recorded, never used to resolve.** Resolving a day to a manifest is not
@@ -198,7 +201,10 @@ Two flavours: protocols-only, and pipeline (adds the pinned graph).
 - **Written human-readable, not canonical bytes.** Verification re-canonicalizes, so
   reformatting cannot break a lock.
 - **`export_lock` raises if built `with_bodies=False`** rather than writing a file that
-  silently cannot reproduce.
+  silently cannot reproduce. **Two functions carry this name:** `seal.export_lock(lock,
+  path)` writes the file and is the one that raises; `api.pipelines.export_lock` builds
+  the document and happily returns a pins-only one. A pins-only lock from the API is
+  therefore correct input for `export_pins` and refused by `seal.export_lock`.
 - **`verify_lock` returns the drift rather than raising** — a verifier that stops at the
   first problem cannot report the whole picture. Four lists, all empty meaning verified.
   **It reads no database.**
@@ -335,10 +341,17 @@ Two flavours: protocols-only, and pipeline (adds the pinned graph).
   `chronos.db` and opens it directly; the API opens `chronos.db` read-only and
   `compose.db` read-write.** Outside tools talk to the API, never to either file or a
   shared mount.
-- **⚠ Open — first thing next session: review the routes with the coder.** Parts of
-  `api/server.py`'s `ROUTES` (paths, methods, what each returns) are not yet what the coder
-  wants, or not yet understood. Walk through them before building anything on the API;
-  treat the route table and `openapi.json` as provisional until then.
+- **Locking is one route — `POST /pipelines/{guid}/lock`.** There was a second,
+  `POST /locks`, taking a list of hashes; it was deleted. A single protocol is a pipeline
+  with one step, so a caller never hands over hashes: they point at a saved template and
+  the server pins the protocols active at that moment. **The caller cannot choose
+  versions** — pinning historical ones would need an `as_of`, which is not built.
+  The optional body is `{"with_bodies": false}` for a pins-only document.
+- **⚠ Open — the route review is half done.** The lock routes are settled (above). Still
+  unreviewed with the coder: the `/protocols` vs `/protocol-versions` split (a version is
+  fetched at a top level path, not under its protocol), and `POST` vs `PUT /pipelines`
+  sharing one handler where `PUT` answers 200 or 201. Treat those paths and their
+  `openapi.json` entries as provisional; the lock route is not.
 - **The transport holds no rules.** A route table, one error mapping, a body cap
   (`MAX_BODY`, 1 MiB), nothing else. **No `Content-Length` means no body** — per HTTP/1.1,
   and what `curl -X POST …/lock` sends; a chunked body is refused (411), never read
@@ -370,6 +383,8 @@ Two flavours: protocols-only, and pipeline (adds the pinned graph).
   template's first version, so an edit does not re-date authorship. See Pipelines.
 - **A lock file is an export, not the integration bus.** Outside systems work live
   through the ports; a lock is the reproducible receipt they archive or hand on.
+  **No lock is ever stored** — there is no lock table in either database. It is built on
+  request and returned, and exists only on the caller's side.
 
 ---
 

@@ -193,7 +193,11 @@ def retire(db: str, guid: str, retired_at: int | None = None) -> dict:
 
 
 def export_lock(
-    db: str, protocol_db: str, guid: str, exported_at: int | None = None
+    db: str,
+    protocol_db: str,
+    guid: str,
+    exported_at: int | None = None,
+    with_bodies: bool = True,
 ) -> dict:
     """The full lock for one saved template, pinned to the protocols active now.
 
@@ -209,7 +213,10 @@ def export_lock(
 
     pinned = hydrate_pipeline(template, protocol_db)
     protocols = generate_protocol_lock(
-        sorted(set(pinned.node_hashes.values())), protocol_db, as_of=exported_at
+        sorted(set(pinned.node_hashes.values())),
+        protocol_db,
+        as_of=exported_at,
+        with_bodies=with_bodies,
     )
     pinned = replace(pinned, manifest_hash=protocols["manifest_hash"])
     pipeline = generate_pipeline_lock(

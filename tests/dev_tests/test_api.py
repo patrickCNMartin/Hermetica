@@ -23,7 +23,6 @@ from api.pipelines import (
 )
 from api.query import (
     UnknownProtocolError,
-    build_lock,
     get_protocol,
     list_protocols,
     protocol_versions,
@@ -160,21 +159,6 @@ class TestGetProtocol:
             get_protocol(protocols, "sha256:nope")
 
 
-class TestBuildLock:
-    def test_it_locks_the_hashes_asked_for(self, protocols):
-        listed = list_protocols(protocols)[:2]
-
-        lock = build_lock(protocols, [p["hash"] for p in listed])
-
-        assert set(lock["entries"]) == {p["protocol_uid"] for p in listed}
-        assert lock["manifest_hash"]
-
-    @pytest.mark.parametrize("hashes", [[], "sha256:a", [1], [""], None])
-    def test_a_malformed_list_is_refused(self, protocols, hashes):
-        with pytest.raises(InvalidRequestError):
-            build_lock(protocols, hashes)
-
-
 class TestTheQueryPortNeverWrites:
     def test_every_read_works_on_a_file_nobody_may_write(self, protocols):
         """If a write ever creeps into the query port, this is where it fails."""
@@ -184,7 +168,6 @@ class TestTheQueryPortNeverWrites:
             uid, digest = listed[0]["protocol_uid"], listed[0]["hash"]
             protocol_versions(protocols, uid)
             get_protocol(protocols, digest)
-            build_lock(protocols, [digest])
         finally:
             os.chmod(protocols, stat.S_IRUSR | stat.S_IWUSR)
 
@@ -498,6 +481,14 @@ class TestExportLock:
         lock = export_lock(pipelines, protocols, guid, LATER)
 
         assert list(lock["entries"]) == ["protocols_io:568614"]
+
+    def test_a_pins_only_lock_carries_no_bodies(self, pipelines, protocols):
+        guid = save(pipelines, protocols)["pipeline_guid"]
+
+        lock = export_lock(pipelines, protocols, guid, LATER, with_bodies=False)
+
+        assert lock["entries"]
+        assert "bodies" not in lock
 
     def test_the_same_template_later_pins_the_newer_version(
         self, pipelines, protocols, artefacts

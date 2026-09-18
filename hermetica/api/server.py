@@ -99,14 +99,6 @@ def get_protocol(params, body, protocol_db, compose_db):
     return HTTPStatus.OK, query.get_protocol(protocol_db, params["hash"])
 
 
-def build_lock(params, body, protocol_db, compose_db):
-    body = json_object(body)
-    with_bodies = body.get("with_bodies", True)
-    if not isinstance(with_bodies, bool):
-        raise InvalidRequestError(["`with_bodies` must be true or false"])
-    return HTTPStatus.OK, query.build_lock(protocol_db, body.get("hashes"), with_bodies)
-
-
 def list_pipelines(params, body, protocol_db, compose_db):
     return HTTPStatus.OK, pipelines.list_pipelines(compose_db, protocol_db)
 
@@ -138,7 +130,14 @@ def pipeline_versions(params, body, protocol_db, compose_db):
 
 
 def export_lock(params, body, protocol_db, compose_db):
-    return HTTPStatus.OK, pipelines.export_lock(compose_db, protocol_db, params["guid"])
+    """No body pins with bodies; `{"with_bodies": false}` gives pins only."""
+    payload = json_object(body) if body is not None else {}
+    with_bodies = payload.get("with_bodies", True)
+    if not isinstance(with_bodies, bool):
+        raise InvalidRequestError(["`with_bodies` must be true or false"])
+    return HTTPStatus.OK, pipelines.export_lock(
+        compose_db, protocol_db, params["guid"], with_bodies=with_bodies
+    )
 
 
 def openapi(params, body, protocol_db, compose_db):
@@ -149,7 +148,6 @@ ROUTES = {
     ("GET", "/protocols"): list_protocols,
     ("GET", "/protocols/{protocol_uid}/versions"): protocol_versions,
     ("GET", "/protocol-versions/{hash}"): get_protocol,
-    ("POST", "/locks"): build_lock,
     ("GET", "/pipelines"): list_pipelines,
     ("POST", "/pipelines"): save_pipeline,
     ("GET", "/pipelines/{guid}"): get_pipeline,

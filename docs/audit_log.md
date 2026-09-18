@@ -1740,7 +1740,7 @@ baselined, so they are fixture values and not credentials.
 
 ---
 
-## 2026-09-17 — c37b883 (uncommitted work) — API Phase 2: the HTTP transport and its documentation
+## 2026-09-17 — 46efb6b — API Phase 2: the HTTP transport and its documentation
 
 **Built — `api/server.py`,** on the standard library with no new dependency.
 - **`ROUTES`:** a dict of `(method, path template)` to a named handler. 12 routes:
@@ -1827,3 +1827,84 @@ yet clear to them. Before anything is built on the API, walk through `ROUTES` in
 `api/server.py` and `openapi.json` together: the paths, the methods, the status codes, and
 what each returns. Until then both are provisional. The item is flagged ⚠ in `AGENT.md`
 under Storage, which is read first every session.
+
+---
+
+## 2026-09-18 — (uncommitted work) — locking collapses to one route; the pipeline is the unit
+
+**Recovered first:** `api/server.py` was missing from the working tree at the start of the
+session — deleted from disk after `46efb6b` was committed, with its `.pyc` still in
+`__pycache__` and `test_server.py` still present. Nothing in the log accounts for it, so it
+was taken as accidental and restored with `git restore`. The 101 `api` + `server` tests
+passed unchanged against the restored file, so nothing was lost.
+
+**Decided — there is one way to build a lock: `POST /pipelines/{guid}/lock`.**
+`POST /locks`, which took a list of protocol hashes, is deleted.
+
+**Why.** The two routes were two special cases of one operation, and the review that
+started with "these seem like the same thing" was right:
+- Both are pure reads. Both return a document and store nothing.
+- Both return the *same* document. `export_lock` returns `generate_lock(protocols,
+  pipeline)`, which is `{**protocol_lock, "pipeline": pipeline_lock}`. `build_lock`
+  returned the protocol half alone. One document with an optional `pipeline` key, not two
+  document types.
+- The only real difference was **who picks the pins**: `/locks` let the caller name exact
+  hashes, including historical ones; `/pipelines/{guid}/lock` resolves the template's nodes
+  to whatever is active now and refuses by node if a protocol has been retired.
+- **The deciding argument: a single protocol is a pipeline with one step.** The ad-hoc set
+  `/locks` existed to serve is expressible as a template, so the route had no case left.
+- The `seal` layer already supported the union — `generate_lock` takes either-or-both and
+  `generate_pipeline_lock` takes several pipelines. The API was *narrower* than the core it
+  wraps; deleting a route did not remove a capability, it stopped hiding one.
+
+**Rejected — a merged `POST /locks` taking `pipelines` and/or `hashes`.** It maps 1:1 onto
+`generate_lock`'s own signature and was the other candidate, but it keeps two input modes
+alive to serve a case that the one-step pipeline already covers, and adds a branch and a
+union body to do it. Rejected as the more complex of two designs that do the same work.
+
+**Rejected — pinning historical versions.** A caller still cannot ask for a lock at old
+protocol versions; that needs an `as_of` threaded into `hydrate_pipeline`, and nothing
+needs it yet. The day-to-version query it would build on is still parked on
+`feature/versions-by-date`.
+
+**Why the surviving route is still a POST, and on different grounds than before.**
+`/locks` was a POST because a list of `sha256:`-prefixed hashes is ~74 bytes each once
+percent-encoded, and proxies cap request lines around 4–8 KB — a lock over ~100 protocols
+would have failed in the field, not in the tests. That argument dies with the route: the
+survivor takes only a guid. It stays a POST for a different reason — **its answer is
+time-dependent.** It pins "the protocols active now", so the same URL legitimately returns
+a different lock tomorrow, and a proxy caching a GET would hand out a lock pinned to
+yesterday's protocols. POST is uncacheable by default, which is the safe default here.
+`GET` plus `Cache-Control: no-store` would work but relies on every intermediary obeying it.
+**Flagged as the one part of this decision worth re-litigating** if the route ever needs to
+be cacheable.
+
+**Cost.**
+- `query.build_lock` is deleted; **the query port no longer builds locks at all.** Lock
+  generation now reaches `chronos.db` only through the compose port.
+- `TestTheQueryPortNeverWrites` lost its lock call as a result, so the `chmod 0444` guard
+  no longer covers a lock build. `api.pipelines.export_lock` reads `chronos.db` read-only
+  too but is not in that test — it would need a compose fixture in that scope. **Left
+  open.**
+- **`with_bodies` was preserved, not dropped.** It lived only on `/locks`, so deleting the
+  route would have silently removed the only way to get a pins-only lock over the API. It
+  moved to `export_lock` as an optional body, `{"with_bodies": false}`. The bodyless POST
+  still works — `json_object` is reused so a JSON array is still 422 while no body is legal,
+  which keeps the 411 regression from `46efb6b` fixed.
+- `openapi.json`: `/locks` removed, `with_bodies` documented, the 422 on the lock route now
+  names `InvalidRequestError` as well as `UnresolvedProtocolError`.
+
+**Tests: 730 → 723.** Nine deleted with the route (`TestBuildLock`, two socket tests, the
+read-only call), two added back for pins-only at the port and one retargeted at the new
+route. `ROUTES` and `openapi.json` both 11 and held equal by the contract test. Ruff clean.
+`make audit`: `api` 97.3% → 97.2%, 645 lines from 704. `docs/status.md` rewritten.
+
+**Smoke-tested live**, against a scratch copy of `chronos.db`, because the last session's
+real bug was found this way and not by the suite: `POST /locks` → 404; a one-step pipeline
+saved from a real `protocol_guid` → 201; the bodyless export → 200 carrying `entries`,
+`bodies`, `manifest_hash` and `pipeline`; `{"with_bodies": false}` → no `bodies`;
+`{"with_bodies": 1}` → 422. Scratch stores deleted, `db/` untouched.
+
+**Still open:** the route review is half done. The `/protocols` vs `/protocol-versions`
+split and the `POST`/`PUT /pipelines` shared handler have not been walked through with the
+coder; those remain provisional. The ⚠ in `AGENT.md` was narrowed to say so.

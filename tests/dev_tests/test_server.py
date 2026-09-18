@@ -168,7 +168,7 @@ class TestBodies:
         assert payload["problems"] == ["the body must be a JSON object"]
 
     def test_with_bodies_must_be_a_boolean(self, call):
-        status, _ = call("POST", "/locks", {"hashes": ["sha256:a"], "with_bodies": 1})
+        status, _ = call("POST", "/pipelines/nope/lock", {"with_bodies": 1})
         assert status == HTTPStatus.UNPROCESSABLE_ENTITY
 
 
@@ -197,17 +197,6 @@ class TestProtocolRoutes:
         status, payload = call("GET", "/protocols/protocols_io:1/versions")
         assert status == HTTPStatus.NOT_FOUND
         assert payload["protocol_uid"] == "protocols_io:1"
-
-    def test_build_a_lock(self, call):
-        digest = call("GET", "/protocols")[1][0]["hash"]
-        status, payload = call("POST", "/locks", {"hashes": [digest]})
-        assert status == HTTPStatus.OK
-        assert payload["manifest_hash"]
-
-    def test_a_pins_only_lock_has_no_bodies(self, call):
-        digest = call("GET", "/protocols")[1][0]["hash"]
-        _, payload = call("POST", "/locks", {"hashes": [digest], "with_bodies": False})
-        assert "bodies" not in payload
 
 
 # -----------------------------------------------------------------------------#

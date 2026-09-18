@@ -142,75 +142,6 @@
         }
       }
     },
-    "/locks": {
-      "post": {
-        "operationId": "buildLock",
-        "tags": [
-          "locks"
-        ],
-        "summary": "A protocols-only lock for a set of versions. Nothing is written.",
-        "requestBody": {
-          "required": true,
-          "description": "The protocol version hashes to lock.",
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "hashes"
-                ],
-                "properties": {
-                  "hashes": {
-                    "type": "array",
-                    "minItems": 1,
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "with_bodies": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "False gives a pins-only document."
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "The lock document.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Lock"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "MissingHash: a hash is not in the store.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "InvalidRequestError, or DuplicatedIdError when two versions of one protocol are asked for.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/pipelines": {
       "get": {
         "operationId": "listTemplates",
@@ -540,11 +471,29 @@
             }
           },
           "422": {
-            "description": "UnresolvedProtocolError: `nodes` names each step whose protocol is no longer active — swap it and save before exporting.",
+            "description": "UnresolvedProtocolError: `nodes` names each step whose protocol is no longer active — swap it and save before exporting. Or InvalidRequestError when `with_bodies` is not a boolean.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "description": "Optional. Omit the body entirely to pin with bodies.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "with_bodies": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "False gives a pins-only document."
+                  }
                 }
               }
             }
